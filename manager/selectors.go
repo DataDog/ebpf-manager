@@ -46,7 +46,7 @@ func (oo *OneOf) String() string {
 		str := fmt.Sprintf("%s", id)
 		strs = append(strs, str)
 	}
-	return strings.Join(strs, ", ")
+	return "OneOf " + strings.Join(strs, ", ")
 }
 
 // EditProbeIdentificationPair - Changes all the selectors looking for the old ProbeIdentificationPair so that they
@@ -95,7 +95,7 @@ func (ao *AllOf) String() string {
 		str := fmt.Sprintf("%s", id)
 		strs = append(strs, str)
 	}
-	return strings.Join(strs, ", ")
+	return "AllOf " + strings.Join(strs, ", ")
 }
 
 // EditProbeIdentificationPair - Changes all the selectors looking for the old ProbeIdentificationPair so that they
@@ -132,7 +132,7 @@ func (be *BestEffort) String() string {
 		str := fmt.Sprintf("%s", id)
 		strs = append(strs, str)
 	}
-	return strings.Join(strs, ", ")
+	return "BestEffort " + strings.Join(strs, ", ")
 }
 
 // EditProbeIdentificationPair - Changes all the selectors looking for the old ProbeIdentificationPair so that they

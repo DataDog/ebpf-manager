@@ -44,45 +44,75 @@ const (
 	Egress  = TrafficType(tc.HandleMinEgress)
 )
 
+const (
+	UnknownProbeType = ""
+	ProbeType        = "p"
+	RetProbeType     = "r"
+)
+
 type ProbeIdentificationPair struct {
+	kprobeType string
+
 	// UID - (optional) this field can be used to identify your probes when the same eBPF program is used on multiple
 	// hook points. Keep in mind that the pair (probe section, probe UID) needs to be unique
 	// system-wide for the kprobes and uprobes registration to work.
 	UID string
 
-	// Section - Section of the program, as defined in its section SEC("[section]").
-	Section string
+	// EBPFFuncName - Name of the main eBPF function of your eBPF program.
+	EBPFFuncName string
 
-	// ebpfPrefix - eBPF program prefix that defines the eBPF program type
-	ebpfPrefix string
-
-	// ebpfFuncName - Name of the main eBPF function of the current probe
-	ebpfFuncName string
+	// EBPFSection - Section in which EBPFFuncName lives.
+	EBPFSection string
 }
 
 func (pip ProbeIdentificationPair) String() string {
-	return fmt.Sprintf("{UID:%s Section:%s Prefix:%s FuncName:%s}", pip.UID, pip.Section, pip.GetEBPFPrefix(), pip.GetEBPFFuncName())
+	return fmt.Sprintf("{UID:%s EBPFSection:%s EBPFFuncName:%s}", pip.UID, pip.EBPFSection, pip.EBPFFuncName)
 }
 
-// Matches - Returns true if the identification pair (probe uid, probe section) matches.
+// Matches - Returns true if the identification pair (probe uid, probe section, probe func name) matches.
 func (pip ProbeIdentificationPair) Matches(id ProbeIdentificationPair) bool {
-	return pip.UID == id.UID && pip.Section == id.Section
+	return pip.UID == id.UID && pip.EBPFDefinitionMatches(id)
 }
 
-// GetEBPFPrefix - Returns the eBPF program prefix of the current probe
-func (pip *ProbeIdentificationPair) GetEBPFPrefix() string {
-	if len(pip.ebpfPrefix) == 0 {
-		pip.ebpfPrefix, pip.ebpfFuncName = parseEBPFPrefix(pip.Section)
-	}
-	return pip.ebpfPrefix
+// EBPFDefinitionMatches - Returns true if the eBPF definition matches.
+func (pip ProbeIdentificationPair) EBPFDefinitionMatches(id ProbeIdentificationPair) bool {
+	return pip.EBPFFuncName == id.EBPFFuncName && pip.EBPFSection == id.EBPFSection
 }
 
-// GetEBPFFuncName - Returns the eBPF function name of the current probe
-func (pip *ProbeIdentificationPair) GetEBPFFuncName() string {
-	if len(pip.ebpfFuncName) == 0 {
-		pip.ebpfPrefix, pip.ebpfFuncName = parseEBPFPrefix(pip.Section)
+// GetEBPFFuncName - Returns EBPFFuncName with the UID as a postfix if the Probe was copied
+func (pip ProbeIdentificationPair) GetEBPFFuncName(isCopy bool) string {
+	if isCopy {
+		return pip.EBPFFuncName + pip.UID
 	}
-	return pip.ebpfFuncName
+	return pip.EBPFFuncName
+}
+
+// GetKprobeType - Identifies the probe type of the provided KProbe section
+func (pip ProbeIdentificationPair) GetKprobeType() string {
+	if len(pip.kprobeType) == 0 {
+		if strings.HasPrefix(pip.EBPFSection, "kretprobe/") {
+			pip.kprobeType = RetProbeType
+		} else if strings.HasPrefix(pip.EBPFSection, "kprobe/") {
+			pip.kprobeType = ProbeType
+		} else {
+			pip.kprobeType = UnknownProbeType
+		}
+	}
+	return pip.kprobeType
+}
+
+// GetUprobeType - Identifies the probe type of the provided Uprobe section
+func (pip ProbeIdentificationPair) GetUprobeType() string {
+	if len(pip.kprobeType) == 0 {
+		if strings.HasPrefix(pip.EBPFSection, "uretprobe/") {
+			pip.kprobeType = RetProbeType
+		} else if strings.HasPrefix(pip.EBPFSection, "uprobe/") {
+			pip.kprobeType = ProbeType
+		} else {
+			pip.kprobeType = UnknownProbeType
+		}
+	}
+	return pip.kprobeType
 }
 
 // Probe - Main eBPF probe wrapper. This structure is used to store the required data to attach a loaded eBPF
@@ -125,9 +155,9 @@ type Probe struct {
 	// provided pattern will be used.
 	MatchFuncName string
 
-	// FuncName - Exact name of the symbol to hook onto. When this field is set, MatchFuncName and SyscallFuncName
+	// HookFuncName - Exact name of the symbol to hook onto. When this field is set, MatchFuncName and SyscallFuncName
 	// are ignored.
-	FuncName string
+	HookFuncName string
 
 	// Enabled - Indicates if a probe should be enabled or not. This parameter can be set at runtime using the
 	// Manager options (see ActivatedProbes)
@@ -192,8 +222,8 @@ type Probe struct {
 func (p *Probe) Copy() *Probe {
 	return &Probe{
 		ProbeIdentificationPair: ProbeIdentificationPair{
-			UID:     p.UID,
-			Section: p.Section,
+			UID:          p.UID,
+			EBPFFuncName: p.EBPFFuncName,
 		},
 		SyscallFuncName:  p.SyscallFuncName,
 		MatchFuncName:    p.MatchFuncName,
@@ -216,16 +246,6 @@ func (p *Probe) Copy() *Probe {
 // GetLastError - Returns the last error that the probe encountered
 func (p *Probe) GetLastError() error {
 	return p.lastError
-}
-
-// IdentificationPairMatches - Returns true if the identification pair (probe uid, probe section) matches.
-func (p *Probe) IdentificationPairMatches(id ProbeIdentificationPair) bool {
-	return p.GetIdentificationPair().Matches(id)
-}
-
-// GetIdentificationPair - Returns the identification pair (probe section, probe UID)
-func (p *Probe) GetIdentificationPair() ProbeIdentificationPair {
-	return p.ProbeIdentificationPair
 }
 
 // IsRunning - Returns true if the probe was successfully initialized, started and is currently running.
@@ -293,23 +313,20 @@ func (p *Probe) init() error {
 		prog, err := ebpf.NewProgramWithOptions(p.programSpec, p.manager.options.VerifierOptions.Programs)
 		if err != nil {
 			p.lastError = err
-			return errors.Wrapf(err, "couldn't load new probe %v", p.GetIdentificationPair())
+			return errors.Wrapf(err, "couldn't load new probe %v", p.ProbeIdentificationPair)
 		}
 		p.program = prog
 	}
 
 	// override section based on the CopyProgram parameter
-	section := p.GetEBPFFuncName()
-	if p.CopyProgram {
-		section += p.UID
-	}
+	selector := p.GetEBPFFuncName(p.CopyProgram)
 
 	// Retrieve eBPF program if one isn't already set
 	if p.program == nil {
-		prog, ok := p.manager.collection.Programs[section]
+		prog, ok := p.manager.collection.Programs[selector]
 		if !ok {
 			p.lastError = ErrUnknownSection
-			return errors.Wrapf(ErrUnknownSection, "couldn't find program %s", section)
+			return errors.Wrapf(ErrUnknownSection, "couldn't find program %s", selector)
 		}
 		p.program = prog
 		p.checkPin = true
@@ -317,7 +334,7 @@ func (p *Probe) init() error {
 
 	if p.programSpec == nil {
 		if p.programSpec, p.lastError = p.manager.getProbeProgramSpec(p.ProbeIdentificationPair); p.lastError != nil {
-			return errors.Wrapf(ErrUnknownSection, "couldn't find program spec %s", section)
+			return errors.Wrapf(ErrUnknownSection, "couldn't find program spec %s", selector)
 		}
 	}
 
@@ -326,16 +343,16 @@ func (p *Probe) init() error {
 		if p.PinPath != "" {
 			if err := p.program.Pin(p.PinPath); err != nil {
 				p.lastError = err
-				return errors.Wrapf(err, "couldn't pin program %s at %s", section, p.PinPath)
+				return errors.Wrapf(err, "couldn't pin program %s at %s", selector, p.PinPath)
 			}
 		}
 		p.checkPin = false
 	}
 
 	// Update syscall function name with the correct arch prefix
-	if p.SyscallFuncName != "" {
+	if p.SyscallFuncName != "" && len(p.HookFuncName) == 0 {
 		var err error
-		p.funcName, err = GetSyscallFnNameWithSymFile(p.SyscallFuncName, p.manager.options.SymFile)
+		p.HookFuncName, err = GetSyscallFnNameWithSymFile(p.SyscallFuncName, p.manager.options.SymFile)
 		if err != nil {
 			p.lastError = err
 			return err
@@ -343,11 +360,11 @@ func (p *Probe) init() error {
 	}
 
 	// Find function name match if required
-	if p.MatchFuncName != "" {
+	if p.MatchFuncName != "" && len(p.HookFuncName) == 0 {
 		// if this is a kprobe or a kretprobe, look for the symbol now
-		if strings.HasPrefix(p.Section, "kretprobe/") || (strings.HasPrefix(p.Section, "kprobe/")) {
+		if p.GetKprobeType() != UnknownProbeType {
 			var err error
-			p.funcName, err = FindFilterFunction(p.MatchFuncName)
+			p.HookFuncName, err = FindFilterFunction(p.MatchFuncName)
 			if err != nil {
 				p.lastError = err
 				return err
@@ -446,7 +463,7 @@ func (p *Probe) attach() error {
 		p.lastError = err
 		// Clean up any progress made in the attach attempt
 		_ = p.stop(false)
-		return errors.Wrapf(err, "couldn't start probe %s", p.Section)
+		return errors.Wrapf(err, "couldn't start probe %s", p.ProbeIdentificationPair)
 	}
 
 	// update probe state
@@ -546,11 +563,12 @@ func (p *Probe) stop(saveStopError bool) error {
 	if err == nil && p.attachRetryAttempt >= p.ProbeRetry {
 		p.reset()
 	}
-	return errors.Wrapf(err, "couldn't stop probe %s", p.Section)
+	return errors.Wrapf(err, "couldn't stop probe %s", p.ProbeIdentificationPair)
 }
 
 // reset - Cleans up the internal fields of the probe
 func (p *Probe) reset() {
+	p.kprobeType = ""
 	p.manager = nil
 	p.program = nil
 	p.programSpec = nil
@@ -558,85 +576,68 @@ func (p *Probe) reset() {
 	p.state = reset
 	p.manualLoadNeeded = false
 	p.checkPin = false
-	p.funcName = ""
 	p.attachPID = 0
 	p.attachRetryAttempt = 0
-	p.ebpfPrefix = ""
-	p.ebpfFuncName = ""
 }
 
 // attachKprobe - Attaches the probe to its kprobe
 func (p *Probe) attachKprobe() error {
-	// Prepare kprobe_events line parameters
-	var probeType, maxactiveStr string
 	var err error
-	funcName := p.funcName
-	if strings.HasPrefix(p.Section, "kretprobe/") {
-		if funcName == "" {
-			funcName = strings.TrimPrefix(p.Section, "kretprobe/")
-		}
+
+	if len(p.HookFuncName) == 0 {
+		return errors.New("HookFuncName, MatchFuncName or SyscallFuncName is required")
+	}
+
+	// Prepare kprobe_events line parameters
+	var maxActiveStr string
+	if p.GetKprobeType() == RetProbeType {
 		if p.KProbeMaxActive > 0 {
-			maxactiveStr = fmt.Sprintf("%d", p.KProbeMaxActive)
+			maxActiveStr = fmt.Sprintf("%d", p.KProbeMaxActive)
 		}
-		probeType = "r"
-	} else if strings.HasPrefix(p.Section, "kprobe/") {
-		if funcName == "" {
-			funcName = strings.TrimPrefix(p.Section, "kprobe/")
-		}
-		probeType = "p"
-	} else {
-		// this might actually be a Uprobe
+	}
+
+	if p.GetKprobeType() == UnknownProbeType {
+		// this might actually be a UProbe
 		return p.attachUprobe()
 	}
+
 	p.attachPID = os.Getpid()
 
 	// Write kprobe_events line to register kprobe
-	kprobeID, err := EnableKprobeEvent(probeType, funcName, p.UID, maxactiveStr, p.attachPID)
+	kprobeID, err := EnableKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, maxActiveStr, p.attachPID)
 	if err == ErrKprobeIDNotExist {
 		// The probe might have been loaded under a kernel generated event name. Clean up just in case.
-		_ = disableKprobeEvent(getKernelGeneratedEventName(probeType, funcName))
+		_ = disableKprobeEvent(getKernelGeneratedEventName(p.GetKprobeType(), p.HookFuncName))
 		// fallback without KProbeMaxActive
-		kprobeID, err = EnableKprobeEvent(probeType, funcName, p.UID, "", p.attachPID)
+		kprobeID, err = EnableKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, "", p.attachPID)
 	}
 	if err != nil {
-		return errors.Wrapf(err, "couldn't enable kprobe %s", p.Section)
+		return errors.Wrapf(err, "couldn't enable kprobe %s", p.ProbeIdentificationPair)
 	}
 
 	// Activate perf event
 	p.perfEventFD, err = perfEventOpenTracepoint(kprobeID, p.program.FD())
-	return errors.Wrapf(err, "couldn't enable kprobe %s", p.GetIdentificationPair())
+	return errors.Wrapf(err, "couldn't enable kprobe %s", p.ProbeIdentificationPair)
 }
 
 // detachKprobe - Detaches the probe from its kprobe
 func (p *Probe) detachKprobe() error {
 	// Prepare kprobe_events line parameters
-	funcName := p.funcName
-	probeType := ""
-	if strings.HasPrefix(p.Section, "kretprobe/") {
-		if funcName == "" {
-			funcName = strings.TrimPrefix(p.Section, "kretprobe/")
-		}
-		probeType = "r"
-	} else if strings.HasPrefix(p.Section, "kprobe/") {
-		if funcName == "" {
-			funcName = strings.TrimPrefix(p.Section, "kprobe/")
-		}
-		probeType = "p"
-	} else {
+	if p.GetKprobeType() == UnknownProbeType {
 		// this might be a Uprobe
 		return p.detachUprobe()
 	}
 
 	// Write kprobe_events line to remove hook point
-	return DisableKprobeEvent(probeType, funcName, p.UID, p.attachPID)
+	return DisableKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, p.attachPID)
 }
 
 // attachTracepoint - Attaches the probe to its tracepoint
 func (p *Probe) attachTracepoint() error {
 	// Parse section
-	traceGroup := strings.SplitN(p.Section, "/", 3)
+	traceGroup := strings.SplitN(p.EBPFSection, "/", 3)
 	if len(traceGroup) != 3 {
-		return errors.Wrapf(ErrSectionFormat, "expected SEC(\"tracepoint/[category]/[name]\") got %s", p.Section)
+		return errors.Wrapf(ErrSectionFormat, "expected SEC(\"tracepoint/[category]/[name]\") got %s", p.EBPFSection)
 	}
 	category := traceGroup[1]
 	name := traceGroup[2]
@@ -644,41 +645,37 @@ func (p *Probe) attachTracepoint() error {
 	// Get the ID of the tracepoint to activate
 	tracepointID, err := GetTracepointID(category, name)
 	if err != nil {
-		return errors.Wrapf(err, "couldn's activate tracepoint %s", p.Section)
+		return errors.Wrapf(err, "couldn's activate tracepoint %s", p.ProbeIdentificationPair)
 	}
 
 	// Hook the eBPF program to the tracepoint
 	p.perfEventFD, err = perfEventOpenTracepoint(tracepointID, p.program.FD())
-	return errors.Wrapf(err, "couldn't enable tracepoint %s", p.GetIdentificationPair())
+	return errors.Wrapf(err, "couldn't enable tracepoint %s", p.ProbeIdentificationPair)
 }
 
 // attachUprobe - Attaches the probe to its Uprobe
 func (p *Probe) attachUprobe() error {
-	p.attachPID = os.Getpid()
 	// Prepare uprobe_events line parameters
-	var probeType, funcName string
-	if strings.HasPrefix(p.Section, "uretprobe/") {
-		funcName = strings.TrimPrefix(p.Section, "uretprobe/")
-		probeType = "r"
-	} else if strings.HasPrefix(p.Section, "uprobe/") {
-		funcName = strings.TrimPrefix(p.Section, "uprobe/")
-		probeType = "p"
-	} else {
+	p.attachPID = os.Getpid()
+
+	if p.GetUprobeType() == UnknownProbeType {
 		// unknown type
-		return errors.Wrapf(ErrSectionFormat, "program type unrecognized in section %v", p.Section)
+		return errors.Wrapf(ErrSectionFormat, "program type unrecognized in %s", p.ProbeIdentificationPair)
 	}
 
 	// compute the offset if it was not provided
 	if p.UprobeOffset == 0 {
+		var funcPattern string
+
 		// find the offset of the first symbol matching the provided pattern
 		if len(p.MatchFuncName) > 0 {
-			funcName = p.MatchFuncName
+			funcPattern = p.MatchFuncName
 		} else {
-			funcName = fmt.Sprintf("^%s$", funcName)
+			funcPattern = fmt.Sprintf("^%s$", p.HookFuncName)
 		}
-		pattern, err := regexp.Compile(funcName)
+		pattern, err := regexp.Compile(funcPattern)
 		if err != nil {
-			return errors.Wrapf(err, "failed to compile pattern %s", funcName)
+			return errors.Wrapf(err, "failed to compile pattern %s", funcPattern)
 		}
 
 		// Retrieve dynamic symbol offset
@@ -687,35 +684,30 @@ func (p *Probe) attachUprobe() error {
 			return errors.Wrapf(err, "couldn't find symbol matching %s in %s", pattern.String(), p.BinaryPath)
 		}
 		p.UprobeOffset = offsets[0].Value
-		p.funcName = offsets[0].Name
+		p.HookFuncName = offsets[0].Name
 	}
 
 	// enable uprobe
-	uprobeID, err := EnableUprobeEvent(probeType, p.funcName, p.BinaryPath, p.UID, p.attachPID, p.UprobeOffset)
+	uprobeID, err := EnableUprobeEvent(p.GetUprobeType(), p.HookFuncName, p.BinaryPath, p.UID, p.attachPID, p.UprobeOffset)
 	if err != nil {
-		return errors.Wrapf(err, "couldn't enable uprobe %s", p.Section)
+		return errors.Wrapf(err, "couldn't enable uprobe %s", p.ProbeIdentificationPair)
 	}
 
 	// Activate perf event
 	p.perfEventFD, err = perfEventOpenTracepoint(uprobeID, p.program.FD())
-	return errors.Wrapf(err, "couldn't enable uprobe %s", p.GetIdentificationPair())
+	return errors.Wrapf(err, "couldn't enable uprobe %s", p.ProbeIdentificationPair)
 }
 
 // detachUprobe - Detaches the probe from its Uprobe
 func (p *Probe) detachUprobe() error {
 	// Prepare uprobe_events line parameters
-	var probeType string
-	if strings.HasPrefix(p.Section, "uretprobe/") {
-		probeType = "r"
-	} else if strings.HasPrefix(p.Section, "uprobe/") {
-		probeType = "p"
-	} else {
+	if p.GetUprobeType() == UnknownProbeType {
 		// unknown type
-		return errors.Wrapf(ErrSectionFormat, "program type unrecognized in section %v", p.Section)
+		return errors.Wrapf(ErrSectionFormat, "program type unrecognized in section %v", p.ProbeIdentificationPair)
 	}
 
 	// Write uprobe_events line to remove hook point
-	return DisableUprobeEvent(probeType, p.funcName, p.UID, p.attachPID)
+	return DisableUprobeEvent(p.GetUprobeType(), p.HookFuncName, p.UID, p.attachPID)
 }
 
 // attachCGroup - Attaches the probe to a cgroup hook point
@@ -723,14 +715,14 @@ func (p *Probe) attachCGroup() error {
 	// open CGroupPath
 	f, err := os.Open(p.CGroupPath)
 	if err != nil {
-		return errors.Wrapf(err, "error opening cgroup %s from probe %s", p.CGroupPath, p.Section)
+		return errors.Wrapf(err, "error opening cgroup %s from probe %s", p.CGroupPath, p.ProbeIdentificationPair)
 	}
 	defer f.Close()
 
 	// Attach CGroup
 	ret, err := bpfProgAttach(p.program.FD(), int(f.Fd()), p.programSpec.AttachType)
 	if ret < 0 {
-		return errors.Wrapf(err, "failed to attach probe %v to cgroup %s", p.GetIdentificationPair(), p.CGroupPath)
+		return errors.Wrapf(err, "failed to attach probe %v to cgroup %s", p.ProbeIdentificationPair, p.CGroupPath)
 	}
 	return nil
 }
@@ -740,13 +732,13 @@ func (p *Probe) detachCgroup() error {
 	// open CGroupPath
 	f, err := os.Open(p.CGroupPath)
 	if err != nil {
-		return errors.Wrapf(err, "error opening cgroup %s from probe %s", p.CGroupPath, p.Section)
+		return errors.Wrapf(err, "error opening cgroup %s from probe %s", p.CGroupPath, p.ProbeIdentificationPair)
 	}
 
 	// Detach CGroup
 	ret, err := bpfProgDetach(p.program.FD(), int(f.Fd()), p.programSpec.AttachType)
 	if ret < 0 {
-		return errors.Wrapf(err, "failed to detach probe %v from cgroup %s", p.GetIdentificationPair(), p.CGroupPath)
+		return errors.Wrapf(err, "failed to detach probe %v from cgroup %s", p.ProbeIdentificationPair, p.CGroupPath)
 	}
 	return nil
 }
@@ -817,7 +809,7 @@ func (p *Probe) attachTCCLS() error {
 
 			BPF: &tc.Bpf{
 				FD:    &fd,
-				Name:  &p.Section,
+				Name:  &p.EBPFSection,
 				Flags: &flag,
 			},
 		},
@@ -837,7 +829,7 @@ func (p *Probe) detachTCCLS() error {
 	// Recover the netlink socket of the interface from the manager
 	ntl, ok := p.manager.netlinkCache[netlinkCacheKey{p.Ifindex, p.IfindexNetns}]
 	if !ok {
-		return fmt.Errorf("couldn't find qdisc from which the probe %v was meant to be detached", p.GetIdentificationPair())
+		return fmt.Errorf("couldn't find qdisc from which the probe %v was meant to be detached", p.ProbeIdentificationPair)
 	}
 
 	if ntl.schedClsCount >= 2 {
@@ -848,7 +840,7 @@ func (p *Probe) detachTCCLS() error {
 
 	// Delete qdisc
 	err := ntl.rtNetlink.Qdisc().Delete(p.tcObject)
-	return errors.Wrapf(err, "couldn't detach TC classifier of probe %v", p.GetIdentificationPair())
+	return errors.Wrapf(err, "couldn't detach TC classifier of probe %v", p.ProbeIdentificationPair)
 }
 
 // attachXDP - Attaches the probe to an interface with an XDP hook point
@@ -861,7 +853,7 @@ func (p *Probe) attachXDP() error {
 
 	// Attach program
 	err = netlink.LinkSetXdpFdWithFlags(link, p.program.FD(), int(p.XDPAttachMode))
-	return errors.Wrapf(err, "couldn't attach XDP program %v to interface %v", p.GetIdentificationPair(), p.Ifindex)
+	return errors.Wrapf(err, "couldn't attach XDP program %v to interface %v", p.ProbeIdentificationPair, p.Ifindex)
 }
 
 // detachXDP - Detaches the probe from its XDP hook point
@@ -874,5 +866,5 @@ func (p *Probe) detachXDP() error {
 
 	// Detach program
 	err = netlink.LinkSetXdpFdWithFlags(link, -1, int(p.XDPAttachMode))
-	return errors.Wrapf(err, "couldn't detach XDP program %v from interface %v", p.GetIdentificationPair(), p.Ifindex)
+	return errors.Wrapf(err, "couldn't detach XDP program %v from interface %v", p.ProbeIdentificationPair, p.Ifindex)
 }

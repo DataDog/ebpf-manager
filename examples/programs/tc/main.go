@@ -9,14 +9,16 @@ var m = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				Section: "classifier/egress",
+				EBPFSection:  "classifier/egress",
+				EBPFFuncName: "egress",
 			},
 			Ifname:           "enp0s3", // change this to the interface connected to the internet
 			NetworkDirection: manager.Egress,
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				Section: "classifier/ingress",
+				EBPFSection:  "classifier/ingress",
+				EBPFFuncName: "ingress",
 			},
 			Ifname:           "enp0s3", // change this to the interface connected to the internet
 			NetworkDirection: manager.Ingress,

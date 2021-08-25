@@ -15,7 +15,7 @@ var m = &manager.Manager{}
 func main() {
 	options := manager.Options{
 		MapSpecEditors: map[string]manager.MapSpecEditor{
-			"cache": manager.MapSpecEditor{
+			"cache": {
 				Type:       ebpf.LRUHash,
 				MaxEntries: 1000000,
 				EditorFlag: manager.EditMaxEntries | manager.EditType,

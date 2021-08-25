@@ -335,18 +335,18 @@ func (m *Manager) GetProgram(id ProbeIdentificationPair) ([]*ebpf.Program, bool,
 	}
 	if id.UID == "" {
 		for _, probe := range m.Probes {
-			if probe.Section == id.Section {
+			if probe.EBPFDefinitionMatches(id) {
 				programs = append(programs, probe.program)
 			}
 		}
 		if len(programs) > 0 {
 			return programs, true, nil
 		}
-		prog, ok := m.collection.Programs[id.GetEBPFFuncName()]
+		prog, ok := m.collection.Programs[id.EBPFFuncName]
 		return []*ebpf.Program{prog}, ok, nil
 	}
 	for _, probe := range m.Probes {
-		if probe.IdentificationPairMatches(id) {
+		if probe.Matches(id) {
 			return []*ebpf.Program{probe.program}, true, nil
 		}
 	}
@@ -367,18 +367,18 @@ func (m *Manager) GetProgramSpec(id ProbeIdentificationPair) ([]*ebpf.ProgramSpe
 	}
 	if id.UID == "" {
 		for _, probe := range m.Probes {
-			if probe.Section == id.Section {
+			if probe.EBPFDefinitionMatches(id) {
 				programs = append(programs, probe.programSpec)
 			}
 		}
 		if len(programs) > 0 {
 			return programs, true, nil
 		}
-		prog, ok := m.collectionSpec.Programs[id.GetEBPFFuncName()]
+		prog, ok := m.collectionSpec.Programs[id.EBPFFuncName]
 		return []*ebpf.ProgramSpec{prog}, ok, nil
 	}
 	for _, probe := range m.Probes {
-		if probe.IdentificationPairMatches(id) {
+		if probe.Matches(id) {
 			return []*ebpf.ProgramSpec{probe.programSpec}, true, nil
 		}
 	}
@@ -388,7 +388,7 @@ func (m *Manager) GetProgramSpec(id ProbeIdentificationPair) ([]*ebpf.ProgramSpe
 // GetProbe - Select a probe by its section and UID
 func (m *Manager) GetProbe(id ProbeIdentificationPair) (*Probe, bool) {
 	for _, managerProbe := range m.Probes {
-		if managerProbe.IdentificationPairMatches(id) {
+		if managerProbe.Matches(id) {
 			return managerProbe, true
 		}
 	}
@@ -400,7 +400,7 @@ func (m *Manager) GetProbe(id ProbeIdentificationPair) (*Probe, bool) {
 func (m *Manager) RenameProbeIdentificationPair(oldID ProbeIdentificationPair, newID ProbeIdentificationPair) error {
 	// sanity check: make sure the newID doesn't already exists
 	for _, mProbe := range m.Probes {
-		if mProbe.IdentificationPairMatches(newID) {
+		if mProbe.Matches(newID) {
 			return ErrIdentificationPairInUse
 		}
 	}
@@ -409,11 +409,11 @@ func (m *Manager) RenameProbeIdentificationPair(oldID ProbeIdentificationPair, n
 		return ErrSymbolNotFound
 	}
 
-	if oldID.Section != newID.Section {
+	if oldID.EBPFSection != newID.EBPFSection {
 		// edit the excluded sections
 		for i, section := range m.options.ExcludedSections {
-			if section == oldID.Section {
-				m.options.ExcludedSections[i] = newID.Section
+			if section == oldID.EBPFSection {
+				m.options.ExcludedSections[i] = newID.EBPFSection
 			}
 		}
 	}
@@ -424,7 +424,7 @@ func (m *Manager) RenameProbeIdentificationPair(oldID ProbeIdentificationPair, n
 	}
 
 	// edit the probe
-	p.Section = newID.Section
+	p.EBPFSection = newID.EBPFSection
 	p.UID = newID.UID
 	return nil
 }
@@ -626,7 +626,7 @@ func (m *Manager) stop(cleanup MapCleanupType) error {
 	for _, probe := range m.Probes {
 		err = ConcatErrors(
 			err,
-			errors.Wrapf(probe.Stop(), "program %s couldn't gracefully shut down", probe.Section),
+			errors.Wrapf(probe.Stop(), "program %s couldn't gracefully shut down", probe.ProbeIdentificationPair),
 		)
 	}
 
@@ -754,22 +754,22 @@ func (m *Manager) ClonePerfRing(name string, newName string, options MapOptions,
 // AddHook - Hook an existing program to a hook point. This is particularly useful when you need to trigger an
 // existing program on a hook point that is determined at runtime. For example, you might want to hook an existing
 // eBPF TC classifier to the newly created interface of a container. Make sure to specify a unique uid in the new probe,
-// you will need it if you want to detach the program later. The original program is selected using the provided UID and
-// the section provided in the new probe.
+// you will need it if you want to detach the program later. The original program is selected using the provided UID,
+// the section and the eBPF function name provided in the new probe.
 func (m *Manager) AddHook(UID string, newProbe Probe) error {
-	oldID := ProbeIdentificationPair{UID: UID, Section: newProbe.Section}
+	oldID := ProbeIdentificationPair{UID: UID, EBPFSection: newProbe.EBPFSection, EBPFFuncName: newProbe.EBPFFuncName}
 	// Look for the eBPF program
 	progs, found, err := m.GetProgram(oldID)
 	if err != nil {
 		return err
 	}
 	if !found || len(progs) == 0 {
-		return errors.Wrapf(ErrUnknownSection, "couldn't find program %v", oldID)
+		return errors.Wrapf(ErrUnknownSection, "couldn't find program %s", oldID)
 	}
 	prog := progs[0]
 	progSpecs, found, _ := m.GetProgramSpec(oldID)
 	if !found || len(progSpecs) == 0 {
-		return errors.Wrapf(ErrUnknownSection, "couldn't find programSpec %v", oldID)
+		return errors.Wrapf(ErrUnknownSection, "couldn't find programSpec %s", oldID)
 	}
 	progSpec := progSpecs[0]
 
@@ -777,9 +777,9 @@ func (m *Manager) AddHook(UID string, newProbe Probe) error {
 	newProbe.Enabled = true
 
 	// Make sure the provided identification pair is unique
-	_, exists, _ := m.GetProgramSpec(newProbe.GetIdentificationPair())
+	_, exists, _ := m.GetProgramSpec(newProbe.ProbeIdentificationPair)
 	if exists {
-		return errors.Wrapf(ErrIdentificationPairInUse, "couldn't add probe %v", newProbe.GetIdentificationPair())
+		return errors.Wrapf(ErrIdentificationPairInUse, "probe %s already exists", newProbe.ProbeIdentificationPair)
 	}
 
 	// Clone program
@@ -821,12 +821,11 @@ func (m *Manager) AddHook(UID string, newProbe Probe) error {
 // DetachHook - Detach an eBPF program from a hook point. If there is only one instance left of this program in the
 // kernel, then the probe will be detached but the program will not be closed (so that it can be used later). In that
 // case, calling DetachHook has essentially the same effect as calling Detach() on the right Probe instance. However,
-// if there are more than one instance in the kernel of the requested program, then the probe selected by (section, UID)
-// is detached, and its own version of the program is closed.
-func (m *Manager) DetachHook(section string, UID string) error {
-	oldID := ProbeIdentificationPair{UID: UID, Section: section}
+// if there are more than one instance in the kernel of the requested program, then the probe selected by the provided
+// ProbeIdentificationPair is detached, and its own version of the program is closed.
+func (m *Manager) DetachHook(id ProbeIdentificationPair) error {
 	// Check how many instances of the program are left in the kernel
-	progs, _, err := m.GetProgram(ProbeIdentificationPair{UID: "", Section: section})
+	progs, _, err := m.GetProgram(ProbeIdentificationPair{UID: "", EBPFSection: id.EBPFSection, EBPFFuncName: id.EBPFFuncName})
 	if err != nil {
 		return err
 	}
@@ -834,19 +833,19 @@ func (m *Manager) DetachHook(section string, UID string) error {
 
 	// Look for the probe
 	idToDelete := -1
-	for id, managerProbe := range m.Probes {
-		if managerProbe.IdentificationPairMatches(oldID) {
+	for mID, mProbe := range m.Probes {
+		if mProbe.Matches(id) {
 			// Detach or stop the probe depending on shouldStop
 			if shouldStop {
-				if err = managerProbe.Stop(); err != nil {
-					return errors.Wrapf(err, "couldn't stop probe %v", oldID)
+				if err = mProbe.Stop(); err != nil {
+					return errors.Wrapf(err, "couldn't stop probe %s", id)
 				}
 			} else {
-				if err = managerProbe.Detach(); err != nil {
-					return errors.Wrapf(err, "couldn't detach probe %v", oldID)
+				if err = mProbe.Detach(); err != nil {
+					return errors.Wrapf(err, "couldn't detach probe %s", id)
 				}
 			}
-			idToDelete = id
+			idToDelete = mID
 		}
 	}
 	if idToDelete >= 0 {
@@ -862,7 +861,7 @@ func (m *Manager) DetachHook(section string, UID string) error {
 // using a MapEditor. The original program is selected using the provided UID and the section provided in the new probe.
 // Note that the BTF based constant edition will note work with this method.
 func (m *Manager) CloneProgram(UID string, newProbe Probe, constantsEditors []ConstantEditor, mapEditors map[string]*ebpf.Map) error {
-	oldID := ProbeIdentificationPair{UID: UID, Section: newProbe.Section}
+	oldID := ProbeIdentificationPair{UID: UID, EBPFSection: newProbe.EBPFSection, EBPFFuncName: newProbe.EBPFFuncName}
 	// Find the program specs
 	progSpecs, found, err := m.GetProgramSpec(oldID)
 	if err != nil {
@@ -874,9 +873,9 @@ func (m *Manager) CloneProgram(UID string, newProbe Probe, constantsEditors []Co
 	progSpec := progSpecs[0]
 
 	// Check if the new probe has a unique identification pair
-	_, exists, _ := m.GetProgram(newProbe.GetIdentificationPair())
+	_, exists, _ := m.GetProgram(newProbe.ProbeIdentificationPair)
 	if exists {
-		return errors.Wrapf(ErrIdentificationPairInUse, "couldn't add probe %v", newProbe.GetIdentificationPair())
+		return errors.Wrapf(ErrIdentificationPairInUse, "couldn't add probe %v", newProbe.ProbeIdentificationPair)
 	}
 
 	// Make sure the new probe is activated
@@ -885,6 +884,7 @@ func (m *Manager) CloneProgram(UID string, newProbe Probe, constantsEditors []Co
 	// Clone the program
 	clonedSpec := progSpec.Copy()
 	newProbe.programSpec = clonedSpec
+	newProbe.CopyProgram = true
 
 	// Edit constants
 	for _, editor := range constantsEditors {
@@ -895,26 +895,26 @@ func (m *Manager) CloneProgram(UID string, newProbe Probe, constantsEditors []Co
 
 	// Write current maps
 	if err = m.rewriteMaps(newProbe.programSpec, m.collection.Maps); err != nil {
-		return errors.Wrapf(err, "couldn't rewrite maps in %v", newProbe.GetIdentificationPair())
+		return errors.Wrapf(err, "couldn't rewrite maps in %v", newProbe.ProbeIdentificationPair)
 	}
 
 	// Rewrite with new maps
 	if err = m.rewriteMaps(newProbe.programSpec, mapEditors); err != nil {
-		return errors.Wrapf(err, "couldn't rewrite maps in %v", newProbe.GetIdentificationPair())
+		return errors.Wrapf(err, "couldn't rewrite maps in %v", newProbe.ProbeIdentificationPair)
 	}
 
 	// Init
 	if err = newProbe.InitWithOptions(m, true, true); err != nil {
 		// clean up
 		_ = newProbe.Stop()
-		return errors.Wrapf(err, "failed to initialize new probe %v", newProbe.GetIdentificationPair())
+		return errors.Wrapf(err, "failed to initialize new probe %v", newProbe.ProbeIdentificationPair)
 	}
 
 	// Attach new program
 	if err = newProbe.Attach(); err != nil {
 		// clean up
 		_ = newProbe.Stop()
-		return errors.Wrapf(err, "failed to attach new probe %v", newProbe.GetIdentificationPair())
+		return errors.Wrapf(err, "failed to attach new probe %v", newProbe.ProbeIdentificationPair)
 	}
 
 	// Add probe to the list of probes
@@ -1010,12 +1010,12 @@ func (m *Manager) updateTailCallRoute(route TailCallRoute) error {
 }
 
 func (m *Manager) getProbeProgramSpec(id ProbeIdentificationPair) (*ebpf.ProgramSpec, error) {
-	spec, ok := m.collectionSpec.Programs[id.GetEBPFFuncName()]
+	spec, ok := m.collectionSpec.Programs[id.EBPFFuncName]
 	if !ok {
 		// Check if the probe section is in the list of excluded sections
 		var excluded bool
 		for _, excludedSection := range m.options.ExcludedSections {
-			if excludedSection == id.Section {
+			if excludedSection == id.EBPFSection {
 				excluded = true
 				break
 			}
@@ -1039,7 +1039,7 @@ func (m *Manager) matchSpecs() error {
 			probe.programSpec = programSpec
 		} else {
 			probe.programSpec = programSpec.Copy()
-			m.collectionSpec.Programs[probe.GetEBPFFuncName()+probe.UID] = probe.programSpec
+			m.collectionSpec.Programs[probe.GetEBPFFuncName(probe.CopyProgram)] = probe.programSpec
 		}
 	}
 
@@ -1071,13 +1071,13 @@ func (m *Manager) activateProbes() {
 		shouldActivate := shouldPopulateActivatedProbes
 		for _, selector := range m.options.ActivatedProbes {
 			for _, p := range selector.GetProbesIdentificationPairList() {
-				if mProbe.IdentificationPairMatches(p) {
+				if mProbe.Matches(p) {
 					shouldActivate = true
 				}
 			}
 		}
 		for _, p := range m.options.ExcludedSections {
-			if mProbe.Section == p {
+			if mProbe.EBPFSection == p {
 				shouldActivate = false
 			}
 		}
@@ -1086,7 +1086,7 @@ func (m *Manager) activateProbes() {
 		if shouldPopulateActivatedProbes {
 			// this will ensure that we check that everything has been activated by default when no selectors are provided
 			m.options.ActivatedProbes = append(m.options.ActivatedProbes, &ProbeSelector{
-				ProbeIdentificationPair: mProbe.GetIdentificationPair(),
+				ProbeIdentificationPair: mProbe.ProbeIdentificationPair,
 			})
 		}
 	}
@@ -1097,7 +1097,7 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 	currentProbes := make(map[ProbeIdentificationPair]*Probe)
 	for _, p := range m.Probes {
 		if p.Enabled {
-			currentProbes[p.GetIdentificationPair()] = p
+			currentProbes[p.ProbeIdentificationPair] = p
 		}
 	}
 
@@ -1417,12 +1417,12 @@ func (m *Manager) loadPinnedProgram(prog *Probe) error {
 
 	pinnedProg, err := ebpf.LoadPinnedProgram(prog.PinPath, nil)
 	if err != nil {
-		return errors.Wrapf(err, "couldn't load program %v from %s", prog.GetIdentificationPair(), prog.PinPath)
+		return errors.Wrapf(err, "couldn't load program %v from %s", prog.ProbeIdentificationPair, prog.PinPath)
 	}
 	prog.program = pinnedProg
 
 	// Detach program from CollectionSpec
-	delete(m.collectionSpec.Programs, prog.GetEBPFFuncName())
+	delete(m.collectionSpec.Programs, prog.GetEBPFFuncName(prog.CopyProgram))
 	return nil
 }
 
@@ -1448,11 +1448,11 @@ func (m *Manager) sanityCheck() error {
 	// Check if probes identification pairs are unique, request the usage of CloneProbe otherwise
 	cache = map[string]bool{}
 	for _, managerProbe := range m.Probes {
-		_, ok := cache[managerProbe.GetIdentificationPair().String()]
+		_, ok := cache[managerProbe.ProbeIdentificationPair.String()]
 		if ok {
-			return errors.Wrapf(ErrCloneProbeRequired, "%v failed the sanity check", managerProbe.GetIdentificationPair())
+			return errors.Wrapf(ErrCloneProbeRequired, "%v failed the sanity check", managerProbe.ProbeIdentificationPair)
 		}
-		cache[managerProbe.GetIdentificationPair().String()] = true
+		cache[managerProbe.ProbeIdentificationPair.String()] = true
 	}
 	return nil
 }

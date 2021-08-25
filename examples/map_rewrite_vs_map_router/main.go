@@ -9,8 +9,10 @@ var m1 = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				Section: "kretprobe/vfs_mkdir",
+				EBPFSection:  "kretprobe/vfs_mkdir",
+				EBPFFuncName: "kretprobe_vfs_mkdir",
 			},
+			HookFuncName: "vfs_mkdir",
 		},
 	},
 }
@@ -19,8 +21,10 @@ var m2 = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				Section: "kprobe/vfs_mkdir",
+				EBPFSection:  "kprobe/vfs_mkdir",
+				EBPFFuncName: "kprobe_vfs_mkdir",
 			},
+			HookFuncName: "vfs_mkdir",
 		},
 	},
 }

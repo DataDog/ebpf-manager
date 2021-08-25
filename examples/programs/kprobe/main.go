@@ -14,14 +14,17 @@ var m = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				UID:     "MyVFSMkdir",
-				Section: "kprobe/kprobe_vfs_mkdir",
+				UID:          "MyVFSMkdir",
+				EBPFSection:  "kprobe/vfs_mkdir",
+				EBPFFuncName: "kprobe_vfs_mkdir",
 			},
+			HookFuncName: "vfs_mkdir",
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				UID:     "UtimesCommon",
-				Section: "kprobe/kprobe_utimes_common",
+				UID:          "UtimesCommon",
+				EBPFSection:  "kprobe/utimes_common",
+				EBPFFuncName: "kprobe_utimes_common",
 			},
 			MatchFuncName: "utimes_common",
 		},
@@ -31,7 +34,8 @@ var m = &manager.Manager{
 				// m.CloneProgram for example), or if multiple programs with the exact same section are attaching
 				// at the exact same hook point (using m.AddHook for example, or simply because another manager
 				// on the system is planning on hooking there).
-				Section: "kretprobe/kretprobe_mkdirat",
+				EBPFSection:  "kretprobe/mkdirat",
+				EBPFFuncName: "kretprobe_mkdirat",
 			},
 			SyscallFuncName: "mkdirat",
 			KProbeMaxActive: 100,

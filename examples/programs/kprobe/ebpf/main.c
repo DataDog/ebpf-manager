@@ -8,7 +8,7 @@ struct bpf_map_def SEC("maps/cache") cache = {
 };
 
 SEC("kprobe/vfs_mkdir")
-int vfs_mkdir(struct pt_regs *ctx)
+int kprobe_vfs_mkdir(struct pt_regs *ctx)
 {
     bpf_printk("mkdir (vfs hook point)\n");
     return 0;
@@ -21,7 +21,7 @@ int kprobe_utimes_common(struct pt_regs *ctx)
     return 0;
 };
 
-SEC("kretprobe/kretprobe_mkdirat")
+SEC("kretprobe/mkdirat")
 int kretprobe_mkdirat(struct pt_regs *ctx)
 {
     bpf_printk("mkdirat return (syscall hook point)\n");

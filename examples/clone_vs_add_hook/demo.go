@@ -11,8 +11,12 @@ func demoClone() error {
 	// Clone kprobe/vfs_open program, edit its constant and load a new probe. This will essentially create a new program
 	// and you should see a new line in /sys/kernel/debug/tracing/kprobe_events.
 	newProbe := manager.Probe{
-		UID:     "MySeconHook",
-		Section: "kprobe/vfs_mkdir",
+		ProbeIdentificationPair: manager.ProbeIdentificationPair{
+			UID:          "MySeconHook",
+			EBPFSection:  "kprobe/vfs_mkdir",
+			EBPFFuncName: "kprobe_vfs_mkdir",
+		},
+		HookFuncName: "vfs_mkdir",
 	}
 
 	mkdirCloneEditors := []manager.ConstantEditor{
@@ -20,7 +24,7 @@ func demoClone() error {
 			Name:  "my_constant",
 			Value: uint64(42),
 			ProbeIdentificationPairs: []manager.ProbeIdentificationPair{
-				newProbe.GetIdentificationPair(),
+				newProbe.ProbeIdentificationPair,
 			},
 		},
 	}
@@ -38,8 +42,12 @@ func demoAddHook() error {
 	// Add a new hook point to the kprobe/vfs_mkdir program. The program was initially loaded but not attached. This will
 	// not create a copy of the program, it will just add a new hook point. This can be donne multiple times.
 	firstRmdir := manager.Probe{
-		UID:     "FirstRmdir",
-		Section: "kprobe/vfs_rmdir",
+		ProbeIdentificationPair: manager.ProbeIdentificationPair{
+			UID:          "FirstRmdir",
+			EBPFSection:  "kprobe/vfs_rmdir",
+			EBPFFuncName: "kprobe_vfs_rmdir",
+		},
+		HookFuncName: "vfs_rmdir",
 	}
 	err := m.AddHook("", firstRmdir)
 	if err != nil {
@@ -47,8 +55,12 @@ func demoAddHook() error {
 	}
 
 	secondRmdir := manager.Probe{
-		UID:     "SecondRmdir",
-		Section: "kprobe/vfs_rmdir",
+		ProbeIdentificationPair: manager.ProbeIdentificationPair{
+			UID:          "SecondRmdir",
+			EBPFSection:  "kprobe/vfs_rmdir",
+			EBPFFuncName: "kprobe_vfs_rmdir",
+		},
+		HookFuncName: "vfs_rmdir",
 	}
 	err = m.AddHook("", secondRmdir)
 	if err != nil {
@@ -63,7 +75,7 @@ func demoAddHook() error {
 
 	// Detaching a hook point does not close the underlying eBPF program, which means that the other hook points are
 	// still working
-	err = m.DetachHook(secondRmdir.Section, secondRmdir.UID)
+	err = m.DetachHook(secondRmdir.ProbeIdentificationPair)
 	if err != nil {
 		return err
 	}

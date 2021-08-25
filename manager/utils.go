@@ -206,7 +206,7 @@ func ReadKprobeEvents() (string, error) {
 
 // EnableKprobeEvent - Writes a new kprobe in kprobe_events with the provided parameters. Call DisableKprobeEvent
 // to remove the krpobe.
-func EnableKprobeEvent(probeType, funcName, UID, maxactiveStr string, kprobeAttachPID int) (int, error) {
+func EnableKprobeEvent(probeType, funcName, UID, maxActiveStr string, kprobeAttachPID int) (int, error) {
 	// Generate event name
 	eventName, err := GenerateEventName(probeType, funcName, UID, kprobeAttachPID)
 	if err != nil {
@@ -220,7 +220,7 @@ func EnableKprobeEvent(probeType, funcName, UID, maxactiveStr string, kprobeAtta
 		return -1, errors.Wrap(err, "cannot open kprobe_events")
 	}
 	defer f.Close()
-	cmd := fmt.Sprintf("%s%s:%s %s\n", probeType, maxactiveStr, eventName, funcName)
+	cmd := fmt.Sprintf("%s%s:%s %s\n", probeType, maxActiveStr, eventName, funcName)
 	if _, err = f.WriteString(cmd); err != nil && !os.IsExist(err) {
 		return -1, errors.Wrapf(err, "cannot write %q to kprobe_events", cmd)
 	}

@@ -27,7 +27,7 @@ struct bpf_map_def SEC("maps/maps_router") maps_router = {
 };
 
 SEC("kprobe/vfs_mkdir")
-int vfs_mkdir(void *ctx)
+int kprobe_vfs_mkdir(void *ctx)
 {
     bpf_printk("(prog2) writing 42 in shared_cache1 at key 1 ...\n");
     // Update the shared cache

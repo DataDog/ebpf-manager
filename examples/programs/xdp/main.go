@@ -10,7 +10,8 @@ var m = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				Section: "xdp/ingress",
+				EBPFSection:  "xdp/ingress",
+				EBPFFuncName: "ingress",
 			},
 			Ifindex:       2, // change this to the interface index connected to the internet
 			XDPAttachMode: manager.XdpAttachModeSkb,

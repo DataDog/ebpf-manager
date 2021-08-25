@@ -43,7 +43,8 @@ func main() {
 	// Get xdp program used to trigger the tests
 	testProgs, found, err := m.GetProgram(
 		manager.ProbeIdentificationPair{
-			Section: "xdp/my_func_test",
+			EBPFSection:  "xdp/my_func_test",
+			EBPFFuncName: "my_func_test",
 		},
 	)
 	if !found || err != nil {

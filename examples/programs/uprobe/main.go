@@ -10,9 +10,11 @@ var m = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				Section: "uprobe/readline",
+				EBPFSection:  "uprobe/readline",
+				EBPFFuncName: "readline",
 			},
-			BinaryPath: "/usr/bin/bash",
+			HookFuncName: "readline",
+			BinaryPath:   "/usr/bin/bash",
 		},
 	},
 }

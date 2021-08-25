@@ -10,7 +10,8 @@ var m = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				Section: "tracepoint/syscalls/sys_enter_mkdirat",
+				EBPFSection:  "tracepoint/syscalls/sys_enter_mkdirat",
+				EBPFFuncName: "sys_enter_mkdirat",
 			},
 		},
 	},

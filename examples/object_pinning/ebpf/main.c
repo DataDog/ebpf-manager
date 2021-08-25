@@ -39,24 +39,24 @@ __attribute__((always_inline)) static int mkdir_ret(int t) {
     return 0;
 };
 
-SEC("kprobe/kprobe_mkdir")
+SEC("kprobe/mkdir")
 int kprobe_mkdir(void *ctx) {
     return mkdir(1);
 }
 
-SEC("kprobe/kprobe_mkdirat")
+SEC("kprobe/mkdirat")
 int kprobe_mkdirat(void *ctx)
 {
     return mkdir(2);
 }
 
-SEC("kretprobe/kretprobe_mkdir")
+SEC("kretprobe/mkdir")
 int kretprobe_mkdir(void *ctx)
 {
     return mkdir_ret(1);
 }
 
-SEC("kretprobe/kretprobe_mkdirat")
+SEC("kretprobe/mkdirat")
 int kretprobe_mkdirat(void *ctx)
 {
     return mkdir_ret(2);

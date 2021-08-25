@@ -17,7 +17,7 @@ struct bpf_map_def SEC("maps/shared_cache2") shared_cache2 = {
 };
 
 SEC("kretprobe/vfs_mkdir")
-int vfs_mkdir(void *ctx)
+int kretprobe_vfs_mkdir(void *ctx)
 {
     // retrieve the value saved in the cache at key 1
     u32 key = 1;

@@ -42,7 +42,7 @@ int kprobe_vfs_rmdir(void *ctx)
 };
 
 SEC("kretprobe/mkdir")
-int kretpobe_mkdir(void *ctx)
+int kretprobe_mkdir(void *ctx)
 {
     bpf_printk("mkdir return (syscall hook point)\n");
     return 0;
