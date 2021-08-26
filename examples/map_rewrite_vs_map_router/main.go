@@ -12,7 +12,6 @@ var m1 = &manager.Manager{
 				EBPFSection:  "kretprobe/vfs_mkdir",
 				EBPFFuncName: "kretprobe_vfs_mkdir",
 			},
-			HookFuncName: "vfs_mkdir",
 		},
 	},
 }
@@ -24,7 +23,6 @@ var m2 = &manager.Manager{
 				EBPFSection:  "kprobe/vfs_mkdir",
 				EBPFFuncName: "kprobe_vfs_mkdir",
 			},
-			HookFuncName: "vfs_mkdir",
 		},
 	},
 }

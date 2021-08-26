@@ -14,7 +14,6 @@ var m = &manager.Manager{
 				EBPFSection:  "kprobe/vfs_mkdir",
 				EBPFFuncName: "kprobe_vfs_mkdir",
 			},
-			HookFuncName: "vfs_mkdir",
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{

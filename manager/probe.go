@@ -372,6 +372,11 @@ func (p *Probe) init() error {
 		}
 	}
 
+	if len(p.HookFuncName) == 0 {
+		// default back to the AttachTo field in Program, as parsed by Cilium
+		p.HookFuncName = p.programSpec.AttachTo
+	}
+
 	// Resolve interface index if one is provided
 	if p.Ifindex == 0 && p.Ifname != "" {
 		inter, err := net.InterfaceByName(p.Ifname)

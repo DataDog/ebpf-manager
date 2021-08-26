@@ -16,7 +16,6 @@ func demoClone() error {
 			EBPFSection:  "kprobe/vfs_mkdir",
 			EBPFFuncName: "kprobe_vfs_mkdir",
 		},
-		HookFuncName: "vfs_mkdir",
 	}
 
 	mkdirCloneEditors := []manager.ConstantEditor{
@@ -47,7 +46,6 @@ func demoAddHook() error {
 			EBPFSection:  "kprobe/vfs_rmdir",
 			EBPFFuncName: "kprobe_vfs_rmdir",
 		},
-		HookFuncName: "vfs_rmdir",
 	}
 	err := m.AddHook("", firstRmdir)
 	if err != nil {
@@ -60,7 +58,6 @@ func demoAddHook() error {
 			EBPFSection:  "kprobe/vfs_rmdir",
 			EBPFFuncName: "kprobe_vfs_rmdir",
 		},
-		HookFuncName: "vfs_rmdir",
 	}
 	err = m.AddHook("", secondRmdir)
 	if err != nil {

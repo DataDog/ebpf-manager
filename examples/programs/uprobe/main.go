@@ -13,8 +13,7 @@ var m = &manager.Manager{
 				EBPFSection:  "uprobe/readline",
 				EBPFFuncName: "readline",
 			},
-			HookFuncName: "readline",
-			BinaryPath:   "/usr/bin/bash",
+			BinaryPath: "/usr/bin/bash",
 		},
 	},
 }

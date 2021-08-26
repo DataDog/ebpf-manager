@@ -18,7 +18,6 @@ var m1 = &manager.Manager{
 				EBPFSection:  "kprobe/vfs_mkdir",
 				EBPFFuncName: "kprobe_vfs_mkdir",
 			},
-			HookFuncName: "vfs_mkdir",
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
@@ -32,14 +31,12 @@ var m1 = &manager.Manager{
 				EBPFSection:  "kprobe/vfs_opennnnnn",
 				EBPFFuncName: "kprobe_vfs_opennnnnn",
 			},
-			HookFuncName: "vfs_opennnnnn",
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
 				EBPFSection:  "kprobe/exclude",
 				EBPFFuncName: "kprobe_exclude",
 			},
-			HookFuncName: "exclude",
 		},
 	},
 }
@@ -121,7 +118,6 @@ var m2 = &manager.Manager{
 				EBPFSection:  "kprobe/vfs_mkdir",
 				EBPFFuncName: "kprobe_vfs_mkdir",
 			},
-			HookFuncName: "vfs_mkdir",
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
@@ -135,14 +131,12 @@ var m2 = &manager.Manager{
 				EBPFSection:  "kprobe/vfs_opennnnnn",
 				EBPFFuncName: "kprobe_vfs_opennnnnn",
 			},
-			HookFuncName: "vfs_opennnnnn",
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
 				EBPFSection:  "kprobe/exclude",
 				EBPFFuncName: "kprobe_exclude",
 			},
-			HookFuncName: "exclude",
 		},
 	},
 }
@@ -196,7 +190,6 @@ var m3 = &manager.Manager{
 				EBPFSection:  "kprobe/vfs_mkdir",
 				EBPFFuncName: "kprobe_vfs_mkdir",
 			},
-			HookFuncName: "vfs_mkdir",
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
@@ -210,14 +203,12 @@ var m3 = &manager.Manager{
 				EBPFSection:  "kprobe/vfs_opennnnnn",
 				EBPFFuncName: "kprobe_vfs_opennnnnn",
 			},
-			//HookFuncName: "vfs_opennnnnn",
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
 				EBPFSection:  "kprobe/exclude",
 				EBPFFuncName: "kprobe_exclude",
 			},
-			HookFuncName: "exclude",
 		},
 	},
 }

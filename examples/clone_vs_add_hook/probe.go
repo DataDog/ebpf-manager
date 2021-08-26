@@ -100,7 +100,7 @@ func bindataProbeO() (*asset, error) {
 		size: 3000,
 		md5checksum: "",
 		mode: os.FileMode(420),
-		modTime: time.Unix(1629887216, 0),
+		modTime: time.Unix(1629974154, 0),
 	}
 
 	a := &asset{bytes: bytes, info: info}
