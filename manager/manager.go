@@ -1112,7 +1112,10 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 		if _, alreadyPresent := currentProbes[id]; alreadyPresent {
 			delete(currentProbes, id)
 		} else {
-			probe, _ := m.GetProbe(id)
+			probe, found := m.GetProbe(id)
+			if !found {
+				return errors.Wrapf(ErrUnknownSectionOrFuncName, "couldn't find program %s", id)
+			}
 			probe.Enabled = true
 			if err := probe.Init(m); err != nil {
 				return err
