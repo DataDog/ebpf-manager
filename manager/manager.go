@@ -764,12 +764,12 @@ func (m *Manager) AddHook(UID string, newProbe Probe) error {
 		return err
 	}
 	if !found || len(progs) == 0 {
-		return errors.Wrapf(ErrUnknownSection, "couldn't find program %s", oldID)
+		return errors.Wrapf(ErrUnknownSectionOrFuncName, "couldn't find program %s", oldID)
 	}
 	prog := progs[0]
 	progSpecs, found, _ := m.GetProgramSpec(oldID)
 	if !found || len(progSpecs) == 0 {
-		return errors.Wrapf(ErrUnknownSection, "couldn't find programSpec %s", oldID)
+		return errors.Wrapf(ErrUnknownSectionOrFuncName, "couldn't find programSpec %s", oldID)
 	}
 	progSpec := progSpecs[0]
 
@@ -868,7 +868,7 @@ func (m *Manager) CloneProgram(UID string, newProbe Probe, constantsEditors []Co
 		return err
 	}
 	if !found || len(progSpecs) == 0 {
-		return errors.Wrapf(ErrUnknownSection, "couldn't find programSpec %v", oldID)
+		return errors.Wrapf(ErrUnknownSectionOrFuncName, "couldn't find programSpec %v", oldID)
 	}
 	progSpec := progSpecs[0]
 
@@ -997,7 +997,7 @@ func (m *Manager) updateTailCallRoute(route TailCallRoute) error {
 			return err
 		}
 		if !found || len(progs) == 0 {
-			return errors.Wrapf(ErrUnknownSection, "couldn't find program %v", route.ProbeIdentificationPair)
+			return errors.Wrapf(ErrUnknownSectionOrFuncName, "couldn't find program %v", route.ProbeIdentificationPair)
 		}
 		fd = uint32(progs[0].FD())
 	}
@@ -1021,7 +1021,7 @@ func (m *Manager) getProbeProgramSpec(id ProbeIdentificationPair) (*ebpf.Program
 			}
 		}
 		if !excluded {
-			return nil, errors.Wrapf(ErrUnknownSection, "couldn't find program at %s", id)
+			return nil, errors.Wrapf(ErrUnknownSectionOrFuncName, "couldn't find program %s", id)
 		}
 	}
 	return spec, nil
@@ -1171,7 +1171,7 @@ func (m *Manager) editConstants() error {
 				return err
 			}
 			if !found || len(programs) == 0 {
-				return errors.Wrapf(ErrUnknownSection, "couldn't find programSpec %v", id)
+				return errors.Wrapf(ErrUnknownSectionOrFuncName, "couldn't find programSpec %v", id)
 			}
 			prog := programs[0]
 

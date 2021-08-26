@@ -325,8 +325,8 @@ func (p *Probe) init() error {
 	if p.program == nil {
 		prog, ok := p.manager.collection.Programs[selector]
 		if !ok {
-			p.lastError = ErrUnknownSection
-			return errors.Wrapf(ErrUnknownSection, "couldn't find program %s", selector)
+			p.lastError = ErrUnknownSectionOrFuncName
+			return errors.Wrapf(ErrUnknownSectionOrFuncName, "couldn't find program %s", selector)
 		}
 		p.program = prog
 		p.checkPin = true
@@ -334,7 +334,7 @@ func (p *Probe) init() error {
 
 	if p.programSpec == nil {
 		if p.programSpec, p.lastError = p.manager.getProbeProgramSpec(p.ProbeIdentificationPair); p.lastError != nil {
-			return errors.Wrapf(ErrUnknownSection, "couldn't find program spec %s", selector)
+			return errors.Wrapf(ErrUnknownSectionOrFuncName, "couldn't find program spec %s", selector)
 		}
 	}
 
