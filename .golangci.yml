@@ -1,0 +1,12 @@
+linters:
+  disable-all: true
+  enable:
+    - deadcode    # Finds unused code
+    - structcheck # Finds unused struct fields
+    - unconvert   # Remove unnecessary type conversions
+    - unused      # Checks Go code for unused constants, variables, functions and types
+    - ineffassign # Detects when assignments to existing variables are not used
+    - misspell    # Finds commonly misspelled English words in comments
+    - gofmt       # Gofmt checks whether code was gofmt-ed
+    - revive      # Revive is a replacement for golint, a coding style checker
+    - errcheck    # errcheck is a program for checking for unchecked errors in go programs.
