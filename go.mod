@@ -9,6 +9,7 @@ require (
 	github.com/florianl/go-tc v0.3.0
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/pkg/errors v0.9.1
+	github.com/shuLhan/go-bindata v4.0.0+incompatible // indirect
 	github.com/sirupsen/logrus v1.8.1
 	github.com/vishvananda/netlink v1.1.0
 	golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c

@@ -122,6 +122,7 @@ type Probe struct {
 	program            *ebpf.Program
 	programSpec        *ebpf.ProgramSpec
 	perfEventFD        *FD
+	rawTracepointFD    *FD
 	state              state
 	stateLock          sync.RWMutex
 	manualLoadNeeded   bool
@@ -461,6 +462,8 @@ func (p *Probe) attach() error {
 		err = p.attachTCCLS()
 	case ebpf.XDP:
 		err = p.attachXDP()
+	case ebpf.LSM:
+		err = p.attachLSM()
 	default:
 		err = fmt.Errorf("program type %s not implemented yet", p.programSpec.Type)
 	}
@@ -532,6 +535,8 @@ func (p *Probe) detach() error {
 		err = ConcatErrors(err, p.detachTCCLS())
 	case ebpf.XDP:
 		err = ConcatErrors(err, p.detachXDP())
+	case ebpf.LSM:
+		err = ConcatErrors(err, p.detachLSM())
 	default:
 		// unsupported section, nothing to do either
 		break
@@ -578,6 +583,7 @@ func (p *Probe) reset() {
 	p.program = nil
 	p.programSpec = nil
 	p.perfEventFD = nil
+	p.rawTracepointFD = nil
 	p.state = reset
 	p.manualLoadNeeded = false
 	p.checkPin = false
@@ -872,4 +878,22 @@ func (p *Probe) detachXDP() error {
 	// Detach program
 	err = netlink.LinkSetXdpFdWithFlags(link, -1, int(p.XDPAttachMode))
 	return errors.Wrapf(err, "couldn't detach XDP program %v from interface %v", p.ProbeIdentificationPair, p.Ifindex)
+}
+
+// attachLSM - Attaches the probe to its LSM hook point
+func (p *Probe) attachLSM() error {
+	var err error
+	p.rawTracepointFD, err = rawTracepointOpen("", p.program.FD())
+	if err != nil {
+		return errors.Wrapf(err, "failed to attach LSM hook point")
+	}
+	return nil
+}
+
+// detachLSM - Detaches the probe from its LSM hook point
+func (p *Probe) detachLSM() error {
+	if p.rawTracepointFD != nil {
+		return errors.Wrapf(p.rawTracepointFD.Close(), "failed to detach LSM hook point")
+	}
+	return nil
 }

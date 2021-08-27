@@ -43,8 +43,9 @@ type bpfProgAttachAttr struct {
 }
 
 const (
-	_ProgAttach = 8
-	_ProgDetach = 9
+	_ProgAttach        = 8
+	_ProgDetach        = 9
+	_RawTracepointOpen = 17
 )
 
 // BPF - wraps SYS_BPF
@@ -92,4 +93,29 @@ func sockAttach(sockFd int, progFd int) error {
 
 func sockDetach(sockFd int, progFd int) error {
 	return syscall.SetsockoptInt(sockFd, syscall.SOL_SOCKET, unix.SO_DETACH_BPF, progFd)
+}
+
+type bpfRawTracepointOpenAttr struct {
+	name   uint64
+	progFD uint32
+}
+
+func rawTracepointOpen(name string, progFD int) (*FD, error) {
+	attr := bpfRawTracepointOpenAttr{
+		progFD: uint32(progFD),
+	}
+
+	if len(name) > 0 {
+		namePtr, err := syscall.BytePtrFromString(name)
+		if err != nil {
+			return nil, err
+		}
+		attr.name = uint64(uintptr(unsafe.Pointer(namePtr)))
+	}
+
+	ptr, err := BPF(_RawTracepointOpen, unsafe.Pointer(&attr), unsafe.Sizeof(attr))
+	if err != nil {
+		return nil, errors.Wrapf(err, "can't attach prog_fd %d to raw_tracepoint %s", progFD, name)
+	}
+	return NewFD(uint32(ptr)), nil
 }
