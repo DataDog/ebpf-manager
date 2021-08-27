@@ -39,7 +39,7 @@ type bpfProgAttachAttr struct {
 	targetFD    uint32
 	attachBpfFD uint32
 	attachType  uint32
-	attachFlags uint32
+	attachFlags uint32 //nolint:structcheck
 }
 
 const (

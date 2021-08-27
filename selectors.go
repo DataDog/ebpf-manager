@@ -1,7 +1,6 @@
 package ebpf_manager
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -43,7 +42,7 @@ func (oo *OneOf) RunValidator(manager *Manager) error {
 func (oo *OneOf) String() string {
 	var strs []string
 	for _, id := range oo.GetProbesIdentificationPairList() {
-		str := fmt.Sprintf("%s", id)
+		str := id.String()
 		strs = append(strs, str)
 	}
 	return "OneOf " + strings.Join(strs, ", ")
@@ -92,7 +91,7 @@ func (ao *AllOf) RunValidator(manager *Manager) error {
 func (ao *AllOf) String() string {
 	var strs []string
 	for _, id := range ao.GetProbesIdentificationPairList() {
-		str := fmt.Sprintf("%s", id)
+		str := id.String()
 		strs = append(strs, str)
 	}
 	return "AllOf " + strings.Join(strs, ", ")
@@ -129,7 +128,7 @@ func (be *BestEffort) RunValidator(manager *Manager) error {
 func (be *BestEffort) String() string {
 	var strs []string
 	for _, id := range be.GetProbesIdentificationPairList() {
-		str := fmt.Sprintf("%s", id)
+		str := id.String()
 		strs = append(strs, str)
 	}
 	return "BestEffort " + strings.Join(strs, ", ")

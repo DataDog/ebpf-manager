@@ -756,7 +756,7 @@ func (m *Manager) ClonePerfRing(name string, newName string, options MapOptions,
 // eBPF TC classifier to the newly created interface of a container. Make sure to specify a unique uid in the new probe,
 // you will need it if you want to detach the program later. The original program is selected using the provided UID,
 // the section and the eBPF function name provided in the new probe.
-func (m *Manager) AddHook(UID string, newProbe Probe) error {
+func (m *Manager) AddHook(UID string, newProbe *Probe) error {
 	oldID := ProbeIdentificationPair{UID: UID, EBPFSection: newProbe.EBPFSection, EBPFFuncName: newProbe.EBPFFuncName}
 	// Look for the eBPF program
 	progs, found, err := m.GetProgram(oldID)
@@ -814,7 +814,7 @@ func (m *Manager) AddHook(UID string, newProbe Probe) error {
 	}
 
 	// Add probe to the list of probes
-	m.Probes = append(m.Probes, &newProbe)
+	m.Probes = append(m.Probes, newProbe)
 	return nil
 }
 
@@ -860,7 +860,7 @@ func (m *Manager) DetachHook(id ProbeIdentificationPair) error {
 // first create the new maps you need, then clone the program you're interested in and rewrite it with the new maps,
 // using a MapEditor. The original program is selected using the provided UID and the section provided in the new probe.
 // Note that the BTF based constant edition will note work with this method.
-func (m *Manager) CloneProgram(UID string, newProbe Probe, constantsEditors []ConstantEditor, mapEditors map[string]*ebpf.Map) error {
+func (m *Manager) CloneProgram(UID string, newProbe *Probe, constantsEditors []ConstantEditor, mapEditors map[string]*ebpf.Map) error {
 	oldID := ProbeIdentificationPair{UID: UID, EBPFSection: newProbe.EBPFSection, EBPFFuncName: newProbe.EBPFFuncName}
 	// Find the program specs
 	progSpecs, found, err := m.GetProgramSpec(oldID)
@@ -918,7 +918,7 @@ func (m *Manager) CloneProgram(UID string, newProbe Probe, constantsEditors []Co
 	}
 
 	// Add probe to the list of probes
-	m.Probes = append(m.Probes, &newProbe)
+	m.Probes = append(m.Probes, newProbe)
 	return nil
 }
 
@@ -1108,7 +1108,7 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 		}
 	}
 
-	for id, _ := range nextProbes {
+	for id := range nextProbes {
 		if _, alreadyPresent := currentProbes[id]; alreadyPresent {
 			delete(currentProbes, id)
 		} else {
