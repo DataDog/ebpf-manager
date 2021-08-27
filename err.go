@@ -1,4 +1,4 @@
-package ebpf_manager
+package manager
 
 import "github.com/pkg/errors"
 
