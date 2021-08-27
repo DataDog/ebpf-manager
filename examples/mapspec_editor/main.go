@@ -7,7 +7,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 
-	"github.com/DataDog/ebpf-manager/manager"
+	manager "github.com/DataDog/ebpf-manager"
 )
 
 var m = &manager.Manager{}

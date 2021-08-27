@@ -5,7 +5,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/DataDog/ebpf-manager/manager"
+	manager "github.com/DataDog/ebpf-manager"
 )
 
 var m = &manager.Manager{

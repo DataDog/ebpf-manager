@@ -6,7 +6,7 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/sirupsen/logrus"
 
-	"github.com/DataDog/ebpf-manager/manager"
+	manager "github.com/DataDog/ebpf-manager"
 )
 
 type TestData struct {
