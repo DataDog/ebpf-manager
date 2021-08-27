@@ -3,12 +3,12 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"os"
 	"unsafe"
 
 	"github.com/cilium/ebpf"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
@@ -36,7 +36,7 @@ func getHostByteOrder() binary.ByteOrder {
 func recoverAsset(asset string) io.ReaderAt {
 	buf, err := Asset(asset)
 	if err != nil {
-		logrus.Fatal(errors.Wrap(err, "couldn't find asset"))
+		logrus.Fatal(fmt.Errorf("couldn't find asset: %w", err))
 	}
 	return bytes.NewReader(buf)
 }

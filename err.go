@@ -1,6 +1,6 @@
 package manager
 
-import "github.com/pkg/errors"
+import "errors"
 
 var (
 	ErrManagerNotInitialized    = errors.New("the manager must be initialized first")

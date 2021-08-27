@@ -1,8 +1,9 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/cilium/ebpf"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
 	manager "github.com/DataDog/ebpf-manager"
@@ -13,7 +14,7 @@ func demoMapEditor() error {
 	// Select the shared map to give it to m2
 	sharedCache1, found, err := m1.GetMap("shared_cache1")
 	if err != nil || !found {
-		return errors.Wrap(err, "couldn't find shared_cache1 in m1")
+		return fmt.Errorf("couldn't find shared_cache1 in m1: %w", err)
 	}
 	if err = dumpSharedMap(sharedCache1); err != nil {
 		return err
@@ -35,7 +36,7 @@ func demoMapEditor() error {
 	}
 	// Initialize m2, edit shared_cache1 and start it
 	if err = m2.InitWithOptions(recoverAsset("/prog2.o"), options); err != nil {
-		return errors.Wrap(err, "couldn't init m2")
+		return fmt.Errorf("couldn't init m2: %w", err)
 	}
 	if err = m2.Start(); err != nil {
 		return err
@@ -51,7 +52,7 @@ func demoMapRouter() error {
 	// Select the shared map to give it to m2
 	sharedCache2, found, err := m1.GetMap("shared_cache2")
 	if err != nil || !found {
-		return errors.Wrap(err, "couldn't find shared_cache2 in m1")
+		return fmt.Errorf("couldn't find shared_cache2 in m1: %w", err)
 	}
 	if err = dumpSharedMap(sharedCache2); err != nil {
 		return err

@@ -2,11 +2,11 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os/exec"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
@@ -14,7 +14,7 @@ import (
 func recoverAssets() io.ReaderAt {
 	buf, err := Asset("/probe.o")
 	if err != nil {
-		logrus.Fatal(errors.Wrap(err, "couldn't find asset"))
+		logrus.Fatal(fmt.Errorf("couldn't find asset: %w", err))
 	}
 	return bytes.NewReader(buf)
 }

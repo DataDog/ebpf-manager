@@ -1,9 +1,8 @@
 package manager
 
 import (
+	"fmt"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 // OneOf - This selector is used to ensure that at least of a list of probe selectors is valid. In other words, this
@@ -31,7 +30,7 @@ func (oo *OneOf) RunValidator(manager *Manager) error {
 		}
 	}
 	if len(errs) == len(oo.Selectors) {
-		return errors.Errorf(
+		return fmt.Errorf(
 			"OneOf requirement failed, none of the following probes are running [%s]",
 			strings.Join(errs, " | "))
 	}
@@ -80,7 +79,7 @@ func (ao *AllOf) RunValidator(manager *Manager) error {
 		}
 	}
 	if len(errMsg) > 0 {
-		return errors.Errorf(
+		return fmt.Errorf(
 			"AllOf requirement failed, the following probes are not running [%s]",
 			strings.Join(errMsg, " | "))
 	}

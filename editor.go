@@ -3,8 +3,6 @@ package manager
 import (
 	"fmt"
 
-	"github.com/pkg/errors"
-
 	"github.com/cilium/ebpf/asm"
 )
 
@@ -56,7 +54,7 @@ func (ed *Editor) RewriteConstant(symbol string, value uint64) error {
 	for _, index := range indices {
 		load := &(*ed.instructions)[index]
 		if load.OpCode != ldDWImm {
-			return errors.Errorf("symbol %v: load: found %v instead of %v", symbol, load.OpCode, ldDWImm)
+			return fmt.Errorf("symbol %v: load: found %v instead of %v", symbol, load.OpCode, ldDWImm)
 		}
 
 		load.Constant = int64(value)

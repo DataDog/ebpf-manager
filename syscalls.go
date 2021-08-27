@@ -1,12 +1,12 @@
 package manager
 
 import (
+	"fmt"
 	"runtime"
 	"syscall"
 	"unsafe"
 
 	"github.com/cilium/ebpf"
-	"github.com/pkg/errors"
 	"golang.org/x/sys/unix"
 )
 
@@ -22,15 +22,15 @@ func perfEventOpenTracepoint(id int, progFd int) (*FD, error) {
 
 	efd, err := unix.PerfEventOpen(&attr, -1, 0, -1, unix.PERF_FLAG_FD_CLOEXEC)
 	if efd < 0 {
-		return nil, errors.Wrap(err, "perf_event_open error")
+		return nil, fmt.Errorf("perf_event_open error: %w", err)
 	}
 
 	if _, _, err := unix.Syscall(unix.SYS_IOCTL, uintptr(efd), unix.PERF_EVENT_IOC_ENABLE, 0); err != 0 {
-		return nil, errors.Wrap(err, "error enabling perf event")
+		return nil, fmt.Errorf("error enabling perf event: %w", err)
 	}
 
 	if _, _, err := unix.Syscall(unix.SYS_IOCTL, uintptr(efd), unix.PERF_EVENT_IOC_SET_BPF, uintptr(progFd)); err != 0 {
-		return nil, errors.Wrap(err, "error attaching bpf program to perf event")
+		return nil, fmt.Errorf("error attaching bpf program to perf event: %w", err)
 	}
 	return NewFD(uint32(efd)), nil
 }
@@ -55,7 +55,7 @@ func BPF(cmd int, attr unsafe.Pointer, size uintptr) (uintptr, error) {
 
 	var err error
 	if errNo != 0 {
-		err = errors.Errorf("bpf syscall error: %s", errNo.Error())
+		err = fmt.Errorf("bpf syscall error: %s", errNo.Error())
 	}
 
 	return r1, err
@@ -69,7 +69,7 @@ func bpfProgAttach(progFd int, targetFd int, attachType ebpf.AttachType) (int, e
 	}
 	ptr, err := BPF(_ProgAttach, unsafe.Pointer(&attr), unsafe.Sizeof(attr))
 	if err != nil {
-		return -1, errors.Wrapf(err, "can't attach program id %d to target fd %d", progFd, targetFd)
+		return -1, fmt.Errorf("can't attach program id %d to target fd %d: %w", progFd, targetFd, err)
 	}
 	return int(ptr), nil
 }
@@ -82,7 +82,7 @@ func bpfProgDetach(progFd int, targetFd int, attachType ebpf.AttachType) (int, e
 	}
 	ptr, err := BPF(_ProgDetach, unsafe.Pointer(&attr), unsafe.Sizeof(attr))
 	if err != nil {
-		return -1, errors.Wrapf(err, "can't detach program id %d to target fd %d", progFd, targetFd)
+		return -1, fmt.Errorf("can't detach program id %d to target fd %d: %w", progFd, targetFd, err)
 	}
 	return int(ptr), nil
 }
@@ -115,7 +115,7 @@ func rawTracepointOpen(name string, progFD int) (*FD, error) {
 
 	ptr, err := BPF(_RawTracepointOpen, unsafe.Pointer(&attr), unsafe.Sizeof(attr))
 	if err != nil {
-		return nil, errors.Wrapf(err, "can't attach prog_fd %d to raw_tracepoint %s", progFD, name)
+		return nil, fmt.Errorf("can't attach prog_fd %d to raw_tracepoint %s: %w", progFD, name, err)
 	}
 	return NewFD(uint32(ptr)), nil
 }

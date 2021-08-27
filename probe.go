@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -10,11 +11,10 @@ import (
 	"syscall"
 	"time"
 
-	retry "github.com/avast/retry-go"
+	"github.com/avast/retry-go"
 	"github.com/cilium/ebpf"
 	"github.com/florianl/go-tc"
 	"github.com/florianl/go-tc/core"
-	"github.com/pkg/errors"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 )
@@ -314,7 +314,7 @@ func (p *Probe) init() error {
 		prog, err := ebpf.NewProgramWithOptions(p.programSpec, p.manager.options.VerifierOptions.Programs)
 		if err != nil {
 			p.lastError = err
-			return errors.Wrapf(err, "couldn't load new probe %v", p.ProbeIdentificationPair)
+			return fmt.Errorf("couldn't load new probe %v: %w", p.ProbeIdentificationPair, err)
 		}
 		p.program = prog
 	}
@@ -327,7 +327,7 @@ func (p *Probe) init() error {
 		prog, ok := p.manager.collection.Programs[selector]
 		if !ok {
 			p.lastError = ErrUnknownSectionOrFuncName
-			return errors.Wrapf(ErrUnknownSectionOrFuncName, "couldn't find program %s", selector)
+			return fmt.Errorf("couldn't find program %s: %w", selector, ErrUnknownSectionOrFuncName)
 		}
 		p.program = prog
 		p.checkPin = true
@@ -335,7 +335,7 @@ func (p *Probe) init() error {
 
 	if p.programSpec == nil {
 		if p.programSpec, p.lastError = p.manager.getProbeProgramSpec(p.ProbeIdentificationPair); p.lastError != nil {
-			return errors.Wrapf(ErrUnknownSectionOrFuncName, "couldn't find program spec %s", selector)
+			return fmt.Errorf("couldn't find program spec %s: %w", selector, ErrUnknownSectionOrFuncName)
 		}
 	}
 
@@ -344,7 +344,7 @@ func (p *Probe) init() error {
 		if p.PinPath != "" {
 			if err := p.program.Pin(p.PinPath); err != nil {
 				p.lastError = err
-				return errors.Wrapf(err, "couldn't pin program %s at %s", selector, p.PinPath)
+				return fmt.Errorf("couldn't pin program %s at %s: %w", selector, p.PinPath, err)
 			}
 		}
 		p.checkPin = false
@@ -383,7 +383,7 @@ func (p *Probe) init() error {
 		inter, err := net.InterfaceByName(p.Ifname)
 		if err != nil {
 			p.lastError = err
-			return errors.Wrapf(err, "couldn't find interface %v", p.Ifname)
+			return fmt.Errorf("couldn't find interface %v: %w", p.Ifname, err)
 		}
 		p.Ifindex = int32(inter.Index)
 	}
@@ -449,7 +449,7 @@ func (p *Probe) attach() error {
 	var err error
 	switch p.programSpec.Type {
 	case ebpf.UnspecifiedProgram:
-		err = errors.Wrap(ErrSectionFormat, "invalid program type, make sure to use the right section prefix")
+		err = fmt.Errorf("invalid program type, make sure to use the right section prefix: %w", ErrSectionFormat)
 	case ebpf.Kprobe:
 		err = p.attachKprobe()
 	case ebpf.TracePoint:
@@ -471,7 +471,7 @@ func (p *Probe) attach() error {
 		p.lastError = err
 		// Clean up any progress made in the attach attempt
 		_ = p.stop(false)
-		return errors.Wrapf(err, "couldn't start probe %s", p.ProbeIdentificationPair)
+		return fmt.Errorf("couldn't start probe %s: %w", p.ProbeIdentificationPair, err)
 	}
 
 	// update probe state
@@ -573,7 +573,10 @@ func (p *Probe) stop(saveStopError bool) error {
 	if err == nil && p.attachRetryAttempt >= p.ProbeRetry {
 		p.reset()
 	}
-	return errors.Wrapf(err, "couldn't stop probe %s", p.ProbeIdentificationPair)
+	if err != nil {
+		return fmt.Errorf("couldn't stop probe %s: %w", p.ProbeIdentificationPair, err)
+	}
+	return nil
 }
 
 // reset - Cleans up the internal fields of the probe
@@ -623,12 +626,15 @@ func (p *Probe) attachKprobe() error {
 		kprobeID, err = EnableKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, "", p.attachPID)
 	}
 	if err != nil {
-		return errors.Wrapf(err, "couldn't enable kprobe %s", p.ProbeIdentificationPair)
+		return fmt.Errorf("couldn't enable kprobe %s: %w", p.ProbeIdentificationPair, err)
 	}
 
 	// Activate perf event
 	p.perfEventFD, err = perfEventOpenTracepoint(kprobeID, p.program.FD())
-	return errors.Wrapf(err, "couldn't enable kprobe %s", p.ProbeIdentificationPair)
+	if err != nil {
+		return fmt.Errorf("couldn't enable kprobe %s: %w", p.ProbeIdentificationPair, err)
+	}
+	return nil
 }
 
 // detachKprobe - Detaches the probe from its kprobe
@@ -648,7 +654,7 @@ func (p *Probe) attachTracepoint() error {
 	// Parse section
 	traceGroup := strings.SplitN(p.EBPFSection, "/", 3)
 	if len(traceGroup) != 3 {
-		return errors.Wrapf(ErrSectionFormat, "expected SEC(\"tracepoint/[category]/[name]\") got %s", p.EBPFSection)
+		return fmt.Errorf("expected SEC(\"tracepoint/[category]/[name]\") got %s: %w", p.EBPFSection, ErrSectionFormat)
 	}
 	category := traceGroup[1]
 	name := traceGroup[2]
@@ -656,12 +662,15 @@ func (p *Probe) attachTracepoint() error {
 	// Get the ID of the tracepoint to activate
 	tracepointID, err := GetTracepointID(category, name)
 	if err != nil {
-		return errors.Wrapf(err, "couldn's activate tracepoint %s", p.ProbeIdentificationPair)
+		return fmt.Errorf("couldn's activate tracepoint %s: %w", p.ProbeIdentificationPair, err)
 	}
 
 	// Hook the eBPF program to the tracepoint
 	p.perfEventFD, err = perfEventOpenTracepoint(tracepointID, p.program.FD())
-	return errors.Wrapf(err, "couldn't enable tracepoint %s", p.ProbeIdentificationPair)
+	if err != nil {
+		return fmt.Errorf("couldn't enable tracepoint %s: %w", p.ProbeIdentificationPair, err)
+	}
+	return nil
 }
 
 // attachUprobe - Attaches the probe to its Uprobe
@@ -671,7 +680,7 @@ func (p *Probe) attachUprobe() error {
 
 	if p.GetUprobeType() == UnknownProbeType {
 		// unknown type
-		return errors.Wrapf(ErrSectionFormat, "program type unrecognized in %s", p.ProbeIdentificationPair)
+		return fmt.Errorf("program type unrecognized in %s: %w", p.ProbeIdentificationPair, ErrSectionFormat)
 	}
 
 	// compute the offset if it was not provided
@@ -686,13 +695,13 @@ func (p *Probe) attachUprobe() error {
 		}
 		pattern, err := regexp.Compile(funcPattern)
 		if err != nil {
-			return errors.Wrapf(err, "failed to compile pattern %s", funcPattern)
+			return fmt.Errorf("failed to compile pattern %s: %w", funcPattern, err)
 		}
 
 		// Retrieve dynamic symbol offset
 		offsets, err := FindSymbolOffsets(p.BinaryPath, pattern)
 		if err != nil {
-			return errors.Wrapf(err, "couldn't find symbol matching %s in %s", pattern.String(), p.BinaryPath)
+			return fmt.Errorf("couldn't find symbol matching %s in %s: %w", pattern.String(), p.BinaryPath, err)
 		}
 		p.UprobeOffset = offsets[0].Value
 		p.HookFuncName = offsets[0].Name
@@ -701,12 +710,15 @@ func (p *Probe) attachUprobe() error {
 	// enable uprobe
 	uprobeID, err := EnableUprobeEvent(p.GetUprobeType(), p.HookFuncName, p.BinaryPath, p.UID, p.attachPID, p.UprobeOffset)
 	if err != nil {
-		return errors.Wrapf(err, "couldn't enable uprobe %s", p.ProbeIdentificationPair)
+		return fmt.Errorf("couldn't enable uprobe %s: %w", p.ProbeIdentificationPair, err)
 	}
 
 	// Activate perf event
 	p.perfEventFD, err = perfEventOpenTracepoint(uprobeID, p.program.FD())
-	return errors.Wrapf(err, "couldn't enable uprobe %s", p.ProbeIdentificationPair)
+	if err != nil {
+		return fmt.Errorf("couldn't enable uprobe %s: %w", err)
+	}
+	return nil
 }
 
 // detachUprobe - Detaches the probe from its Uprobe
@@ -714,7 +726,7 @@ func (p *Probe) detachUprobe() error {
 	// Prepare uprobe_events line parameters
 	if p.GetUprobeType() == UnknownProbeType {
 		// unknown type
-		return errors.Wrapf(ErrSectionFormat, "program type unrecognized in section %v", p.ProbeIdentificationPair)
+		return fmt.Errorf("program type unrecognized in section %v: %w", p.ProbeIdentificationPair, ErrSectionFormat)
 	}
 
 	// Write uprobe_events line to remove hook point
@@ -726,14 +738,14 @@ func (p *Probe) attachCGroup() error {
 	// open CGroupPath
 	f, err := os.Open(p.CGroupPath)
 	if err != nil {
-		return errors.Wrapf(err, "error opening cgroup %s from probe %s", p.CGroupPath, p.ProbeIdentificationPair)
+		return fmt.Errorf("error opening cgroup %s from probe %s: %w", p.CGroupPath, p.ProbeIdentificationPair, err)
 	}
 	defer f.Close()
 
 	// Attach CGroup
 	ret, err := bpfProgAttach(p.program.FD(), int(f.Fd()), p.programSpec.AttachType)
 	if ret < 0 {
-		return errors.Wrapf(err, "failed to attach probe %v to cgroup %s", p.ProbeIdentificationPair, p.CGroupPath)
+		return fmt.Errorf("failed to attach probe %v to cgroup %s: %w", p.ProbeIdentificationPair, p.CGroupPath, err)
 	}
 	return nil
 }
@@ -743,13 +755,13 @@ func (p *Probe) detachCgroup() error {
 	// open CGroupPath
 	f, err := os.Open(p.CGroupPath)
 	if err != nil {
-		return errors.Wrapf(err, "error opening cgroup %s from probe %s", p.CGroupPath, p.ProbeIdentificationPair)
+		return fmt.Errorf("error opening cgroup %s from probe %s: %w", p.CGroupPath, p.ProbeIdentificationPair, err)
 	}
 
 	// Detach CGroup
 	ret, err := bpfProgDetach(p.program.FD(), int(f.Fd()), p.programSpec.AttachType)
 	if ret < 0 {
-		return errors.Wrapf(err, "failed to detach probe %v from cgroup %s", p.ProbeIdentificationPair, p.CGroupPath)
+		return fmt.Errorf("failed to detach probe %v from cgroup %s: %w", p.ProbeIdentificationPair, p.CGroupPath, err)
 	}
 	return nil
 }
@@ -800,7 +812,7 @@ func (p *Probe) attachTCCLS() error {
 	err = ntl.rtNetlink.Qdisc().Add(qdisc)
 	if err != nil {
 		if err.Error() != "netlink receive: file exists" {
-			return errors.Wrapf(err, "couldn't add a \"clsact\" qdisc to interface %v", p.Ifindex)
+			return fmt.Errorf("couldn't add a \"clsact\" qdisc to interface %v: %w", p.Ifindex, err)
 		}
 	}
 
@@ -832,7 +844,10 @@ func (p *Probe) attachTCCLS() error {
 		p.tcObject = qdisc
 		ntl.schedClsCount++
 	}
-	return errors.Wrapf(err, "couldn't add a %v filter to interface %v: %v", p.NetworkDirection, p.Ifindex, err)
+	if err != nil {
+		return fmt.Errorf("couldn't add a %v filter to interface %v: %v: %w", err)
+	}
+	return nil
 }
 
 // detachTCCLS - Detaches the probe from its TC classifier hook point
@@ -851,7 +866,10 @@ func (p *Probe) detachTCCLS() error {
 
 	// Delete qdisc
 	err := ntl.rtNetlink.Qdisc().Delete(p.tcObject)
-	return errors.Wrapf(err, "couldn't detach TC classifier of probe %v", p.ProbeIdentificationPair)
+	if err != nil {
+		return fmt.Errorf("couldn't detach TC classifier of probe %v: %w", err)
+	}
+	return nil
 }
 
 // attachXDP - Attaches the probe to an interface with an XDP hook point
@@ -859,12 +877,15 @@ func (p *Probe) attachXDP() error {
 	// Lookup interface
 	link, err := netlink.LinkByIndex(int(p.Ifindex))
 	if err != nil {
-		return errors.Wrapf(err, "couldn't retrieve interface %v", p.Ifindex)
+		return fmt.Errorf("couldn't retrieve interface %v: %w", p.Ifindex, err)
 	}
 
 	// Attach program
 	err = netlink.LinkSetXdpFdWithFlags(link, p.program.FD(), int(p.XDPAttachMode))
-	return errors.Wrapf(err, "couldn't attach XDP program %v to interface %v", p.ProbeIdentificationPair, p.Ifindex)
+	if err != nil {
+		return fmt.Errorf("couldn't attach XDP program %v to interface %v: %w", err)
+	}
+	return nil
 }
 
 // detachXDP - Detaches the probe from its XDP hook point
@@ -872,12 +893,15 @@ func (p *Probe) detachXDP() error {
 	// Lookup interface
 	link, err := netlink.LinkByIndex(int(p.Ifindex))
 	if err != nil {
-		return errors.Wrapf(err, "couldn't retrieve interface %v", p.Ifindex)
+		return fmt.Errorf("couldn't retrieve interface %v: %w", p.Ifindex, err)
 	}
 
 	// Detach program
 	err = netlink.LinkSetXdpFdWithFlags(link, -1, int(p.XDPAttachMode))
-	return errors.Wrapf(err, "couldn't detach XDP program %v from interface %v", p.ProbeIdentificationPair, p.Ifindex)
+	if err != nil {
+		return fmt.Errorf("couldn't detach XDP program %v from interface %v: %w", err)
+	}
+	return nil
 }
 
 // attachLSM - Attaches the probe to its LSM hook point
@@ -885,7 +909,7 @@ func (p *Probe) attachLSM() error {
 	var err error
 	p.rawTracepointFD, err = rawTracepointOpen("", p.program.FD())
 	if err != nil {
-		return errors.Wrapf(err, "failed to attach LSM hook point")
+		return fmt.Errorf("failed to attach LSM hook point: %w", err)
 	}
 	return nil
 }
@@ -893,7 +917,9 @@ func (p *Probe) attachLSM() error {
 // detachLSM - Detaches the probe from its LSM hook point
 func (p *Probe) detachLSM() error {
 	if p.rawTracepointFD != nil {
-		return errors.Wrapf(p.rawTracepointFD.Close(), "failed to detach LSM hook point")
+		if closeErr := p.rawTracepointFD.Close(); closeErr != nil {
+			return fmt.Errorf("failed to detach LSM hook point: %w", closeErr)
+		}
 	}
 	return nil
 }

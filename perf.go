@@ -3,8 +3,6 @@ package manager
 import (
 	"fmt"
 
-	"github.com/pkg/errors"
-
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/perf"
 )
@@ -145,7 +143,7 @@ func (m *PerfMap) Stop(cleanup MapCleanupType) error {
 		if err == nil {
 			err = errTmp
 		} else {
-			err = errors.Wrap(errTmp, err.Error())
+			err = fmt.Errorf("%s: %w", err.Error(), errTmp)
 		}
 	}
 	return err
