@@ -1,10 +1,9 @@
 package manager
 
 import (
+	"fmt"
 	"os"
 	"sync"
-
-	"github.com/pkg/errors"
 
 	"github.com/cilium/ebpf"
 )
@@ -93,7 +92,7 @@ func loadNewMap(spec ebpf.MapSpec, options MapOptions) (*Map, error) {
 	// Pin map if need be
 	if managerMap.PinPath != "" {
 		if err := managerMap.array.Pin(managerMap.PinPath); err != nil {
-			return nil, errors.Wrapf(err, "couldn't pin map %s at %s", managerMap.Name, managerMap.PinPath)
+			return nil, fmt.Errorf("couldn't pin map %s at %s: %w", managerMap.Name, managerMap.PinPath, err)
 		}
 	}
 	return &managerMap, nil
@@ -111,14 +110,14 @@ func (m *Map) Init(manager *Manager) error {
 	if m.array == nil {
 		array, ok := manager.collection.Maps[m.Name]
 		if !ok {
-			return errors.Wrapf(ErrUnknownSection, "couldn't find map at maps/%s", m.Name)
+			return fmt.Errorf("couldn't find map at maps/%s: %w", m.Name, ErrUnknownSection)
 		}
 		m.array = array
 
 		// Pin map if needed
 		if m.PinPath != "" {
 			if err := m.array.Pin(m.PinPath); err != nil {
-				return errors.Wrapf(err, "couldn't pin map %s at %s", m.Name, m.PinPath)
+				return fmt.Errorf("couldn't pin map %s at %s: %w", m.Name, m.PinPath, err)
 			}
 		}
 	}

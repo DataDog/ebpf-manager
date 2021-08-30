@@ -2,6 +2,7 @@ package manager
 
 import (
 	"debug/elf"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -14,8 +15,6 @@ import (
 	"syscall"
 
 	"golang.org/x/sys/unix"
-
-	"github.com/pkg/errors"
 )
 
 type state uint
@@ -36,7 +35,7 @@ func ConcatErrors(err1, err2 error) error {
 		return err2
 	}
 	if err2 != nil {
-		return errors.Wrap(err1, err2.Error())
+		return fmt.Errorf("%s: %w", err2.Error(), err1)
 	}
 	return err1
 }
@@ -171,7 +170,7 @@ func getSyscallFnNameWithKallsyms(name string, kallsymsContent string) (string, 
 		return match[0], nil
 	}
 
-	return "", errors.New("could not find a valid syscall name")
+	return "", fmt.Errorf("could not find a valid syscall name")
 }
 
 var safeEventRegexp = regexp.MustCompile("[^a-zA-Z0-9]")
@@ -184,7 +183,7 @@ func GenerateEventName(probeType, funcName, UID string, attachPID int) (string, 
 		eventName = safeEventRegexp.ReplaceAllString(fmt.Sprintf("%s_%s_%s_%d", probeType, funcName[0:int(math.Min(10, float64(len(funcName))))], UID[0:int(math.Min(10, float64(len(UID))))], attachPID), "_")
 	}
 	if len(eventName) > MaxEventNameLen {
-		return "", errors.Errorf("event name too long (kernel limit is %d): %s", MaxEventNameLen, eventName)
+		return "", fmt.Errorf("event name too long (kernel limit is %d): %s", MaxEventNameLen, eventName)
 	}
 	return eventName, nil
 }
@@ -217,12 +216,12 @@ func EnableKprobeEvent(probeType, funcName, UID, maxActiveStr string, kprobeAtta
 	kprobeEventsFileName := "/sys/kernel/debug/tracing/kprobe_events"
 	f, err := os.OpenFile(kprobeEventsFileName, os.O_APPEND|os.O_WRONLY, 0666)
 	if err != nil {
-		return -1, errors.Wrap(err, "cannot open kprobe_events")
+		return -1, fmt.Errorf("cannot open kprobe_events: %w", err)
 	}
 	defer f.Close()
 	cmd := fmt.Sprintf("%s%s:%s %s\n", probeType, maxActiveStr, eventName, funcName)
 	if _, err = f.WriteString(cmd); err != nil && !os.IsExist(err) {
-		return -1, errors.Wrapf(err, "cannot write %q to kprobe_events", cmd)
+		return -1, fmt.Errorf("cannot write %q to kprobe_events: %w", cmd, err)
 	}
 
 	// Retrieve kprobe ID
@@ -232,11 +231,11 @@ func EnableKprobeEvent(probeType, funcName, UID, maxActiveStr string, kprobeAtta
 		if os.IsNotExist(err) {
 			return -1, ErrKprobeIDNotExist
 		}
-		return -1, errors.Wrap(err, "cannot read kprobe id")
+		return -1, fmt.Errorf("cannot read kprobe id: %w", err)
 	}
 	kprobeID, err := strconv.Atoi(strings.TrimSpace(string(kprobeIDBytes)))
 	if err != nil {
-		return -1, errors.Wrap(err, "invalid kprobe id: %v")
+		return -1, fmt.Errorf("invalid kprobe id: %v: %w", err)
 	}
 	return kprobeID, nil
 }
@@ -256,7 +255,7 @@ func disableKprobeEvent(eventName string) error {
 	kprobeEventsFileName := "/sys/kernel/debug/tracing/kprobe_events"
 	f, err := os.OpenFile(kprobeEventsFileName, os.O_APPEND|os.O_WRONLY, 0)
 	if err != nil {
-		return errors.Wrap(err, "cannot open kprobe_events")
+		return fmt.Errorf("cannot open kprobe_events: %w", err)
 	}
 	defer f.Close()
 	cmd := fmt.Sprintf("-:%s\n", eventName)
@@ -269,7 +268,7 @@ func disableKprobeEvent(eventName string) error {
 			// probe already has been cleared by the first.
 			return nil
 		}
-		return errors.Wrapf(err, "cannot write %q to kprobe_events", cmd)
+		return fmt.Errorf("cannot write %q to kprobe_events: %w", cmd, err)
 	}
 	return nil
 }
@@ -296,14 +295,14 @@ func EnableUprobeEvent(probeType string, funcName, path, UID string, uprobeAttac
 	uprobeEventsFileName := "/sys/kernel/debug/tracing/uprobe_events"
 	f, err := os.OpenFile(uprobeEventsFileName, os.O_APPEND|os.O_WRONLY, 0666)
 	if err != nil {
-		return -1, errors.Wrap(err, "cannot open uprobe_events")
+		return -1, fmt.Errorf("cannot open uprobe_events: %w", err)
 	}
 	defer f.Close()
 
 	cmd := fmt.Sprintf("%s:%s %s:%#x\n", probeType, eventName, path, offset)
 
 	if _, err = f.WriteString(cmd); err != nil && !os.IsExist(err) {
-		return -1, errors.Wrapf(err, "cannot write %q to uprobe_events", cmd)
+		return -1, fmt.Errorf("cannot write %q to uprobe_events: %w", cmd, err)
 	}
 
 	// Retrieve Uprobe ID
@@ -313,11 +312,11 @@ func EnableUprobeEvent(probeType string, funcName, path, UID string, uprobeAttac
 		if os.IsNotExist(err) {
 			return -1, ErrUprobeIDNotExist
 		}
-		return -1, errors.Wrap(err, "cannot read uprobe id")
+		return -1, fmt.Errorf("cannot read uprobe id: %w", err)
 	}
 	uprobeID, err := strconv.Atoi(strings.TrimSpace(string(uprobeIDBytes)))
 	if err != nil {
-		return -1, errors.Wrap(err, "invalid uprobe id")
+		return -1, fmt.Errorf("invalid uprobe id: %w", err)
 	}
 
 	return uprobeID, nil
@@ -328,7 +327,7 @@ func OpenAndListSymbols(path string) (*elf.File, []elf.Symbol, error) {
 	// open elf file
 	f, err := elf.Open(path)
 	if err != nil {
-		return nil, nil, errors.Wrapf(err, "couldn't open elf file %s", path)
+		return nil, nil, fmt.Errorf("couldn't open elf file %s: %w", path, err)
 	}
 	defer f.Close()
 
@@ -340,15 +339,15 @@ func OpenAndListSymbols(path string) (*elf.File, []elf.Symbol, error) {
 	if len(syms) == 0 {
 		var err error
 		if errSyms != nil {
-			err = errors.Wrap(err, "failed to list symbols")
+			err = fmt.Errorf("failed to list symbols: %w", err)
 		}
 		if errDynSyms != nil {
-			err = errors.Wrap(err, "failed to list dynamic symbols")
+			err = fmt.Errorf("failed to list dynamic symbols: %w", err)
 		}
 		if err != nil {
 			return nil, nil, err
 		}
-		return nil, nil, errors.New("no symbols found")
+		return nil, nil, fmt.Errorf("no symbols found")
 	}
 	return f, syms, nil
 }
@@ -408,12 +407,12 @@ func disableUprobeEvent(eventName string) error {
 	uprobeEventsFileName := "/sys/kernel/debug/tracing/uprobe_events"
 	f, err := os.OpenFile(uprobeEventsFileName, os.O_APPEND|os.O_WRONLY, 0)
 	if err != nil {
-		return errors.Wrapf(err, "cannot open uprobe_events")
+		return fmt.Errorf("cannot open uprobe_events: %w", err)
 	}
 	defer f.Close()
 	cmd := fmt.Sprintf("-:%s\n", eventName)
 	if _, err = f.WriteString(cmd); err != nil {
-		return errors.Wrapf(err, "cannot write %q to uprobe_events", cmd)
+		return fmt.Errorf("cannot write %q to uprobe_events: %w", cmd, err)
 	}
 	return nil
 }
@@ -423,11 +422,11 @@ func GetTracepointID(category, name string) (int, error) {
 	tracepointIDFile := fmt.Sprintf("/sys/kernel/debug/tracing/events/%s/%s/id", category, name)
 	tracepointIDBytes, err := ioutil.ReadFile(tracepointIDFile)
 	if err != nil {
-		return -1, errors.Wrapf(err, "cannot read tracepoint id %q", tracepointIDFile)
+		return -1, fmt.Errorf("cannot read tracepoint id %q: %w", tracepointIDFile, err)
 	}
 	tracepointID, err := strconv.Atoi(strings.TrimSpace(string(tracepointIDBytes)))
 	if err != nil {
-		return -1, errors.Wrap(err, "invalid tracepoint id")
+		return -1, fmt.Errorf("invalid tracepoint id: %w", err)
 	}
 	return tracepointID, nil
 }

@@ -14,7 +14,6 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/florianl/go-tc"
 	"github.com/hashicorp/go-multierror"
-	"github.com/pkg/errors"
 	"golang.org/x/sys/unix"
 )
 
@@ -139,13 +138,13 @@ func (ps *ProbeSelector) GetProbesIdentificationPairList() []ProbeIdentification
 func (ps *ProbeSelector) RunValidator(manager *Manager) error {
 	p, ok := manager.GetProbe(ps.ProbeIdentificationPair)
 	if !ok {
-		return errors.Errorf("probe not found: %s", ps.ProbeIdentificationPair)
+		return fmt.Errorf("probe not found: %s", ps.ProbeIdentificationPair)
 	}
 	if !p.IsRunning() && p.Enabled {
-		return errors.Wrap(p.GetLastError(), ps.ProbeIdentificationPair.String())
+		return fmt.Errorf("%s: %w", ps.ProbeIdentificationPair.String(), p.GetLastError())
 	}
 	if !p.Enabled {
-		return errors.Errorf(
+		return fmt.Errorf(
 			"%s: is disabled, add it to the activation list and check that it was not explicitly excluded by the manager options",
 			ps.ProbeIdentificationPair.String())
 	}
@@ -462,7 +461,7 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	if m.options.RLimit != nil {
 		err := unix.Setrlimit(unix.RLIMIT_MEMLOCK, m.options.RLimit)
 		if err != nil {
-			return errors.Wrap(err, "couldn't adjust RLIMIT_MEMLOCK")
+			return fmt.Errorf("couldn't adjust RLIMIT_MEMLOCK: %w", err)
 		}
 	}
 
@@ -548,7 +547,7 @@ func (m *Manager) Start() error {
 
 	// clean up tracefs
 	if err := m.cleanupTracefs(); err != nil {
-		return errors.Wrap(err, "failed to cleanup tracefs")
+		return fmt.Errorf("failed to cleanup tracefs: %w", err)
 	}
 
 	// Start perf ring readers
@@ -581,7 +580,7 @@ func (m *Manager) Start() error {
 	if validationErrs != nil {
 		// Clean up
 		_ = m.Stop(CleanInternal)
-		return errors.Wrap(validationErrs, "probes activation validation failed")
+		return fmt.Errorf("probes activation validation failed: %w", validationErrs)
 	}
 
 	// Handle Maps router
@@ -616,26 +615,23 @@ func (m *Manager) stop(cleanup MapCleanupType) error {
 
 	// Stop perf ring readers
 	for _, perfRing := range m.PerfMaps {
-		err = ConcatErrors(
-			err,
-			errors.Wrapf(perfRing.Stop(cleanup), "perf ring reader %s couldn't gracefully shut down", perfRing.Name),
-		)
+		if stopErr := perfRing.Stop(cleanup); stopErr != nil {
+			err = ConcatErrors(err, fmt.Errorf("perf ring reader %s couldn't gracefully shut down: %w", perfRing.Name, stopErr))
+		}
 	}
 
 	// Detach eBPF programs
 	for _, probe := range m.Probes {
-		err = ConcatErrors(
-			err,
-			errors.Wrapf(probe.Stop(), "program %s couldn't gracefully shut down", probe.ProbeIdentificationPair),
-		)
+		if stopErr := probe.Stop(); stopErr != nil {
+			err = ConcatErrors(err, fmt.Errorf("program %s couldn't gracefully shut down: %w", probe.ProbeIdentificationPair, stopErr))
+		}
 	}
 
 	// Close maps
 	for _, managerMap := range m.Maps {
-		err = ConcatErrors(
-			err,
-			errors.Wrapf(managerMap.Close(cleanup), "couldn't gracefully close map %s", managerMap.Name),
-		)
+		if closeErr := managerMap.Close(cleanup); closeErr != nil {
+			err = ConcatErrors(err, fmt.Errorf("couldn't gracefully close map %s: %w", managerMap.Name, err))
+		}
 	}
 
 	// Close all netlink sockets
@@ -692,7 +688,7 @@ func (m *Manager) CloneMap(name string, newName string, options MapOptions) (*eb
 		return nil, err
 	}
 	if !exists {
-		return nil, errors.Wrapf(ErrUnknownSection, "failed to clone maps/%s", name)
+		return nil, fmt.Errorf("failed to clone maps/%s: %w", name, ErrUnknownSection)
 	}
 
 	// Duplicate spec and create a new map
@@ -742,7 +738,7 @@ func (m *Manager) ClonePerfRing(name string, newName string, options MapOptions,
 		return nil, err
 	}
 	if !exists {
-		return nil, errors.Wrapf(ErrUnknownSection, "failed to clone maps/%s: couldn't find map", name)
+		return nil, fmt.Errorf("failed to clone maps/%s: couldn't find map: %w", name, ErrUnknownSection)
 	}
 
 	// Duplicate spec and create a new map
@@ -764,12 +760,12 @@ func (m *Manager) AddHook(UID string, newProbe *Probe) error {
 		return err
 	}
 	if !found || len(progs) == 0 {
-		return errors.Wrapf(ErrUnknownSectionOrFuncName, "couldn't find program %s", oldID)
+		return fmt.Errorf("couldn't find program %s: %w", oldID, ErrUnknownSectionOrFuncName)
 	}
 	prog := progs[0]
 	progSpecs, found, _ := m.GetProgramSpec(oldID)
 	if !found || len(progSpecs) == 0 {
-		return errors.Wrapf(ErrUnknownSectionOrFuncName, "couldn't find programSpec %s", oldID)
+		return fmt.Errorf("couldn't find programSpec %s: %w", oldID, ErrUnknownSectionOrFuncName)
 	}
 	progSpec := progSpecs[0]
 
@@ -779,13 +775,13 @@ func (m *Manager) AddHook(UID string, newProbe *Probe) error {
 	// Make sure the provided identification pair is unique
 	_, exists, _ := m.GetProgramSpec(newProbe.ProbeIdentificationPair)
 	if exists {
-		return errors.Wrapf(ErrIdentificationPairInUse, "probe %s already exists", newProbe.ProbeIdentificationPair)
+		return fmt.Errorf("probe %s already exists: %w", newProbe.ProbeIdentificationPair, ErrIdentificationPairInUse)
 	}
 
 	// Clone program
 	clonedProg, err := prog.Clone()
 	if err != nil {
-		return errors.Wrapf(err, "couldn't clone %v", oldID)
+		return fmt.Errorf("couldn't clone %v: %w", oldID, err)
 	}
 	newProbe.program = clonedProg
 	newProbe.programSpec = progSpec
@@ -794,7 +790,7 @@ func (m *Manager) AddHook(UID string, newProbe *Probe) error {
 	if err = newProbe.Init(m); err != nil {
 		// clean up
 		_ = newProbe.Stop()
-		return errors.Wrap(err, "failed to initialize new probe")
+		return fmt.Errorf("failed to initialize new probe: %w", err)
 	}
 
 	// Pin if needed
@@ -802,7 +798,7 @@ func (m *Manager) AddHook(UID string, newProbe *Probe) error {
 		if err = newProbe.program.Pin(newProbe.PinPath); err != nil {
 			// clean up
 			_ = newProbe.Stop()
-			return errors.Wrap(err, "couldn't pin new probe")
+			return fmt.Errorf("couldn't pin new probe: %w", err)
 		}
 	}
 
@@ -810,7 +806,7 @@ func (m *Manager) AddHook(UID string, newProbe *Probe) error {
 	if err = newProbe.Attach(); err != nil {
 		// clean up
 		_ = newProbe.Stop()
-		return errors.Wrapf(err, "couldn't attach new probe")
+		return fmt.Errorf("couldn't attach new probe: %w", err)
 	}
 
 	// Add probe to the list of probes
@@ -838,11 +834,11 @@ func (m *Manager) DetachHook(id ProbeIdentificationPair) error {
 			// Detach or stop the probe depending on shouldStop
 			if shouldStop {
 				if err = mProbe.Stop(); err != nil {
-					return errors.Wrapf(err, "couldn't stop probe %s", id)
+					return fmt.Errorf("couldn't stop probe %s: %w", id, err)
 				}
 			} else {
 				if err = mProbe.Detach(); err != nil {
-					return errors.Wrapf(err, "couldn't detach probe %s", id)
+					return fmt.Errorf("couldn't detach probe %s: %w", id, err)
 				}
 			}
 			idToDelete = mID
@@ -868,14 +864,14 @@ func (m *Manager) CloneProgram(UID string, newProbe *Probe, constantsEditors []C
 		return err
 	}
 	if !found || len(progSpecs) == 0 {
-		return errors.Wrapf(ErrUnknownSectionOrFuncName, "couldn't find programSpec %v", oldID)
+		return fmt.Errorf("couldn't find programSpec %v: %w", oldID, ErrUnknownSectionOrFuncName)
 	}
 	progSpec := progSpecs[0]
 
 	// Check if the new probe has a unique identification pair
 	_, exists, _ := m.GetProgram(newProbe.ProbeIdentificationPair)
 	if exists {
-		return errors.Wrapf(ErrIdentificationPairInUse, "couldn't add probe %v", newProbe.ProbeIdentificationPair)
+		return fmt.Errorf("couldn't add probe %: %w", newProbe.ProbeIdentificationPair, ErrIdentificationPairInUse)
 	}
 
 	// Make sure the new probe is activated
@@ -889,32 +885,32 @@ func (m *Manager) CloneProgram(UID string, newProbe *Probe, constantsEditors []C
 	// Edit constants
 	for _, editor := range constantsEditors {
 		if err := m.editConstant(newProbe.programSpec, editor); err != nil {
-			return errors.Wrapf(err, "couldn't edit constant %s", editor.Name)
+			return fmt.Errorf("couldn't edit constant %s: %w", editor.Name, err)
 		}
 	}
 
 	// Write current maps
 	if err = m.rewriteMaps(newProbe.programSpec, m.collection.Maps); err != nil {
-		return errors.Wrapf(err, "couldn't rewrite maps in %v", newProbe.ProbeIdentificationPair)
+		return fmt.Errorf("couldn't rewrite maps in %v: %w", newProbe.ProbeIdentificationPair, err)
 	}
 
 	// Rewrite with new maps
 	if err = m.rewriteMaps(newProbe.programSpec, mapEditors); err != nil {
-		return errors.Wrapf(err, "couldn't rewrite maps in %v", newProbe.ProbeIdentificationPair)
+		return fmt.Errorf("couldn't rewrite maps in %v: %w", newProbe.ProbeIdentificationPair, err)
 	}
 
 	// Init
 	if err = newProbe.InitWithOptions(m, true, true); err != nil {
 		// clean up
 		_ = newProbe.Stop()
-		return errors.Wrapf(err, "failed to initialize new probe %v", newProbe.ProbeIdentificationPair)
+		return fmt.Errorf("failed to initialize new probe %v: %w", newProbe.ProbeIdentificationPair, err)
 	}
 
 	// Attach new program
 	if err = newProbe.Attach(); err != nil {
 		// clean up
 		_ = newProbe.Stop()
-		return errors.Wrapf(err, "failed to attach new probe %v", newProbe.ProbeIdentificationPair)
+		return fmt.Errorf("failed to attach new probe %v: %w", newProbe.ProbeIdentificationPair, err)
 	}
 
 	// Add probe to the list of probes
@@ -940,7 +936,7 @@ func (m *Manager) updateMapRoute(route MapRoute) error {
 		return err
 	}
 	if !found {
-		return errors.Wrapf(ErrUnknownSection, "couldn't find routing map %s", route.RoutingMapName)
+		return fmt.Errorf("couldn't find routing map %s: %w", route.RoutingMapName, ErrUnknownSection)
 	}
 
 	// Get file descriptor of the routed map
@@ -954,14 +950,14 @@ func (m *Manager) updateMapRoute(route MapRoute) error {
 			return err
 		}
 		if !found {
-			return errors.Wrapf(ErrUnknownSection, "couldn't find routed map %s", route.RoutedName)
+			return fmt.Errorf("couldn't find routed map %s: %w", route.RoutedName, ErrUnknownSection)
 		}
 		fd = uint32(routedMap.FD())
 	}
 
 	// Insert map
 	if err = routingMap.Put(route.Key, fd); err != nil {
-		return errors.Wrapf(err, "couldn't update routing map %s", route.RoutingMapName)
+		return fmt.Errorf("couldn't update routing map %s: %w", route.RoutingMapName, err)
 	}
 	return nil
 }
@@ -984,7 +980,7 @@ func (m *Manager) updateTailCallRoute(route TailCallRoute) error {
 		return err
 	}
 	if !found {
-		return errors.Wrapf(ErrUnknownSection, "couldn't find routing map %s", route.ProgArrayName)
+		return fmt.Errorf("couldn't find routing map %s: %w", route.ProgArrayName, ErrUnknownSection)
 	}
 
 	// Get file descriptor of the routed program
@@ -997,14 +993,14 @@ func (m *Manager) updateTailCallRoute(route TailCallRoute) error {
 			return err
 		}
 		if !found || len(progs) == 0 {
-			return errors.Wrapf(ErrUnknownSectionOrFuncName, "couldn't find program %v", route.ProbeIdentificationPair)
+			return fmt.Errorf("couldn't find program %v: %w", route.ProbeIdentificationPair, ErrUnknownSectionOrFuncName)
 		}
 		fd = uint32(progs[0].FD())
 	}
 
 	// Insert tail call
 	if err = routingMap.Put(route.Key, fd); err != nil {
-		return errors.Wrapf(err, "couldn't update routing map %s", route.ProgArrayName)
+		return fmt.Errorf("couldn't update routing map %s: %w", route.ProgArrayName, err)
 	}
 	return nil
 }
@@ -1021,7 +1017,7 @@ func (m *Manager) getProbeProgramSpec(id ProbeIdentificationPair) (*ebpf.Program
 			}
 		}
 		if !excluded {
-			return nil, errors.Wrapf(ErrUnknownSectionOrFuncName, "couldn't find program %s", id)
+			return nil, fmt.Errorf("couldn't find program %s: %w", id, ErrUnknownSectionOrFuncName)
 		}
 	}
 	return spec, nil
@@ -1047,7 +1043,7 @@ func (m *Manager) matchSpecs() error {
 	for _, managerMap := range m.Maps {
 		spec, ok := m.collectionSpec.Maps[managerMap.Name]
 		if !ok {
-			return errors.Wrapf(ErrUnknownSection, "couldn't find map at maps/%s", managerMap.Name)
+			return fmt.Errorf("couldn't find map at maps/%s: %w", managerMap.Name, ErrUnknownSection)
 		}
 		spec.Contents = managerMap.Contents
 		spec.Freeze = managerMap.Freeze
@@ -1058,7 +1054,7 @@ func (m *Manager) matchSpecs() error {
 	for _, perfMap := range m.PerfMaps {
 		spec, ok := m.collectionSpec.Maps[perfMap.Name]
 		if !ok {
-			return errors.Wrapf(ErrUnknownSection, "couldn't find map at maps/%s", perfMap.Name)
+			return fmt.Errorf("couldn't find map at maps/%s: %w", perfMap.Name, ErrUnknownSection)
 		}
 		perfMap.arraySpec = spec
 	}
@@ -1114,7 +1110,7 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 		} else {
 			probe, found := m.GetProbe(id)
 			if !found {
-				return errors.Wrapf(ErrUnknownSectionOrFuncName, "couldn't find program %s", id)
+				return fmt.Errorf("couldn't find program %s: %w", id, ErrUnknownSectionOrFuncName)
 			}
 			probe.Enabled = true
 			if err := probe.Init(m); err != nil {
@@ -1145,7 +1141,7 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 	if validationErrs != nil {
 		// Clean up
 		_ = m.Stop(CleanInternal)
-		return errors.Wrap(validationErrs, "probes activation validation failed")
+		return fmt.Errorf("probes activation validation failed: %w", validationErrs)
 	}
 
 	return nil
@@ -1174,13 +1170,13 @@ func (m *Manager) editConstants() error {
 				return err
 			}
 			if !found || len(programs) == 0 {
-				return errors.Wrapf(ErrUnknownSectionOrFuncName, "couldn't find programSpec %v", id)
+				return fmt.Errorf("couldn't find programSpec %v: %w", id, ErrUnknownSectionOrFuncName)
 			}
 			prog := programs[0]
 
 			// Edit program
 			if err := m.editConstant(prog, constantEditor); err != nil {
-				return errors.Wrapf(err, "couldn't edit %s in %v", constantEditor.Name, id)
+				return fmt.Errorf("couldn't edit %s in %v: %w", constantEditor.Name, id, err)
 			}
 		}
 
@@ -1188,7 +1184,7 @@ func (m *Manager) editConstants() error {
 		if len(constantEditor.ProbeIdentificationPairs) == 0 {
 			for section, prog := range m.collectionSpec.Programs {
 				if err := m.editConstant(prog, constantEditor); err != nil {
-					return errors.Wrapf(err, "couldn't edit %s in %s", constantEditor.Name, section)
+					return fmt.Errorf("couldn't edit %s in %s: %w", constantEditor.Name, section, err)
 				}
 			}
 		}
@@ -1205,7 +1201,7 @@ func (m *Manager) editMapSpecs() error {
 			return err
 		}
 		if !exists {
-			return errors.Wrapf(ErrUnknownSection, "failed to edit maps/%s: couldn't find map", name)
+			return fmt.Errorf("failed to edit maps/%s: couldn't find map: %w", name, ErrUnknownSection)
 		}
 		if EditType&mapEditor.EditorFlag == EditType {
 			spec.Type = mapEditor.Type
@@ -1241,7 +1237,7 @@ func (m *Manager) rewriteMaps(program *ebpf.ProgramSpec, eBPFMaps map[string]*eb
 		fd := eBPFMap.FD()
 		err := program.Instructions.RewriteMapPtr(symbol, fd)
 		if err != nil {
-			return errors.Wrapf(err, "couldn't rewrite map %s", symbol)
+			return fmt.Errorf("couldn't rewrite map %s: %w", symbol, err)
 		}
 	}
 	return nil
@@ -1296,7 +1292,7 @@ func (m *Manager) editInnerOuterMapSpec(spec InnerOuterMapSpec) error {
 		return err
 	}
 	if !exists {
-		return errors.Wrapf(ErrUnknownSection, "failed to set inner map for maps/%s: couldn't find outer map", spec.OuterMapName)
+		return fmt.Errorf("failed to set inner map for maps/%s: couldn't find outer map: %w", spec.OuterMapName, ErrUnknownSection)
 	}
 	// find the inner map
 	innerMap, exists, err := m.GetMapSpec(spec.InnerMapName)
@@ -1304,7 +1300,7 @@ func (m *Manager) editInnerOuterMapSpec(spec InnerOuterMapSpec) error {
 		return err
 	}
 	if !exists {
-		return errors.Wrapf(ErrUnknownSection, "failed to set inner map for maps/%s: couldn't find inner map %s", spec.OuterMapName, spec.InnerMapName)
+		return fmt.Errorf("failed to set inner map for maps/%s: couldn't find inner map %s: %w", spec.OuterMapName, spec.InnerMapName, ErrUnknownSection)
 	}
 
 	// set inner map
@@ -1318,7 +1314,7 @@ func (m *Manager) loadCollection() error {
 	// Load collection
 	m.collection, err = ebpf.NewCollectionWithOptions(m.collectionSpec, m.options.VerifierOptions)
 	if err != nil {
-		return errors.Wrap(err, "couldn't load eBPF programs")
+		return fmt.Errorf("couldn't load eBPF programs: %w", err)
 	}
 
 	// Initialize Maps
@@ -1399,7 +1395,7 @@ func (m *Manager) loadPinnedMap(managerMap *Map) error {
 
 	pinnedMap, err := ebpf.LoadPinnedMap(managerMap.PinPath, nil)
 	if err != nil {
-		return errors.Wrapf(err, "couldn't load map %s from %s", managerMap.Name, managerMap.PinPath)
+		return fmt.Errorf("couldn't load map %s from %s: %w", managerMap.Name, managerMap.PinPath, err)
 	}
 
 	// Replace map in CollectionSpec
@@ -1420,7 +1416,7 @@ func (m *Manager) loadPinnedProgram(prog *Probe) error {
 
 	pinnedProg, err := ebpf.LoadPinnedProgram(prog.PinPath, nil)
 	if err != nil {
-		return errors.Wrapf(err, "couldn't load program %v from %s", prog.ProbeIdentificationPair, prog.PinPath)
+		return fmt.Errorf("couldn't load program %v from %s: %w", prog.ProbeIdentificationPair, prog.PinPath, err)
 	}
 	prog.program = pinnedProg
 
@@ -1436,14 +1432,14 @@ func (m *Manager) sanityCheck() error {
 	for _, managerMap := range m.Maps {
 		_, ok := cache[managerMap.Name]
 		if ok {
-			return errors.Wrapf(ErrMapNameInUse, "map %s failed the sanity check", managerMap.Name)
+			return fmt.Errorf("map %s failed the sanity check: %w", managerMap.Name, ErrMapNameInUse)
 		}
 		cache[managerMap.Name] = true
 	}
 	for _, perfMap := range m.PerfMaps {
 		_, ok := cache[perfMap.Name]
 		if ok {
-			return errors.Wrapf(ErrMapNameInUse, "map %s failed the sanity check", perfMap.Name)
+			return fmt.Errorf("map %s failed the sanity check: %w", perfMap.Name, ErrMapNameInUse)
 		}
 		cache[perfMap.Name] = true
 	}
@@ -1453,7 +1449,7 @@ func (m *Manager) sanityCheck() error {
 	for _, managerProbe := range m.Probes {
 		_, ok := cache[managerProbe.ProbeIdentificationPair.String()]
 		if ok {
-			return errors.Wrapf(ErrCloneProbeRequired, "%v failed the sanity check", managerProbe.ProbeIdentificationPair)
+			return fmt.Errorf("%v failed the sanity check: %w", managerProbe.ProbeIdentificationPair, ErrCloneProbeRequired)
 		}
 		cache[managerProbe.ProbeIdentificationPair.String()] = true
 	}
@@ -1471,7 +1467,7 @@ func (m *Manager) newNetlinkConnection(ifindex int32, netns uint64) (*netlinkCac
 		NetNS: int(netns),
 	})
 	if err != nil {
-		return nil, errors.Wrapf(err, "couldn't open a NETLink socket in namespace %v", netns)
+		return nil, fmt.Errorf("couldn't open a NETLink socket in namespace %v: %w", netns, err)
 	}
 
 	// Insert in manager cache
@@ -1516,7 +1512,7 @@ func (m *Manager) cleanupTracefs() error {
 	}
 	pattern, err := regexp.Compile(fmt.Sprintf(`(p|r)[0-9]*:(kprobes|uprobes)/(.*(%s)_([0-9]*)) .*`, strings.Join(uidSet, "|")))
 	if err != nil {
-		return errors.Wrap(err, "pattern generation failed")
+		return fmt.Errorf("pattern generation failed: %w", err)
 	}
 
 	// clean up kprobe_events
@@ -1533,7 +1529,7 @@ func (m *Manager) cleanupTracefs() error {
 func cleanupKprobeEvents(pattern *regexp.Regexp, pidMask map[int]procMask) error {
 	kprobeEvents, err := ReadKprobeEvents()
 	if err != nil {
-		return errors.Wrap(err, "couldn't read kprobe_events")
+		return fmt.Errorf("couldn't read kprobe_events: %w", err)
 	}
 	var cleanUpErrors error
 	for _, match := range pattern.FindAllStringSubmatch(kprobeEvents, -1) {
@@ -1574,7 +1570,7 @@ func cleanupKprobeEvents(pattern *regexp.Regexp, pidMask map[int]procMask) error
 func cleanupUprobeEvents(pattern *regexp.Regexp, pidMask map[int]procMask) error {
 	uprobeEvents, err := ReadUprobeEvents()
 	if err != nil {
-		return errors.Wrap(err, "couldn't read uprobe_events")
+		return fmt.Errorf("couldn't read uprobe_events: %w", err)
 	}
 	var cleanUpErrors error
 	for _, match := range pattern.FindAllStringSubmatch(uprobeEvents, -1) {
