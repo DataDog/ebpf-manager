@@ -28,7 +28,7 @@ func demoClone() error {
 		},
 	}
 
-	err := m.CloneProgram("MyFirstHook", newProbe, mkdirCloneEditors, nil)
+	err := m.CloneProgram("MyFirstHook", &newProbe, mkdirCloneEditors, nil)
 	if err != nil {
 		return err
 	}
@@ -47,7 +47,7 @@ func demoAddHook() error {
 			EBPFFuncName: "kprobe_vfs_rmdir",
 		},
 	}
-	err := m.AddHook("", firstRmdir)
+	err := m.AddHook("", &firstRmdir)
 	if err != nil {
 		logrus.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func demoAddHook() error {
 			EBPFFuncName: "kprobe_vfs_rmdir",
 		},
 	}
-	err = m.AddHook("", secondRmdir)
+	err = m.AddHook("", &secondRmdir)
 	if err != nil {
 		return err
 	}

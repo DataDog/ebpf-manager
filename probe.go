@@ -1,4 +1,4 @@
-package ebpf_manager
+package manager
 
 import (
 	"fmt"
@@ -830,7 +830,7 @@ func (p *Probe) attachTCCLS() error {
 	err = ntl.rtNetlink.Filter().Add(&filter)
 	if err == nil {
 		p.tcObject = qdisc
-		ntl.schedClsCount += 1
+		ntl.schedClsCount++
 	}
 	return errors.Wrapf(err, "couldn't add a %v filter to interface %v: %v", p.NetworkDirection, p.Ifindex, err)
 }
@@ -844,7 +844,7 @@ func (p *Probe) detachTCCLS() error {
 	}
 
 	if ntl.schedClsCount >= 2 {
-		ntl.schedClsCount -= 1
+		ntl.schedClsCount--
 		// another classifier is still using the qdisc, do not delete it yet
 		return nil
 	}

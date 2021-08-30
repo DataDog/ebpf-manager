@@ -1,4 +1,4 @@
-package ebpf_manager
+package manager
 
 import (
 	"fmt"
@@ -50,7 +50,7 @@ func loadNewPerfMap(spec ebpf.MapSpec, options MapOptions, perfOptions PerfMapOp
 
 	// Create the new map
 	perfMap := PerfMap{
-		Map:            *innerMap,
+		Map:            *innerMap, //nolint:copylocks
 		PerfMapOptions: perfOptions,
 	}
 	return &perfMap, nil

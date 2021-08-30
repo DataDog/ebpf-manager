@@ -1,4 +1,4 @@
-package ebpf_manager
+package manager
 
 import (
 	"debug/elf"
@@ -268,9 +268,8 @@ func disableKprobeEvent(eventName string) error {
 			// The second will encounter the error as the
 			// probe already has been cleared by the first.
 			return nil
-		} else {
-			return errors.Wrapf(err, "cannot write %q to kprobe_events", cmd)
 		}
+		return errors.Wrapf(err, "cannot write %q to kprobe_events", cmd)
 	}
 	return nil
 }
@@ -308,20 +307,20 @@ func EnableUprobeEvent(probeType string, funcName, path, UID string, uprobeAttac
 	}
 
 	// Retrieve Uprobe ID
-	uprobeIdFile := fmt.Sprintf("/sys/kernel/debug/tracing/events/uprobes/%s/id", eventName)
-	uprobeIdBytes, err := ioutil.ReadFile(uprobeIdFile)
+	uprobeIDFile := fmt.Sprintf("/sys/kernel/debug/tracing/events/uprobes/%s/id", eventName)
+	uprobeIDBytes, err := ioutil.ReadFile(uprobeIDFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return -1, ErrUprobeIDNotExist
 		}
 		return -1, errors.Wrap(err, "cannot read uprobe id")
 	}
-	uprobeId, err := strconv.Atoi(strings.TrimSpace(string(uprobeIdBytes)))
+	uprobeID, err := strconv.Atoi(strings.TrimSpace(string(uprobeIDBytes)))
 	if err != nil {
 		return -1, errors.Wrap(err, "invalid uprobe id")
 	}
 
-	return uprobeId, nil
+	return uprobeID, nil
 }
 
 // OpenAndListSymbols - Opens an elf file and extracts all its symbols
@@ -348,9 +347,8 @@ func OpenAndListSymbols(path string) (*elf.File, []elf.Symbol, error) {
 		}
 		if err != nil {
 			return nil, nil, err
-		} else {
-			return nil, nil, errors.New("no symbols found")
 		}
+		return nil, nil, errors.New("no symbols found")
 	}
 	return f, syms, nil
 }
