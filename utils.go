@@ -236,9 +236,10 @@ func registerKprobeEvent(probeType, funcName, UID, maxActiveStr string, kprobeAt
 		}
 		return -1, fmt.Errorf("cannot read kprobe id: %w", err)
 	}
-	kprobeID, err := strconv.Atoi(strings.TrimSpace(string(kprobeIDBytes)))
+	id := strings.TrimSpace(string(kprobeIDBytes))
+	kprobeID, err := strconv.Atoi(id)
 	if err != nil {
-		return -1, fmt.Errorf("invalid kprobe id: %v: %w", err)
+		return -1, fmt.Errorf("invalid kprobe id: '%s': %w", id, err)
 	}
 	return kprobeID, nil
 }

@@ -878,14 +878,11 @@ func (p *Probe) attachTCCLS() error {
 	}
 
 	// Add qdisc filter
-	err = ntl.rtNetlink.Filter().Add(&filter)
-	if err == nil {
-		p.tcObject = qdisc
-		ntl.schedClsCount++
+	if err := ntl.rtNetlink.Filter().Add(&filter); err != nil {
+		return fmt.Errorf("couldn't add a %v filter to interface %v: %v", p.NetworkDirection, p.Ifindex, err)
 	}
-	if err != nil {
-		return fmt.Errorf("couldn't add a %v filter to interface %v: %v: %w", err)
-	}
+	p.tcObject = qdisc
+	ntl.schedClsCount++
 	return nil
 }
 
@@ -906,7 +903,7 @@ func (p *Probe) detachTCCLS() error {
 	// Delete qdisc
 	err := ntl.rtNetlink.Qdisc().Delete(p.tcObject)
 	if err != nil {
-		return fmt.Errorf("couldn't detach TC classifier of probe %v: %w", err)
+		return fmt.Errorf("couldn't detach TC classifier of probe %v: %w", p.ProbeIdentificationPair, err)
 	}
 	return nil
 }
@@ -922,7 +919,7 @@ func (p *Probe) attachXDP() error {
 	// Attach program
 	err = netlink.LinkSetXdpFdWithFlags(link, p.program.FD(), int(p.XDPAttachMode))
 	if err != nil {
-		return fmt.Errorf("couldn't attach XDP program %v to interface %v: %w", err)
+		return fmt.Errorf("couldn't attach XDP program %v to interface %v: %w", p.ProbeIdentificationPair, p.Ifindex, err)
 	}
 	return nil
 }
@@ -938,7 +935,7 @@ func (p *Probe) detachXDP() error {
 	// Detach program
 	err = netlink.LinkSetXdpFdWithFlags(link, -1, int(p.XDPAttachMode))
 	if err != nil {
-		return fmt.Errorf("couldn't detach XDP program %v from interface %v: %w", err)
+		return fmt.Errorf("couldn't detach XDP program %v from interface %v: %w", p.ProbeIdentificationPair, p.Ifindex, err)
 	}
 	return nil
 }
