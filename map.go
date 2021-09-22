@@ -44,6 +44,10 @@ type MapOptions struct {
 
 	// AlwaysCleanup - Overrides the clean up type given to the manager. See CleanupType for more.
 	AlwaysCleanup bool
+
+	// DumpHandler - Callback function called when manager.Dump() is called
+	// and dump the current state (human readable)
+	DumpHandler func(currentMap *Map, manager *Manager) string
 }
 
 type Map struct {
