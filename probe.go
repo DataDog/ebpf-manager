@@ -118,17 +118,18 @@ func (pip ProbeIdentificationPair) GetUprobeType() string {
 // Probe - Main eBPF probe wrapper. This structure is used to store the required data to attach a loaded eBPF
 // program to its hook point.
 type Probe struct {
-	manager            *Manager
-	program            *ebpf.Program
-	programSpec        *ebpf.ProgramSpec
-	perfEventFD        *FD
-	rawTracepointFD    *FD
-	state              state
-	stateLock          sync.RWMutex
-	manualLoadNeeded   bool
-	checkPin           bool
-	attachPID          int
-	attachRetryAttempt uint
+	manager             *Manager
+	program             *ebpf.Program
+	programSpec         *ebpf.ProgramSpec
+	perfEventFD         *FD
+	rawTracepointFD     *FD
+	state               state
+	stateLock           sync.RWMutex
+	manualLoadNeeded    bool
+	checkPin            bool
+	attachPID           int
+	attachRetryAttempt  uint
+	attachedWithDebugFS bool
 
 	// lastError - stores the last error that the probe encountered, it is used to surface a more useful error message
 	// when one of the validators (see Options.ActivatedProbes) fails.
@@ -592,6 +593,7 @@ func (p *Probe) reset() {
 	p.checkPin = false
 	p.attachPID = 0
 	p.attachRetryAttempt = 0
+	p.attachedWithDebugFS = false
 }
 
 // attachKprobe - Attaches the probe to its kprobe
@@ -617,22 +619,33 @@ func (p *Probe) attachKprobe() error {
 
 	p.attachPID = os.Getpid()
 
-	// Write kprobe_events line to register kprobe
-	kprobeID, err := EnableKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, maxActiveStr, p.attachPID)
-	if err == ErrKprobeIDNotExist {
-		// The probe might have been loaded under a kernel generated event name. Clean up just in case.
-		_ = disableKprobeEvent(getKernelGeneratedEventName(p.GetKprobeType(), p.HookFuncName))
-		// fallback without KProbeMaxActive
-		kprobeID, err = EnableKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, "", p.attachPID)
-	}
+	// try to use the perf_event_open ABI first (e12f03d "perf/core: Implement the 'perf_kprobe' PMU")
+	p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", p.GetKprobeType() == "r", 0)
 	if err != nil {
-		return fmt.Errorf("couldn't enable kprobe %s: %w", p.ProbeIdentificationPair, err)
+		// Fallback to debugfs, write kprobe_events line to register kprobe
+		var kprobeID int
+		kprobeID, err = registerKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, maxActiveStr, p.attachPID)
+		if err == ErrKprobeIDNotExist {
+			// The probe might have been loaded under a kernel generated event name. Clean up just in case.
+			_ = unregisterKprobeEventWithEventName(getKernelGeneratedEventName(p.GetKprobeType(), p.HookFuncName))
+			// fallback without KProbeMaxActive
+			kprobeID, err = registerKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, "", p.attachPID)
+		}
+		if err != nil {
+			return fmt.Errorf("couldn't enable kprobe %s: %w", p.ProbeIdentificationPair, err)
+		}
+
+		// create perf event FD
+		p.perfEventFD, err = perfEventOpenTracingEvent(kprobeID)
+		if err != nil {
+			return fmt.Errorf("couldn't open perf event FD for %s: %w", p.ProbeIdentificationPair, err)
+		}
+		p.attachedWithDebugFS = true
 	}
 
-	// Activate perf event
-	p.perfEventFD, err = perfEventOpenTracepoint(kprobeID, p.program.FD())
-	if err != nil {
-		return fmt.Errorf("couldn't enable kprobe %s: %w", p.ProbeIdentificationPair, err)
+	// enable perf event
+	if err = ioctlPerfEventEnable(p.perfEventFD, p.program.FD()); err != nil {
+		return fmt.Errorf("couldn't enable perf event %s: %w", p.ProbeIdentificationPair, err)
 	}
 	return nil
 }
@@ -645,8 +658,13 @@ func (p *Probe) detachKprobe() error {
 		return p.detachUprobe()
 	}
 
+	if !p.attachedWithDebugFS {
+		// nothing to do
+		return nil
+	}
+
 	// Write kprobe_events line to remove hook point
-	return DisableKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, p.attachPID)
+	return unregisterKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, p.attachPID)
 }
 
 // attachTracepoint - Attaches the probe to its tracepoint
@@ -666,15 +684,20 @@ func (p *Probe) attachTracepoint() error {
 	}
 
 	// Hook the eBPF program to the tracepoint
-	p.perfEventFD, err = perfEventOpenTracepoint(tracepointID, p.program.FD())
+	p.perfEventFD, err = perfEventOpenTracingEvent(tracepointID)
 	if err != nil {
 		return fmt.Errorf("couldn't enable tracepoint %s: %w", p.ProbeIdentificationPair, err)
+	}
+	if ioctlPerfEventEnable(p.perfEventFD, p.program.FD()) != nil {
+		return fmt.Errorf("couldn't enable perf event %s: %w", p.ProbeIdentificationPair, err)
 	}
 	return nil
 }
 
 // attachUprobe - Attaches the probe to its Uprobe
 func (p *Probe) attachUprobe() error {
+	var err error
+
 	// Prepare uprobe_events line parameters
 	p.attachPID = os.Getpid()
 
@@ -707,22 +730,38 @@ func (p *Probe) attachUprobe() error {
 		p.HookFuncName = offsets[0].Name
 	}
 
-	// enable uprobe
-	uprobeID, err := EnableUprobeEvent(p.GetUprobeType(), p.HookFuncName, p.BinaryPath, p.UID, p.attachPID, p.UprobeOffset)
+	// Try to use the perf_event_open API first (e12f03d "perf/core: Implement the 'perf_kprobe' PMU")
+	p.perfEventFD, err = perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffset), -1, "uprobe", p.GetUprobeType() == "r", 0)
 	if err != nil {
-		return fmt.Errorf("couldn't enable uprobe %s: %w", p.ProbeIdentificationPair, err)
+		// fallback to debugfs
+		var uprobeID int
+		uprobeID, err = registerUprobeEvent(p.GetUprobeType(), p.HookFuncName, p.BinaryPath, p.UID, p.attachPID, p.UprobeOffset)
+		if err != nil {
+			return fmt.Errorf("couldn't enable uprobe %s: %w", p.ProbeIdentificationPair, err)
+		}
+
+		// Activate perf event
+		p.perfEventFD, err = perfEventOpenTracingEvent(uprobeID)
+		if err != nil {
+			return fmt.Errorf("couldn't enable uprobe %s: %w", p.ProbeIdentificationPair, err)
+		}
+		p.attachedWithDebugFS = true
 	}
 
-	// Activate perf event
-	p.perfEventFD, err = perfEventOpenTracepoint(uprobeID, p.program.FD())
-	if err != nil {
-		return fmt.Errorf("couldn't enable uprobe %s: %w", err)
+	// enable perf event
+	if err = ioctlPerfEventEnable(p.perfEventFD, p.program.FD()); err != nil {
+		return fmt.Errorf("couldn't enable perf event %s: %w", p.ProbeIdentificationPair, err)
 	}
 	return nil
 }
 
 // detachUprobe - Detaches the probe from its Uprobe
 func (p *Probe) detachUprobe() error {
+	if !p.attachedWithDebugFS {
+		// nothing to do
+		return nil
+	}
+
 	// Prepare uprobe_events line parameters
 	if p.GetUprobeType() == UnknownProbeType {
 		// unknown type
@@ -730,7 +769,7 @@ func (p *Probe) detachUprobe() error {
 	}
 
 	// Write uprobe_events line to remove hook point
-	return DisableUprobeEvent(p.GetUprobeType(), p.HookFuncName, p.UID, p.attachPID)
+	return unregisterUprobeEvent(p.GetUprobeType(), p.HookFuncName, p.UID, p.attachPID)
 }
 
 // attachCGroup - Attaches the probe to a cgroup hook point
