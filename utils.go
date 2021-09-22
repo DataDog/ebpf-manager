@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -29,7 +28,9 @@ const (
 	running
 
 	// MaxEventNameLen - maximum length for a kprobe (or uprobe) event name
-	MaxEventNameLen = 64
+	// MAX_EVENT_NAME_LEN (linux/kernel/trace/trace.h)
+	MaxEventNameLen    = 64
+	MinFunctionNameLen = 10
 )
 
 // ConcatErrors - Concatenate 2 errors into one error.
@@ -179,14 +180,17 @@ func getSyscallFnNameWithKallsyms(name string, kallsymsContent string) (string, 
 var safeEventRegexp = regexp.MustCompile("[^a-zA-Z0-9]")
 
 func GenerateEventName(probeType, funcName, UID string, attachPID int) (string, error) {
-	eventName := safeEventRegexp.ReplaceAllString(fmt.Sprintf("%s_%s_%s_%d", probeType, funcName, UID, attachPID), "_")
+	// truncate the function name and UID name to reduce the length of the event
+	attachPIDstr := strconv.Itoa(attachPID)
+	maxFuncNameLen := (MaxEventNameLen - 3 /* _ */ - len(probeType) - len(UID) - len(attachPIDstr))
+	if maxFuncNameLen < MinFunctionNameLen { /* let's guarantee that we have a function name minimum of 10 chars (MinFunctionNameLen) or trow an error */
+		dbgFullEventString := safeEventRegexp.ReplaceAllString(fmt.Sprintf("%s_%s_%s_%s", probeType, funcName, UID, attachPIDstr), "_")
+		return "", fmt.Errorf("event name is too long (kernel limit is %d (MAX_EVENT_NAME_LEN)): MinFunctionNameLen %d, len 3, probeType %d, funcName %d, UID %d, attachPIDstr %d ; full event string : '%s'", MaxEventNameLen, MinFunctionNameLen, len(probeType), len(funcName), len(UID), len(attachPIDstr), dbgFullEventString)
+	}
+	eventName := safeEventRegexp.ReplaceAllString(fmt.Sprintf("%s_%.*s_%s_%s", probeType, maxFuncNameLen, funcName, UID, attachPIDstr), "_")
 
 	if len(eventName) > MaxEventNameLen {
-		// truncate the function name and UID name to reduce the length of the event
-		eventName = safeEventRegexp.ReplaceAllString(fmt.Sprintf("%s_%s_%s_%d", probeType, funcName[0:int(math.Min(10, float64(len(funcName))))], UID[0:int(math.Min(10, float64(len(UID))))], attachPID), "_")
-	}
-	if len(eventName) > MaxEventNameLen {
-		return "", fmt.Errorf("event name too long (kernel limit is %d): %s", MaxEventNameLen, eventName)
+		return "", fmt.Errorf("event name too long (kernel limit MAX_EVENT_NAME_LEN is %d): '%s'", MaxEventNameLen, eventName)
 	}
 	return eventName, nil
 }
@@ -294,7 +298,7 @@ func registerUprobeEvent(probeType string, funcName, path, UID string, uprobeAtt
 		return -1, err
 	}
 
-	// Write line to uprobe_events
+	// Write line to uprobe_events, only eventName is tested to max MAX_EVENT_NAME_LEN (linux/kernel/trace/trace.h)
 	uprobeEventsFileName := "/sys/kernel/debug/tracing/uprobe_events"
 	f, err := os.OpenFile(uprobeEventsFileName, os.O_APPEND|os.O_WRONLY, 0666)
 	if err != nil {
