@@ -871,7 +871,7 @@ func (m *Manager) CloneProgram(UID string, newProbe *Probe, constantsEditors []C
 	// Check if the new probe has a unique identification pair
 	_, exists, _ := m.GetProgram(newProbe.ProbeIdentificationPair)
 	if exists {
-		return fmt.Errorf("couldn't add probe %: %w", newProbe.ProbeIdentificationPair, ErrIdentificationPairInUse)
+		return fmt.Errorf("couldn't add probe %v: %w", newProbe.ProbeIdentificationPair, ErrIdentificationPairInUse)
 	}
 
 	// Make sure the new probe is activated
