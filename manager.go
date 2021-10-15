@@ -255,6 +255,10 @@ type Manager struct {
 
 	// PerfMaps - List of perf ring buffers handled by the manager
 	PerfMaps []*PerfMap
+
+	// DumpHandler - Callback function called when manager.DumpMaps() is called
+	// and dump the current state (human readable)
+	DumpHandler func(manager *Manager, mapName string, currentMap *ebpf.Map) string
 }
 
 // DumpMaps - Return a string containing human readable info about eBPF maps
@@ -265,6 +269,10 @@ func (m *Manager) DumpMaps(maps ...string) (string, error) {
 
 	if m.collection == nil || m.state < initialized {
 		return "", ErrManagerNotInitialized
+	}
+
+	if m.DumpHandler == nil {
+		return "", nil
 	}
 
 	var mapsToDump map[string]struct{}
@@ -285,9 +293,9 @@ func (m *Manager) DumpMaps(maps ...string) (string, error) {
 
 	var output strings.Builder
 	// Look in the list of maps
-	for _, managerMap := range m.Maps {
-		if managerMap.DumpHandler != nil && needDump(managerMap.Name) {
-			output.WriteString(managerMap.DumpHandler(managerMap, m))
+	for mapName, currentMap := range m.collection.Maps {
+		if needDump(mapName) {
+			output.WriteString(m.DumpHandler(m, mapName, currentMap))
 		}
 	}
 	return output.String(), nil
