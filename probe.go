@@ -429,7 +429,7 @@ func (p *Probe) Attach() error {
 		}
 
 		return err
-	}, retry.Attempts(p.ProbeRetry), retry.Delay(p.ProbeRetryDelay))
+	}, retry.Attempts(p.ProbeRetry), retry.Delay(p.ProbeRetryDelay), retry.LastErrorOnly(true))
 }
 
 // attach - Thread unsafe version of attach
@@ -505,7 +505,7 @@ func (p *Probe) Detach() error {
 
 // detachRetry - Thread unsafe version of Detach with retry
 func (p *Probe) detachRetry() error {
-	return retry.Do(p.detach, retry.Attempts(p.ProbeRetry), retry.Delay(p.ProbeRetryDelay))
+	return retry.Do(p.detach, retry.Attempts(p.ProbeRetry), retry.Delay(p.ProbeRetryDelay), retry.LastErrorOnly(true))
 }
 
 // detach - Thread unsafe version of Detach.
