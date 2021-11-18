@@ -226,6 +226,7 @@ func (p *Probe) Copy() *Probe {
 		ProbeIdentificationPair: ProbeIdentificationPair{
 			UID:          p.UID,
 			EBPFFuncName: p.EBPFFuncName,
+			EBPFSection:  p.EBPFSection,
 		},
 		SyscallFuncName:  p.SyscallFuncName,
 		MatchFuncName:    p.MatchFuncName,
