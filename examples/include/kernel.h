@@ -11,6 +11,7 @@
 #include <linux/kconfig.h>
 #include <linux/version.h>
 #include <linux/ptrace.h>
+#include <uapi/linux/bpf_perf_event.h>
 
 #pragma clang diagnostic pop
 
