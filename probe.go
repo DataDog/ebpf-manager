@@ -1046,5 +1046,6 @@ func (p *Probe) detachPerfEvent() error {
 	for _, fd := range p.perfEventCPUFDs {
 		err = ConcatErrors(err, fd.Close())
 	}
+	p.perfEventCPUFDs = []*FD{}
 	return err
 }
