@@ -91,10 +91,13 @@ func perfEventOpenTracingEvent(probeID int) (*FD, error) {
 		Config:      uint64(probeID),
 	}
 	attr.Size = uint32(unsafe.Sizeof(attr))
+	return perfEventOpenRaw(&attr, -1, 0, -1, unix.PERF_FLAG_FD_CLOEXEC)
+}
 
-	efd, err := unix.PerfEventOpen(&attr, -1, 0, -1, unix.PERF_FLAG_FD_CLOEXEC)
+func perfEventOpenRaw(attr *unix.PerfEventAttr, pid int, cpu int, groupFd int, flags int) (*FD, error) {
+	efd, err := unix.PerfEventOpen(attr, pid, cpu, groupFd, flags)
 	if efd < 0 {
-		return nil, fmt.Errorf("perf_event_open error: %w", err)
+		return nil, fmt.Errorf("perf_event_open error: %v", err)
 	}
 	return NewFD(uint32(efd)), nil
 }

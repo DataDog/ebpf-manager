@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -215,6 +216,34 @@ type Probe struct {
 	// in mind that if you are hooking on the host side of a virtuel ethernet pair, Ingress and Egress are inverted.
 	NetworkDirection TrafficType
 
+	// SamplePeriod - (Perf event) This parameter defines when the perf_event eBPF program is triggered. When SamplePeriod > 0
+	// the program will be triggered every SamplePeriod events.
+	SamplePeriod int
+
+	// SampleFrequency - (Perf event) This parameter defines when the perf_event eBPF program is triggered. When
+	// SampleFrequency > 0, SamplePeriod is ignored and the eBPF program is triggered at the requested frequency.
+	SampleFrequency int
+
+	// PerfEventType - (Perf event) This parameter defines the type of the perf_event program. Allowed values are
+	// unix.PERF_TYPE_HARDWARE and unix.PERF_TYPE_SOFTWARE
+	PerfEventType int
+
+	// PerfEventPID - (Perf event) This parameter defines the PID for which the perf_event program should be triggered.
+	// Do not set this value to monitor the whole host.
+	PerfEventPID int
+
+	// PerfEventConfig - (Perf event) This parameter defines which software or hardware event is being monitored. See the
+	// PERF_COUNT_SW_* and PERF_COUNT_HW_* constants in the unix package.
+	PerfEventConfig int
+
+	// PerfEventCPUCount - (Perf event) This parameter defines the number of CPUs to monitor. If not set, defaults to
+	// runtime.NumCPU(). Disclaimer: in containerized environment and depending on the CPU affinity of the program
+	// holding the manager, runtime.NumCPU might not return the real CPU count of the host.
+	PerfEventCPUCount int
+
+	// perfEventCPUFDs - (Perf event) holds the FD of the perf_event program per CPU
+	perfEventCPUFDs []*FD
+
 	// tcObject - (TC classifier) TC object created when the classifier was attached. It will be reused to delete it on
 	// exit.
 	tcObject *tc.Object
@@ -229,6 +258,12 @@ func (p *Probe) Copy() *Probe {
 			EBPFSection:  p.EBPFSection,
 		},
 		SyscallFuncName:  p.SyscallFuncName,
+		CopyProgram:      p.CopyProgram,
+		SamplePeriod:     p.SamplePeriod,
+		SampleFrequency:  p.SampleFrequency,
+		PerfEventType:    p.PerfEventType,
+		PerfEventPID:     p.PerfEventPID,
+		PerfEventConfig:  p.PerfEventConfig,
 		MatchFuncName:    p.MatchFuncName,
 		Enabled:          p.Enabled,
 		PinPath:          p.PinPath,
@@ -466,6 +501,8 @@ func (p *Probe) attach() error {
 		err = p.attachXDP()
 	case ebpf.LSM:
 		err = p.attachLSM()
+	case ebpf.PerfEvent:
+		err = p.attachPerfEvent()
 	default:
 		err = fmt.Errorf("program type %s not implemented yet", p.programSpec.Type)
 	}
@@ -539,6 +576,8 @@ func (p *Probe) detach() error {
 		err = ConcatErrors(err, p.detachXDP())
 	case ebpf.LSM:
 		err = ConcatErrors(err, p.detachLSM())
+	case ebpf.PerfEvent:
+		err = ConcatErrors(err, p.detachPerfEvent())
 	default:
 		// unsupported section, nothing to do either
 		break
@@ -959,4 +998,54 @@ func (p *Probe) detachLSM() error {
 		}
 	}
 	return nil
+}
+
+// attachPerfEvent - Attaches the perf_event program
+func (p *Probe) attachPerfEvent() error {
+	if p.PerfEventType != unix.PERF_TYPE_HARDWARE && p.PerfEventType != unix.PERF_TYPE_SOFTWARE {
+		return fmt.Errorf("unknown PerfEventType parameter: %v (expected unix.PERF_TYPE_HARDWARE or unix.PERF_TYPE_SOFTWARE)", p.PerfEventType)
+	}
+
+	attr := unix.PerfEventAttr{
+		Type:   uint32(p.PerfEventType),
+		Sample: uint64(p.SamplePeriod),
+		Config: uint64(p.PerfEventConfig),
+	}
+
+	if p.SampleFrequency > 0 {
+		attr.Sample = uint64(p.SampleFrequency)
+		attr.Bits |= unix.PerfBitFreq
+	}
+
+	if p.PerfEventCPUCount == 0 {
+		p.PerfEventCPUCount = runtime.NumCPU()
+	}
+
+	pid := p.PerfEventPID
+	if pid == 0 {
+		pid = -1
+	}
+
+	for cpu := 0; cpu < p.PerfEventCPUCount; cpu++ {
+		fd, err := perfEventOpenRaw(&attr, pid, cpu, -1, 0)
+		if err != nil {
+			return fmt.Errorf("couldn't attach perf_event program %s on pid %d and CPU %d: %v", p.ProbeIdentificationPair, pid, cpu, err)
+		}
+		p.perfEventCPUFDs = append(p.perfEventCPUFDs, fd)
+
+		if err = ioctlPerfEventEnable(fd, p.program.FD()); err != nil {
+			return fmt.Errorf("couldn't enable perf event %s for pid %d and CPU %d: %w", p.ProbeIdentificationPair, pid, cpu, err)
+		}
+	}
+	return nil
+}
+
+// detachPerfEvent - Detaches the perf_event program
+func (p *Probe) detachPerfEvent() error {
+	var err error
+	for _, fd := range p.perfEventCPUFDs {
+		err = ConcatErrors(err, fd.Close())
+	}
+	p.perfEventCPUFDs = []*FD{}
+	return err
 }
