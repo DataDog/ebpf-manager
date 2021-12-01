@@ -361,12 +361,9 @@ func (p *Probe) init() error {
 
 	// Retrieve eBPF program if one isn't already set
 	if p.program == nil {
-		prog, ok := p.manager.collection.Programs[selector]
-		if !ok {
-			p.lastError = ErrUnknownSectionOrFuncName
+		if p.program, p.lastError = p.manager.getProbeProgram(p.ProbeIdentificationPair); p.lastError != nil {
 			return fmt.Errorf("couldn't find program %s: %w", selector, ErrUnknownSectionOrFuncName)
 		}
-		p.program = prog
 		p.checkPin = true
 	}
 
