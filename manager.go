@@ -1040,6 +1040,9 @@ func (m *Manager) updateTailCallRoute(route TailCallRoute) error {
 		if !found || len(progs) == 0 {
 			return fmt.Errorf("couldn't find program %v: %w", route.ProbeIdentificationPair, ErrUnknownSectionOrFuncName)
 		}
+		if progs[0] == nil {
+			return fmt.Errorf("the program that you are trying to route to is empty")
+		}
 		fd = uint32(progs[0].FD())
 	}
 
@@ -1062,10 +1065,28 @@ func (m *Manager) getProbeProgramSpec(id ProbeIdentificationPair) (*ebpf.Program
 			}
 		}
 		if !excluded {
-			return nil, fmt.Errorf("couldn't find program %s: %w", id, ErrUnknownSectionOrFuncName)
+			return nil, fmt.Errorf("couldn't find program spec %s: %w", id, ErrUnknownSectionOrFuncName)
 		}
 	}
 	return spec, nil
+}
+
+func (m *Manager) getProbeProgram(id ProbeIdentificationPair) (*ebpf.Program, error) {
+	p, ok := m.collection.Programs[id.EBPFFuncName]
+	if !ok {
+		// Check if the probe section is in the list of excluded sections
+		var excluded bool
+		for _, excludedSection := range m.options.ExcludedSections {
+			if excludedSection == id.EBPFSection {
+				excluded = true
+				break
+			}
+		}
+		if !excluded {
+			return nil, fmt.Errorf("couldn't find program %s: %w", id, ErrUnknownSectionOrFuncName)
+		}
+	}
+	return p, nil
 }
 
 // matchSpecs - Match loaded maps and program specs with the maps and programs provided to the manager
@@ -1102,6 +1123,37 @@ func (m *Manager) matchSpecs() error {
 			return fmt.Errorf("couldn't find map at maps/%s: %w", perfMap.Name, ErrUnknownSection)
 		}
 		perfMap.arraySpec = spec
+	}
+	return nil
+}
+
+// matchBPFObjects - Match loaded maps and program specs with the maps and programs provided to the manager
+func (m *Manager) matchBPFObjects() error {
+	// Match programs
+	for _, probe := range m.Probes {
+		program, err := m.getProbeProgram(probe.ProbeIdentificationPair)
+		if err != nil {
+			return err
+		}
+		probe.program = program
+	}
+
+	// Match maps
+	for _, managerMap := range m.Maps {
+		arr, ok := m.collection.Maps[managerMap.Name]
+		if !ok {
+			return fmt.Errorf("couldn't find map at maps/%s: %w", managerMap.Name, ErrUnknownSection)
+		}
+		managerMap.array = arr
+	}
+
+	// Match perfmaps
+	for _, perfMap := range m.PerfMaps {
+		arr, ok := m.collection.Maps[perfMap.Name]
+		if !ok {
+			return fmt.Errorf("couldn't find map at maps/%s: %w", perfMap.Name, ErrUnknownSection)
+		}
+		perfMap.array = arr
 	}
 	return nil
 }
@@ -1360,6 +1412,11 @@ func (m *Manager) loadCollection() error {
 	m.collection, err = ebpf.NewCollectionWithOptions(m.collectionSpec, m.options.VerifierOptions)
 	if err != nil {
 		return fmt.Errorf("couldn't load eBPF programs: %w", err)
+	}
+
+	// match loaded BPF objects
+	if err = m.matchBPFObjects(); err != nil {
+		return fmt.Errorf("couldn't match BPF objects: %w", err)
 	}
 
 	// Initialize Maps
