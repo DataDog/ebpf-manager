@@ -1190,6 +1190,7 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 		m.stateLock.Unlock()
 		return ErrManagerNotInitialized
 	}
+	defer m.stateLock.Unlock()
 
 	currentProbes := make(map[ProbeIdentificationPair]*Probe)
 	for _, p := range m.Probes {
