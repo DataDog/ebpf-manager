@@ -935,12 +935,12 @@ func (m *Manager) CloneProgram(UID string, newProbe *Probe, constantsEditors []C
 	}
 
 	// Write current maps
-	if err = m.rewriteMaps(newProbe.programSpec, m.collection.Maps); err != nil {
+	if err = m.rewriteMaps(newProbe.programSpec, m.collection.Maps, false); err != nil {
 		return fmt.Errorf("couldn't rewrite maps in %v: %w", newProbe.ProbeIdentificationPair, err)
 	}
 
 	// Rewrite with new maps
-	if err = m.rewriteMaps(newProbe.programSpec, mapEditors); err != nil {
+	if err = m.rewriteMaps(newProbe.programSpec, mapEditors, true); err != nil {
 		return fmt.Errorf("couldn't rewrite maps in %v: %w", newProbe.ProbeIdentificationPair, err)
 	}
 
@@ -1328,12 +1328,13 @@ func (m *Manager) editConstant(prog *ebpf.ProgramSpec, editor ConstantEditor) er
 	return nil
 }
 
-// rewriteMaps - Rewrite the provided program spec with the provided maps
-func (m *Manager) rewriteMaps(program *ebpf.ProgramSpec, eBPFMaps map[string]*ebpf.Map) error {
+// rewriteMaps - Rewrite the provided program spec with the provided maps. failOnError controls if an error should be
+// returned when a map couldn't be rewritten.
+func (m *Manager) rewriteMaps(program *ebpf.ProgramSpec, eBPFMaps map[string]*ebpf.Map, failOnError bool) error {
 	for symbol, eBPFMap := range eBPFMaps {
 		fd := eBPFMap.FD()
 		err := program.Instructions.RewriteMapPtr(symbol, fd)
-		if err != nil {
+		if err != nil && failOnError {
 			return fmt.Errorf("couldn't rewrite map %s: %w", symbol, err)
 		}
 	}
