@@ -1185,6 +1185,12 @@ func (m *Manager) activateProbes() {
 
 // UpdateActivatedProbes - update the list of activated probes
 func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
+	m.stateLock.Lock()
+	if m.state < initialized {
+		m.stateLock.Unlock()
+		return ErrManagerNotInitialized
+	}
+
 	currentProbes := make(map[ProbeIdentificationPair]*Probe)
 	for _, p := range m.Probes {
 		if p.Enabled {

@@ -290,7 +290,7 @@ func main() {
 			ProbeIdentificationPair: mkdirID,
 		},
 	}); err != nil {
-		logrus.Error(err)
+		logrus.Fatal(err)
 	}
 
 	vfsOpenID := manager.ProbeIdentificationPair{EBPFSection: "kprobe/vfs_opennnnnn", EBPFFuncName: "kprobe_vfs_opennnnnn"}
