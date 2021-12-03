@@ -482,32 +482,6 @@ func (fd *FD) Close() error {
 	return unix.Close(value)
 }
 
-func parseEBPFPrefix(section string) (string, string) {
-	splittedSection := strings.SplitN(section, "/", 2)
-	if len(splittedSection) <= 1 {
-		return "", section
-	}
-
-	switch splittedSection[0] {
-	case "cgroup", "cgroup_skb", "sk_skb":
-		// parse the second "/" to get the full prefix
-		splittedSection = strings.SplitN(section, "/", 3)
-		if len(splittedSection) <= 2 {
-			return splittedSection[0], splittedSection[1]
-		}
-		return fmt.Sprintf("%s/%s", splittedSection[0], splittedSection[1]), splittedSection[2]
-	case "tracepoint":
-		// parse the second "/" to get the function name
-		splittedSection = strings.SplitN(section, "/", 3)
-		if len(splittedSection) <= 2 {
-			return splittedSection[0], splittedSection[1]
-		}
-		return splittedSection[0], splittedSection[2]
-	default:
-		return splittedSection[0], splittedSection[1]
-	}
-}
-
 var (
 	// kprobePMUType is used to cache the kprobe PMY type value
 	kprobePMUType = struct {

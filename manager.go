@@ -165,10 +165,10 @@ type Options struct {
 	// If the list is empty, all probes will be activated.
 	ActivatedProbes []ProbesSelector
 
-	// ExcludedSections - A list of sections that should not even be verified. This list overrides the ActivatedProbes
+	// ExcludedFunctions - A list of functions that should not even be verified. This list overrides the ActivatedProbes
 	// list: since the excluded sections aren't loaded in the kernel, all the probes using those sections will be
 	// deactivated.
-	ExcludedSections []string
+	ExcludedFunctions []string
 
 	// ConstantsEditor - Post-compilation constant edition. See ConstantEditor for more.
 	ConstantEditors []ConstantEditor
@@ -454,9 +454,9 @@ func (m *Manager) RenameProbeIdentificationPair(oldID ProbeIdentificationPair, n
 
 	if oldID.EBPFSection != newID.EBPFSection {
 		// edit the excluded sections
-		for i, section := range m.options.ExcludedSections {
-			if section == oldID.EBPFSection {
-				m.options.ExcludedSections[i] = newID.EBPFSection
+		for i, excludedFuncName := range m.options.ExcludedFunctions {
+			if excludedFuncName == oldID.EBPFFuncName {
+				m.options.ExcludedFunctions[i] = newID.EBPFFuncName
 			}
 		}
 	}
@@ -518,9 +518,7 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	}
 
 	// Remove excluded sections
-	var excludedFuncName string
-	for _, excludedSection := range m.options.ExcludedSections {
-		_, excludedFuncName = parseEBPFPrefix(excludedSection)
+	for _, excludedFuncName := range m.options.ExcludedFunctions {
 		delete(m.collectionSpec.Programs, excludedFuncName)
 	}
 
@@ -1058,8 +1056,8 @@ func (m *Manager) getProbeProgramSpec(id ProbeIdentificationPair) (*ebpf.Program
 	if !ok {
 		// Check if the probe section is in the list of excluded sections
 		var excluded bool
-		for _, excludedSection := range m.options.ExcludedSections {
-			if excludedSection == id.EBPFSection {
+		for _, excludedFuncName := range m.options.ExcludedFunctions {
+			if excludedFuncName == id.EBPFFuncName {
 				excluded = true
 				break
 			}
@@ -1076,8 +1074,8 @@ func (m *Manager) getProbeProgram(id ProbeIdentificationPair) (*ebpf.Program, er
 	if !ok {
 		// Check if the probe section is in the list of excluded sections
 		var excluded bool
-		for _, excludedSection := range m.options.ExcludedSections {
-			if excludedSection == id.EBPFSection {
+		for _, excludedFuncName := range m.options.ExcludedFunctions {
+			if excludedFuncName == id.EBPFFuncName {
 				excluded = true
 				break
 			}
@@ -1169,8 +1167,8 @@ func (m *Manager) activateProbes() {
 				}
 			}
 		}
-		for _, p := range m.options.ExcludedSections {
-			if mProbe.EBPFSection == p {
+		for _, excludedFuncName := range m.options.ExcludedFunctions {
+			if mProbe.EBPFFuncName == excludedFuncName {
 				shouldActivate = false
 			}
 		}
@@ -1187,6 +1185,13 @@ func (m *Manager) activateProbes() {
 
 // UpdateActivatedProbes - update the list of activated probes
 func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
+	m.stateLock.Lock()
+	if m.state < initialized {
+		m.stateLock.Unlock()
+		return ErrManagerNotInitialized
+	}
+	defer m.stateLock.Unlock()
+
 	currentProbes := make(map[ProbeIdentificationPair]*Probe)
 	for _, p := range m.Probes {
 		if p.Enabled {
@@ -1202,14 +1207,19 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 	}
 
 	for id := range nextProbes {
-		if _, alreadyPresent := currentProbes[id]; alreadyPresent {
+		var probe *Probe
+		if currentProbe, alreadyPresent := currentProbes[id]; alreadyPresent {
 			delete(currentProbes, id)
+			probe = currentProbe
 		} else {
-			probe, found := m.GetProbe(id)
+			var found bool
+			probe, found = m.GetProbe(id)
 			if !found {
 				return fmt.Errorf("couldn't find program %s: %w", id, ErrUnknownSectionOrFuncName)
 			}
 			probe.Enabled = true
+		}
+		if !probe.IsRunning() {
 			if err := probe.Init(m); err != nil {
 				return err
 			}

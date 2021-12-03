@@ -105,8 +105,8 @@ var options1 = manager.Options{
 				},
 			},
 		}},
-	ExcludedSections: []string{
-		"kprobe/exclude2",
+	ExcludedFunctions: []string{
+		"kprobe_exclude2",
 	},
 }
 
@@ -177,8 +177,8 @@ var options2 = manager.Options{
 			},
 		},
 	},
-	ExcludedSections: []string{
-		"kprobe/exclude",
+	ExcludedFunctions: []string{
+		"kprobe_exclude",
 	},
 }
 
@@ -280,6 +280,9 @@ func main() {
 	}
 
 	logrus.Println("updating activated probes of m3 (no error is expected)")
+	if err := m3.Init(recoverAssets()); err != nil {
+		logrus.Fatal(err)
+	}
 
 	mkdirID := manager.ProbeIdentificationPair{UID: "MyVFSMkdir2", EBPFSection: "kprobe/vfs_mkdir", EBPFFuncName: "kprobe_vfs_mkdir"}
 	if err := m3.UpdateActivatedProbes([]manager.ProbesSelector{
@@ -287,7 +290,7 @@ func main() {
 			ProbeIdentificationPair: mkdirID,
 		},
 	}); err != nil {
-		logrus.Error(err)
+		logrus.Fatal(err)
 	}
 
 	vfsOpenID := manager.ProbeIdentificationPair{EBPFSection: "kprobe/vfs_opennnnnn", EBPFFuncName: "kprobe_vfs_opennnnnn"}
