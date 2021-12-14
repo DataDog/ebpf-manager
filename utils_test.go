@@ -1,6 +1,9 @@
 package manager
 
 import (
+	"debug/elf"
+	"os"
+	"os/exec"
 	"testing"
 )
 
@@ -29,5 +32,79 @@ func TestGenerateEventName(t *testing.T) {
 	_, err = GenerateEventName(probeType, funcName, UID, kprobeAttachPID)
 	if err == nil {
 		t.Errorf("Test should failed as event name length is too big for the kernel and free space for function Name is < %d", MinFunctionNameLen)
+	}
+}
+
+// return "/usr/lib/ld-2.33.so" for example
+func detectLDLoaderPath(t *testing.T) string {
+	out, err := exec.Command("bash", "-c", `grep '/ld-.*\.so$' /proc/self/maps | head -n1 | awk '{print $6}'`).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out[:len(out)-1])
+}
+
+func openAndListSymbols(t *testing.T, path string) []elf.Symbol {
+	f, sym, err := OpenAndListSymbols(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	return sym
+}
+
+func openAndListSymbolsFromPID(t *testing.T, path string) []elf.Symbol {
+	f, sym, err := OpenAndListSymbolsFromPID(os.Getpid(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	return sym
+}
+
+func TestOpenAndListSymbols(t *testing.T) {
+	path := detectLDLoaderPath(t)
+
+	syms := openAndListSymbols(t, path)
+	t.Log("NR symbol loaded:", len(syms))
+}
+
+func TestOpenAndListSymbolsFromPID(t *testing.T) {
+	path := detectLDLoaderPath(t)
+
+	syms := openAndListSymbolsFromPID(t, path)
+	t.Log("NR symbol loaded:", len(syms))
+}
+
+func TestCheckIfAllMemorySymbolMatchLibrary(t *testing.T) {
+	path := detectLDLoaderPath(t)
+
+	symsFromLib := openAndListSymbols(t, path)
+	symsFromMem := openAndListSymbolsFromPID(t, path)
+
+	if len(symsFromMem) == 0 || len(symsFromLib) == 0 {
+		t.Fatalf("no symbols returned mem %d lib %d", len(symsFromMem), len(symsFromLib))
+	}
+
+	/* memory file report only dynamic symbol */
+	m := make(map[string]elf.Symbol)
+	for _, s := range symsFromMem {
+		if _, ok := m[s.Name]; ok {
+			t.Fatal("library symbol collision")
+		}
+		m[s.Name] = s
+	}
+
+	symFound := make(map[string]bool)
+	for _, s := range symsFromLib {
+		if _, ok := m[s.Name]; ok {
+			if s.Value != m[s.Name].Value {
+				t.Fatalf("symbol address/offset missmatch %v %v\t%s", s.Value, m[s.Name].Value, s.Name)
+			}
+			symFound[s.Name] = true
+		}
+	}
+	if len(m) != len(symFound) {
+		t.Error("can't resolve symbol from memory (memory ELF vs library ELF file")
 	}
 }

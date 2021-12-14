@@ -15,9 +15,14 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"unsafe"
 
 	"github.com/cilium/ebpf"
 	"golang.org/x/sys/unix"
+
+	"github.com/DataDog/ebpf-manager/elfmap"
+	"github.com/DataDog/gopsutil/process"
+	"github.com/DataDog/gopsutil/process/so"
 )
 
 type state uint
@@ -375,6 +380,146 @@ func unregisterUprobeEventWithEventName(eventName string) error {
 	return nil
 }
 
+type memoryAccess int
+
+const (
+	Direct memoryAccess = iota
+	Ptrace
+)
+
+type processMemory struct {
+	memoryAccess memoryAccess
+	pid          int
+}
+
+func newProcessMemory(targetPID int) *processMemory {
+	p := &processMemory{
+		pid: targetPID,
+	}
+	if targetPID == os.Getpid() {
+		p.memoryAccess = Direct
+	} else {
+		p.memoryAccess = Ptrace
+	} /* else { eRPC.Peek(addr, size) }  */
+	return p
+}
+
+func (p *processMemory) PeekMemory(addr uintptr, size uint64) ([]byte, error) {
+	mem := make([]byte, size)
+
+	switch p.memoryAccess {
+	case Direct:
+		/* Ugly memcpy, but golang firendly */
+		for i := uint64(0); i < size; i++ {
+			var src *uint8 = (*uint8)(unsafe.Pointer(addr + uintptr(i)))
+			mem[i] = *src
+		}
+		return mem, nil
+	case Ptrace:
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+
+		err := syscall.PtraceAttach(p.pid)
+		if err != nil {
+			return nil, fmt.Errorf("ptrace attach: %w", err)
+		}
+		_, err = syscall.Wait4(p.pid, nil, 0, nil)
+		if err != nil {
+			return nil, fmt.Errorf("wait4: %w", err)
+		}
+		copied, err := syscall.PtracePeekData(p.pid, addr, mem[:])
+		if err != nil || copied != 8 {
+			return nil, fmt.Errorf("ptrace peek data: %w", err)
+		}
+		err = syscall.PtraceDetach(p.pid)
+		if err != nil {
+			return nil, fmt.Errorf("ptrace detach: %w", err)
+		}
+		return mem, nil
+		/* case eRPC: { return eRPC.Peek(p.pid, addr, size) } */
+	}
+	return nil, nil
+}
+
+func memELFFromProcMaps(pid int, path string) ([]byte, uintptr, error) {
+	p, err := process.NewProcess(int32(pid))
+	if err != nil {
+		return nil, uintptr(0), err
+	}
+	procMaps, err := p.MemoryMaps(true)
+	if err != nil {
+		return nil, uintptr(0), err
+	}
+	b := make([]byte, 0)
+
+	offset := int64(0)
+	vBaseAddr := uintptr(0)
+	for _, m := range *procMaps {
+		if m.Path == path && m.Permission.Read {
+			if offset == 0 {
+				vBaseAddr = m.StartAddr
+			}
+			if uint64(offset) != m.Offset {
+				if m.Offset > uint64(offset) {
+					b = append(b, make([]byte, m.Offset-uint64(offset))...)
+				}
+				if uint64(offset) > m.Offset {
+					b = b[:m.Offset] /* truncate */
+					offset = int64(m.Offset)
+				}
+			}
+
+			pMem := newProcessMemory(pid)
+			size := int64(m.EndAddr - m.StartAddr)
+			if size <= 0 {
+				return nil, uintptr(0), fmt.Errorf("wrong mapping 0x%x 0x%x", m.EndAddr, m.StartAddr)
+			}
+			mem, err := pMem.PeekMemory(m.StartAddr, uint64(size))
+			if err != nil {
+				return nil, uintptr(0), fmt.Errorf("process (%d) peek memory: %w", pid, err)
+			}
+
+			b = append(b, mem...)
+			offset += size
+		}
+	}
+	return b, vBaseAddr, nil
+}
+
+// OpenAndListSymbolsFromPID - Opens an elf file matching path from memory (/proc/pid/maps)  and extracts all its symbols
+func OpenAndListSymbolsFromPID(pid int, path string) (*elf.File, []elf.Symbol, error) {
+	b, vBaseAddr, err := memELFFromProcMaps(pid, path)
+	if err != nil {
+		return nil, nil, fmt.Errorf("couldn't create elf from /proc/pid/maps %d %s: %w", pid, path, err)
+	}
+
+	f, err := elfmap.OpenMapBytes(bytes.NewReader(b), vBaseAddr)
+	if err != nil {
+		return nil, nil, fmt.Errorf("couldn't open memory elf from /proc/pid/maps %d %s: %w", pid, path, err)
+	}
+	defer f.Close()
+
+	// Loop through all symbols
+	syms, errSyms := f.Symbols()
+	dynSyms, errDynSyms := f.DynamicSymbols()
+	syms = append(syms, dynSyms...)
+
+	if len(syms) == 0 {
+		var err error
+		if errSyms != nil {
+			err = fmt.Errorf("failed to list symbols %w", err)
+		}
+		if errDynSyms != nil {
+			err = fmt.Errorf("failed to list dynamic symbols %w", err)
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, nil, errors.New("no symbols found")
+	}
+	return f.Elf, syms, nil
+}
+
 // OpenAndListSymbols - Opens an elf file and extracts all its symbols
 func OpenAndListSymbols(path string) (*elf.File, []elf.Symbol, error) {
 	// open elf file
@@ -425,11 +570,40 @@ func SanitizeUprobeAddresses(f *elf.File, syms []elf.Symbol) {
 
 // FindSymbolOffsets - Parses the provided file and returns the offsets of the symbols that match the provided pattern
 func FindSymbolOffsets(path string, pattern *regexp.Regexp) ([]elf.Symbol, error) {
+	var syms []elf.Symbol
 	f, syms, err := OpenAndListSymbols(path)
 	if err != nil {
+		libRegex, err := regexp.Compile(path)
+		if err != nil {
+			return nil, err
+		}
+		libs := so.Find(libRegex)
+		if len(libs) == 0 {
+			return nil, fmt.Errorf("Can't find running process that have this lib %s loaded", path)
+		}
+		found := false
+		for _, lib := range libs {
+			for _, pidPath := range lib.PidsPath {
+				pidStr := filepath.Base(pidPath)
+				var pid int
+				pid, err = strconv.Atoi(pidStr)
+				if err != nil {
+					continue
+				}
+				f, syms, err = OpenAndListSymbolsFromPID(pid, path)
+				if err == nil {
+					found = true
+					goto found_syms
+				}
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("Can't find/read memory of process for lib %s last error: %w", path, err)
+		}
 		return nil, err
 	}
 
+found_syms:
 	var matches []elf.Symbol
 	for _, sym := range syms {
 		if elf.ST_TYPE(sym.Info) == elf.STT_FUNC && pattern.MatchString(sym.Name) {
