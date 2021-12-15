@@ -131,6 +131,7 @@ type Probe struct {
 	attachPID           int
 	attachRetryAttempt  uint
 	attachedWithDebugFS bool
+	systemWideID        uint32
 
 	// lastError - stores the last error that the probe encountered, it is used to surface a more useful error message
 	// when one of the validators (see Options.ActivatedProbes) fails.
@@ -441,6 +442,17 @@ func (p *Probe) init() error {
 		p.ProbeRetryDelay = p.manager.options.DefaultProbeRetryDelay
 	}
 
+	// fetch system-wide program ID, if the feature is available
+	if p.program != nil {
+		programInfo, err := p.program.Info()
+		if err == nil {
+			id, available := programInfo.ID()
+			if available {
+				p.systemWideID = uint32(id)
+			}
+		}
+	}
+
 	// update probe state
 	p.state = initialized
 	return nil
@@ -631,6 +643,7 @@ func (p *Probe) reset() {
 	p.attachPID = 0
 	p.attachRetryAttempt = 0
 	p.attachedWithDebugFS = false
+	p.systemWideID = 0
 }
 
 // attachKprobe - Attaches the probe to its kprobe
@@ -921,6 +934,48 @@ func (p *Probe) attachTCCLS() error {
 	p.tcObject = qdisc
 	ntl.schedClsCount++
 	return nil
+}
+
+func (p *Probe) IsTCCLSActive() bool {
+	p.stateLock.Lock()
+	defer p.stateLock.Unlock()
+	if p.state != running || !p.Enabled {
+		return false
+	}
+	if p.programSpec.Type != ebpf.SchedCLS {
+		return false
+	}
+
+	// Recover the netlink socket of the interface from the manager
+	var err error
+	ntl, ok := p.manager.netlinkCache[netlinkCacheKey{p.Ifindex, p.IfindexNetns}]
+	if !ok {
+		// Set up new netlink connection
+		ntl, err = p.manager.newNetlinkConnection(p.Ifindex, p.IfindexNetns)
+		if err != nil {
+			return false
+		}
+	}
+
+	msg := tc.Msg{
+		Family:  unix.AF_UNSPEC,
+		Ifindex: uint32(p.Ifindex),
+		Parent:  core.BuildHandle(tc.HandleRoot, uint32(p.NetworkDirection)),
+	}
+
+	resp, err := ntl.rtNetlink.Filter().Get(&msg)
+	if err != nil {
+		return false
+	}
+
+	for _, elem := range resp {
+		if elem.Attribute.BPF != nil {
+			if elem.Attribute.BPF.ID != nil && *elem.Attribute.BPF.ID == p.systemWideID {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // detachTCCLS - Detaches the probe from its TC classifier hook point
