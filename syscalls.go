@@ -70,7 +70,7 @@ func perfEventOpenPMU(name string, offset, pid int, eventType string, retProbe b
 	// when trying to create a kretprobe for a missing symbol. Make sure ENOENT
 	// is returned to the caller.
 	if errors.Is(err, os.ErrNotExist) || errors.Is(err, unix.EINVAL) {
-		return nil, fmt.Errorf("symbol '%s' not found: %w", name, os.ErrNotExist)
+		return nil, fmt.Errorf("symbol '%s' not found: %w", name, syscall.EINVAL)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("opening perf event: %w", err)
