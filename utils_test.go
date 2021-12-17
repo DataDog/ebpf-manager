@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestGenerateEventName(t *testing.T) {
@@ -36,55 +38,64 @@ func TestGenerateEventName(t *testing.T) {
 }
 
 // return "/usr/lib/ld-2.33.so" for example
-func detectLDLoaderPath(t *testing.T) string {
+func detectLDLoaderPath(t *testing.T) (string, error) {
 	out, err := exec.Command("bash", "-c", `grep '/ld-.*\.so$' /proc/self/maps | head -n1 | awk '{print $6}'`).Output()
 	if err != nil {
-		t.Fatal(err)
+		return "", err
 	}
-	return string(out[:len(out)-1])
+	return string(out[:len(out)-1]), nil
 }
 
-func openAndListSymbols(t *testing.T, path string) []elf.Symbol {
+func openAndListSymbols(t *testing.T, path string) ([]elf.Symbol, error) {
 	f, sym, err := OpenAndListSymbols(path)
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	defer f.Close()
-	return sym
+	return sym, nil
 }
 
-func openAndListSymbolsFromPID(t *testing.T, path string) []elf.Symbol {
+func openAndListSymbolsFromPID(t *testing.T, path string) ([]elf.Symbol, error) {
 	f, sym, err := OpenAndListSymbolsFromPID(os.Getpid(), path)
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	defer f.Close()
-	return sym
+	return sym, nil
 }
 
 func TestOpenAndListSymbols(t *testing.T) {
-	path := detectLDLoaderPath(t)
+	path, err := detectLDLoaderPath(t)
+	require.NoError(t, err)
 
-	syms := openAndListSymbols(t, path)
+	syms, err := openAndListSymbols(t, path)
+	require.NoError(t, err)
+	require.True(t, len(syms) > 0)
+
 	t.Log("NR symbol loaded:", len(syms))
 }
 
 func TestOpenAndListSymbolsFromPID(t *testing.T) {
-	path := detectLDLoaderPath(t)
+	path, err := detectLDLoaderPath(t)
+	require.NoError(t, err)
 
-	syms := openAndListSymbolsFromPID(t, path)
+	syms, err := openAndListSymbolsFromPID(t, path)
+	require.NoError(t, err)
+	require.True(t, len(syms) > 0)
+
 	t.Log("NR symbol loaded:", len(syms))
 }
 
 func TestCheckIfAllMemorySymbolMatchLibrary(t *testing.T) {
-	path := detectLDLoaderPath(t)
+	path, err := detectLDLoaderPath(t)
+	require.NoError(t, err)
 
-	symsFromLib := openAndListSymbols(t, path)
-	symsFromMem := openAndListSymbolsFromPID(t, path)
-
-	if len(symsFromMem) == 0 || len(symsFromLib) == 0 {
-		t.Fatalf("no symbols returned mem %d lib %d", len(symsFromMem), len(symsFromLib))
-	}
+	symsFromLib, err := openAndListSymbols(t, path)
+	require.NoError(t, err)
+	require.True(t, len(symsFromLib) > 0)
+	symsFromMem, err := openAndListSymbolsFromPID(t, path)
+	require.NoError(t, err)
+	require.True(t, len(symsFromMem) > 0)
 
 	/* memory file report only dynamic symbol */
 	m := make(map[string]elf.Symbol)
