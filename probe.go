@@ -646,20 +646,45 @@ func (p *Probe) reset() {
 	p.systemWideID = 0
 }
 
-// attachKprobe - Attaches the probe to its kprobe
-func (p *Probe) attachKprobe() error {
-	var err error
-
-	if len(p.HookFuncName) == 0 {
-		return errors.New("HookFuncName, MatchFuncName or SyscallFuncName is required")
-	}
-
+// attachWithKprobeEvents attach kprobes using the kprobes events ABI
+func (p *Probe) attachWithKprobeEvents() error {
 	// Prepare kprobe_events line parameters
 	var maxActiveStr string
 	if p.GetKprobeType() == RetProbeType {
 		if p.KProbeMaxActive > 0 {
 			maxActiveStr = fmt.Sprintf("%d", p.KProbeMaxActive)
 		}
+	}
+
+	// Fallback to debugfs, write kprobe_events line to register kprobe
+	var kprobeID int
+	kprobeID, err := registerKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, maxActiveStr, p.attachPID)
+	if err == ErrKprobeIDNotExist {
+		// The probe might have been loaded under a kernel generated event name. Clean up just in case.
+		_ = unregisterKprobeEventWithEventName(getKernelGeneratedEventName(p.GetKprobeType(), p.HookFuncName))
+		// fallback without KProbeMaxActive
+		kprobeID, err = registerKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, "", p.attachPID)
+	}
+	if err != nil {
+		return fmt.Errorf("couldn't enable kprobe %s: %w", p.ProbeIdentificationPair, err)
+	}
+
+	// create perf event FD
+	p.perfEventFD, err = perfEventOpenTracingEvent(kprobeID)
+	if err != nil {
+		return fmt.Errorf("couldn't open perf event FD for %s: %w", p.ProbeIdentificationPair, err)
+	}
+	p.attachedWithDebugFS = true
+
+	return nil
+}
+
+// attachKprobe - Attaches the probe to its kprobe
+func (p *Probe) attachKprobe() error {
+	var err error
+
+	if len(p.HookFuncName) == 0 {
+		return errors.New("HookFuncName, MatchFuncName or SyscallFuncName is required")
 	}
 
 	if p.GetKprobeType() == UnknownProbeType {
@@ -669,28 +694,19 @@ func (p *Probe) attachKprobe() error {
 
 	p.attachPID = os.Getpid()
 
-	// try to use the perf_event_open ABI first (e12f03d "perf/core: Implement the 'perf_kprobe' PMU")
-	p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", p.GetKprobeType() == "r", 0)
-	if err != nil {
-		// Fallback to debugfs, write kprobe_events line to register kprobe
-		var kprobeID int
-		kprobeID, err = registerKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, maxActiveStr, p.attachPID)
-		if err == ErrKprobeIDNotExist {
-			// The probe might have been loaded under a kernel generated event name. Clean up just in case.
-			_ = unregisterKprobeEventWithEventName(getKernelGeneratedEventName(p.GetKprobeType(), p.HookFuncName))
-			// fallback without KProbeMaxActive
-			kprobeID, err = registerKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, "", p.attachPID)
+	// currently the perf event open ABI doesn't allow to specify the max active parameter
+	if p.KProbeMaxActive > 0 {
+		if err = p.attachWithKprobeEvents(); err != nil {
+			if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", p.GetKprobeType() == "r", 0); err != nil {
+				return err
+			}
 		}
-		if err != nil {
-			return fmt.Errorf("couldn't enable kprobe %s: %w", p.ProbeIdentificationPair, err)
+	} else {
+		if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", p.GetKprobeType() == "r", 0); err != nil {
+			if err = p.attachWithKprobeEvents(); err != nil {
+				return err
+			}
 		}
-
-		// create perf event FD
-		p.perfEventFD, err = perfEventOpenTracingEvent(kprobeID)
-		if err != nil {
-			return fmt.Errorf("couldn't open perf event FD for %s: %w", p.ProbeIdentificationPair, err)
-		}
-		p.attachedWithDebugFS = true
 	}
 
 	// enable perf event
