@@ -579,9 +579,9 @@ func FindSymbolOffsets(path string, pattern *regexp.Regexp) ([]elf.Symbol, error
 		}
 		libs := so.Find(libRegex)
 		if len(libs) == 0 {
-			return nil, fmt.Errorf("Can't find running process that have this lib %s loaded", path)
+			return nil, fmt.Errorf("can't find running process that have this lib %s loaded", path)
 		}
-		found := false
+	found_syms:
 		for _, lib := range libs {
 			for _, pidPath := range lib.PidsPath {
 				pidStr := filepath.Base(pidPath)
@@ -592,18 +592,15 @@ func FindSymbolOffsets(path string, pattern *regexp.Regexp) ([]elf.Symbol, error
 				}
 				f, syms, err = OpenAndListSymbolsFromPID(pid, path)
 				if err == nil {
-					found = true
-					goto found_syms
+					break found_syms
 				}
 			}
 		}
-		if !found {
-			return nil, fmt.Errorf("Can't find/read memory of process for lib %s last error: %w", path, err)
+		if err != nil {
+			return nil, fmt.Errorf("can't find/read memory of process for lib %s last error: %w", path, err)
 		}
-		return nil, err
 	}
 
-found_syms:
 	var matches []elf.Symbol
 	for _, sym := range syms {
 		if elf.ST_TYPE(sym.Info) == elf.STT_FUNC && pattern.MatchString(sym.Name) {
