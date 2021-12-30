@@ -1138,6 +1138,9 @@ func (m *Manager) matchBPFObjects() error {
 
 	// Match maps
 	for _, managerMap := range m.Maps {
+		if managerMap.externalMap {
+			continue
+		}
 		arr, ok := m.collection.Maps[managerMap.Name]
 		if !ok {
 			return fmt.Errorf("couldn't find map at maps/%s: %w", managerMap.Name, ErrUnknownSection)
