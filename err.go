@@ -17,7 +17,7 @@ var (
 	ErrKprobeIDNotExist         = errors.New("kprobe id file doesn't exist")
 	ErrUprobeIDNotExist         = errors.New("uprobe id file doesn't exist")
 	ErrCloneProbeRequired       = errors.New("use CloneProbe to load 2 instances of the same program")
-	ErrInterfaceNotSet          = errors.New("interface not provided: at least one of Ifindex and Ifname must be set")
+	ErrInterfaceNotSet          = errors.New("interface not provided: at least one of IfIndex and IfName must be set")
 	ErrMapInitialized           = errors.New("map already initialized")
 	ErrMapNotInitialized        = errors.New("the map must be initialized first")
 	ErrMapNotRunning            = errors.New("the map is not running")
