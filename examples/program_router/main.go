@@ -13,7 +13,7 @@ var m = &manager.Manager{
 				EBPFSection:  "classifier/one",
 				EBPFFuncName: "one",
 			},
-			Ifname:           "enp0s3", // change this to the interface index connected to the internet
+			IfName:           "enp0s3", // change this to the interface index connected to the internet
 			NetworkDirection: manager.Egress,
 		},
 	},
