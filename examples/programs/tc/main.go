@@ -1,14 +1,21 @@
 package main
 
 import (
-	manager "github.com/DataDog/ebpf-manager"
+	"fmt"
+	"os"
+	"os/signal"
+
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sys/unix"
+
+	manager "github.com/DataDog/ebpf-manager"
 )
 
 var m = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
+				UID:          "MyUID",
 				EBPFSection:  "classifier/egress",
 				EBPFFuncName: "egress",
 			},
@@ -22,6 +29,9 @@ var m = &manager.Manager{
 			},
 			Ifname:           "enp0s3", // change this to the interface connected to the internet
 			NetworkDirection: manager.Ingress,
+			TCFilterChain:    2,
+			TCFilterProtocol: unix.ETH_P_ARP,
+			TCFilterPrio:     1000,
 		},
 	},
 }
@@ -41,9 +51,18 @@ func main() {
 
 	// Generate some network traffic to trigger the probe
 	trigger()
+	wait()
 
 	// Close the manager
 	if err := m.Stop(manager.CleanAll); err != nil {
 		logrus.Fatal(err)
 	}
+}
+
+// wait - Waits until an interrupt or kill signal is sent
+func wait() {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, os.Kill)
+	<-sig
+	fmt.Println()
 }

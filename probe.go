@@ -1,17 +1,21 @@
 package manager
 
 import (
+	"bytes"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
 	"os"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/DataDog/gopsutil/process"
 	"github.com/avast/retry-go"
 	"github.com/cilium/ebpf"
 	"github.com/florianl/go-tc"
@@ -41,14 +45,15 @@ const (
 type TrafficType uint32
 
 const (
-	Ingress = TrafficType(tc.HandleMinIngress)
-	Egress  = TrafficType(tc.HandleMinEgress)
-)
-
-const (
+	Ingress          = TrafficType(tc.HandleMinIngress)
+	Egress           = TrafficType(tc.HandleMinEgress)
 	UnknownProbeType = ""
 	ProbeType        = "p"
 	RetProbeType     = "r"
+)
+
+var (
+	BpfFlagActDirect = uint32(1) // see TCA_BPF_FLAG_ACT_DIRECT
 )
 
 type ProbeIdentificationPair struct {
@@ -132,6 +137,10 @@ type Probe struct {
 	attachRetryAttempt  uint
 	attachedWithDebugFS bool
 	systemWideID        uint32
+	programTag          []byte
+	tcFilterHandle      uint32
+	tcFilterMsg         tc.Msg
+	tcClsActQdiscObj    tc.Object
 
 	// lastError - stores the last error that the probe encountered, it is used to surface a more useful error message
 	// when one of the validators (see Options.ActivatedProbes) fails.
@@ -206,8 +215,20 @@ type Probe struct {
 	// Ifname - (TC Classifier & XDP) Interface name on which the probe will be attached.
 	Ifname string
 
-	// IfindexNetns - (TC Classifier & XDP) Network namespace in which the network interface lives
+	// IfindexNetns - (TC Classifier & XDP) Network namespace in which the network interface lives. If this value is
+	// provided, then IfIndexNetnsID is required too.
+	// WARNING: it is up to the caller of "Probe.Start()" to close this netns handle. Failing to close this handle may
+	// lead to leaking the network namespace. This handle can be safely closed once "Probe.Start()" returns.
 	IfindexNetns uint64
+
+	// IfIndexNetnsID - (TC Classifier & XDP) Network namespace ID associated of the IfindexNetns handle. If this value
+	// is provided, then IfindexNetns is required too.
+	// WARNING: it is up to the caller of "Probe.Start()" to call "manager.CleanupNetworkNamespace()" once the provided
+	// IfIndexNetnsID is no longer needed. Failing to call this cleanup function may lead to leaking the network
+	// namespace. Remember that "manager.CleanupNetworkNamespace()" will close the netlink socket opened with the netns
+	// handle provided above. If you want to start the probe again, you'll need to provide a new valid netns handle so
+	// that a new netlink socket can be created in that namespace.
+	IfIndexNetnsID uint32
 
 	// XDPAttachMode - (XDP) XDP attach mode. If not provided the kernel will automatically select the best available
 	// mode.
@@ -216,6 +237,16 @@ type Probe struct {
 	// NetworkDirection - (TC classifier) Network traffic direction of the classifier. Can be either Ingress or Egress. Keep
 	// in mind that if you are hooking on the host side of a virtuel ethernet pair, Ingress and Egress are inverted.
 	NetworkDirection TrafficType
+
+	// TCFilterPrio - (TC classifier) defines the priority of the classifier added to the clsact qdisc. Defaults to 50.
+	TCFilterPrio uint16
+
+	// TCFilterProtocol - (TC classifier) defines the protocol to match in order to trigger the classifier. Defaults to
+	// ETH_P_ALL.
+	TCFilterProtocol uint16
+
+	// TCFilterChain - (TC classifier) defines the chain to use for the TC filter. Defaults to 0.
+	TCFilterChain uint32
 
 	// SamplePeriod - (Perf event) This parameter defines when the perf_event eBPF program is triggered. When SamplePeriod > 0
 	// the program will be triggered every SamplePeriod events.
@@ -244,10 +275,6 @@ type Probe struct {
 
 	// perfEventCPUFDs - (Perf event) holds the FD of the perf_event program per CPU
 	perfEventCPUFDs []*FD
-
-	// tcObject - (TC classifier) TC object created when the classifier was attached. It will be reused to delete it on
-	// exit.
-	tcObject *tc.Object
 }
 
 // Copy - Returns a copy of the current probe instance. Only the exported fields are copied.
@@ -279,6 +306,9 @@ func (p *Probe) Copy() *Probe {
 		NetworkDirection: p.NetworkDirection,
 		ProbeRetry:       p.ProbeRetry,
 		ProbeRetryDelay:  p.ProbeRetryDelay,
+		TCFilterProtocol: p.TCFilterProtocol,
+		TCFilterPrio:     p.TCFilterPrio,
+		TCFilterChain:    p.TCFilterChain,
 	}
 }
 
@@ -413,14 +443,25 @@ func (p *Probe) init() error {
 		p.HookFuncName = p.programSpec.AttachTo
 	}
 
-	// Resolve interface index if one is provided
-	if p.Ifindex == 0 && p.Ifname != "" {
-		inter, err := net.InterfaceByName(p.Ifname)
-		if err != nil {
-			p.lastError = err
-			return fmt.Errorf("couldn't find interface %v: %w", p.Ifname, err)
-		}
-		p.Ifindex = int32(inter.Index)
+	// resolve interface index if one is provided
+	_, err := p.resolveIfIndex()
+	if err != nil {
+		return err
+	}
+
+	// resolve netns ID from netns handle
+	if p.IfindexNetns == 0 && p.IfIndexNetnsID != 0 || p.IfindexNetns != 0 && p.IfIndexNetnsID == 0 {
+		return fmt.Errorf("both IfindexNetns and IfIndexNetnsID are required if one is provided (IfindexNetns: %d IfIndexNetnsID: %d)", p.IfindexNetns, p.IfIndexNetnsID)
+	}
+
+	// set default TC classifier priority
+	if p.TCFilterPrio == 0 {
+		p.TCFilterPrio = 50
+	}
+
+	// set default TC classifier protocol
+	if p.TCFilterProtocol == 0 {
+		p.TCFilterProtocol = unix.ETH_P_ALL
 	}
 
 	// Default max active value
@@ -446,6 +487,10 @@ func (p *Probe) init() error {
 	if p.program != nil {
 		programInfo, err := p.program.Info()
 		if err == nil {
+			p.programTag, err = hex.DecodeString(programInfo.Tag)
+			if err != nil {
+				return fmt.Errorf("couldn't decode program tag %v: %w", p.ProbeIdentificationPair, err)
+			}
 			id, available := programInfo.ID()
 			if available {
 				p.systemWideID = uint32(id)
@@ -456,6 +501,20 @@ func (p *Probe) init() error {
 	// update probe state
 	p.state = initialized
 	return nil
+}
+
+// resolveIfIndex - Returns the interface IfIndex after resolving it from the provided Ifname and IfindexNetns if needed.
+func (p *Probe) resolveIfIndex() (int32, error) {
+	if p.Ifindex == 0 && len(p.Ifname) > 0 {
+		// TODO: use the netns handle, the interface might not be in the same network namespace as the manager
+		inter, err := net.InterfaceByName(p.Ifname)
+		if err != nil {
+			p.lastError = err
+			return 0, fmt.Errorf("couldn't find interface %v: %w", p.Ifname, err)
+		}
+		p.Ifindex = int32(inter.Index)
+	}
+	return p.Ifindex, nil
 }
 
 // Attach - Attaches the probe to the right hook point in the kernel depending on the program type and the provided
@@ -490,6 +549,9 @@ func (p *Probe) attach() error {
 		}
 		return ErrProbeNotInitialized
 	}
+
+	// TODO: replace with the value of the like at {HOST_PROC}/self
+	p.attachPID = os.Getpid()
 
 	// Per program type start
 	var err error
@@ -644,6 +706,10 @@ func (p *Probe) reset() {
 	p.attachRetryAttempt = 0
 	p.attachedWithDebugFS = false
 	p.systemWideID = 0
+	p.programTag = []byte{}
+	p.tcFilterHandle = 0
+	p.tcFilterMsg = tc.Msg{}
+	p.tcClsActQdiscObj = tc.Object{}
 }
 
 // attachWithKprobeEvents attach kprobes using the kprobes events ABI
@@ -691,8 +757,6 @@ func (p *Probe) attachKprobe() error {
 		// this might actually be a UProbe
 		return p.attachUprobe()
 	}
-
-	p.attachPID = os.Getpid()
 
 	// currently the perf event open ABI doesn't allow to specify the max active parameter
 	if p.KProbeMaxActive > 0 {
@@ -765,8 +829,6 @@ func (p *Probe) attachUprobe() error {
 	var err error
 
 	// Prepare uprobe_events line parameters
-	p.attachPID = os.Getpid()
-
 	if p.GetUprobeType() == UnknownProbeType {
 		// unknown type
 		return fmt.Errorf("program type unrecognized in %s: %w", p.ProbeIdentificationPair, ErrSectionFormat)
@@ -890,23 +952,21 @@ func (p *Probe) attachTCCLS() error {
 	}
 
 	// Recover the netlink socket of the interface from the manager
-	ntl, ok := p.manager.netlinkCache[netlinkCacheKey{p.Ifindex, p.IfindexNetns}]
+	ntl, ok := p.manager.netlinkCache[p.IfIndexNetnsID]
 	if !ok {
 		// Set up new netlink connection
-		ntl, err = p.manager.newNetlinkConnection(p.Ifindex, p.IfindexNetns)
+		ntl, err = p.manager.NewNetlinkConnection(p.IfindexNetns, p.IfIndexNetnsID)
 		if err != nil {
 			return err
 		}
 	}
 
 	// Create a Qdisc for the provided interface
-	qdisc := &tc.Object{
+	p.tcClsActQdiscObj = tc.Object{
 		Msg: tc.Msg{
-			Family:  unix.AF_UNSPEC,
 			Ifindex: uint32(p.Ifindex),
-			Handle:  core.BuildHandle(tc.HandleRoot, 0x0000),
+			Handle:  core.BuildHandle(0xffff, 0),
 			Parent:  tc.HandleIngress,
-			Info:    0,
 		},
 		Attribute: tc.Attribute{
 			Kind: "clsact",
@@ -914,31 +974,39 @@ func (p *Probe) attachTCCLS() error {
 	}
 
 	// Add the Qdisc
-	err = ntl.rtNetlink.Qdisc().Add(qdisc)
+	err = ntl.rtNetlink.Qdisc().Add(&p.tcClsActQdiscObj)
 	if err != nil {
-		if err.Error() != "netlink receive: file exists" {
+		if err.Error() == "netlink receive: file exists" {
+			// cleanup previous TC filters if necessary
+			if err = p.cleanupTCFilters(ntl); err != nil {
+				return fmt.Errorf("couldn't clean up existing \"clsact\" qdisc filters for %v: %w", p.Ifindex, err)
+			}
+		} else {
 			return fmt.Errorf("couldn't add a \"clsact\" qdisc to interface %v: %w", p.Ifindex, err)
 		}
 	}
 
 	// Create qdisc filter
+	var filterName string
+	filterName, err = GenerateTCFilterName(p.UID, p.EBPFSection, p.attachPID)
+	if err != nil {
+		return fmt.Errorf("couldn't create TC filter for %v: %w", p.ProbeIdentificationPair, err)
+	}
 	fd := uint32(p.program.FD())
-	flag := uint32(1)
+	p.tcFilterMsg = tc.Msg{
+		Ifindex: uint32(p.Ifindex),
+		Parent:  core.BuildHandle(0xffff, uint32(p.NetworkDirection)),
+		Info:    getTCMsgInfo(p.TCFilterPrio, p.TCFilterProtocol),
+	}
 	filter := tc.Object{
-		Msg: tc.Msg{
-			Family:  unix.AF_UNSPEC,
-			Ifindex: uint32(p.Ifindex),
-			Handle:  0,
-			Parent:  core.BuildHandle(tc.HandleRoot, uint32(p.NetworkDirection)),
-			Info:    0x300,
-		},
+		Msg: p.tcFilterMsg,
 		Attribute: tc.Attribute{
-			Kind: "bpf",
-
+			Kind:  "bpf",
+			Chain: &p.TCFilterChain,
 			BPF: &tc.Bpf{
 				FD:    &fd,
-				Name:  &p.EBPFSection,
-				Flags: &flag,
+				Name:  &filterName,
+				Flags: &BpfFlagActDirect,
 			},
 		},
 	}
@@ -947,7 +1015,30 @@ func (p *Probe) attachTCCLS() error {
 	if err := ntl.rtNetlink.Filter().Add(&filter); err != nil {
 		return fmt.Errorf("couldn't add a %v filter to interface %v: %v", p.NetworkDirection, p.Ifindex, err)
 	}
-	p.tcObject = qdisc
+
+	// retrieve filter handle
+	resp, err := ntl.rtNetlink.Filter().Get(&p.tcFilterMsg)
+	if err != nil {
+		return fmt.Errorf("couldn't list filters of interface %v: %v", p.Ifindex, err)
+	}
+
+	var found bool
+	for _, elem := range resp {
+		if elem.Attribute.BPF == nil {
+			continue
+		}
+		if elem.Attribute.BPF.ID == nil || elem.Attribute.BPF.Tag == nil {
+			continue
+		}
+
+		if *elem.Attribute.BPF.ID == p.systemWideID && bytes.Compare(*elem.Attribute.BPF.Tag, p.programTag) == 0 {
+			found = true
+			p.tcFilterMsg.Handle = elem.Handle
+		}
+	}
+	if !found {
+		return fmt.Errorf("couldn't create TC filter for %v: filter not found", p.ProbeIdentificationPair)
+	}
 	ntl.schedClsCount++
 	return nil
 }
@@ -964,31 +1055,30 @@ func (p *Probe) IsTCCLSActive() bool {
 
 	// Recover the netlink socket of the interface from the manager
 	var err error
-	ntl, ok := p.manager.netlinkCache[netlinkCacheKey{p.Ifindex, p.IfindexNetns}]
+	ntl, ok := p.manager.netlinkCache[p.IfIndexNetnsID]
 	if !ok {
 		// Set up new netlink connection
-		ntl, err = p.manager.newNetlinkConnection(p.Ifindex, p.IfindexNetns)
+		ntl, err = p.manager.NewNetlinkConnection(p.IfindexNetns, p.IfIndexNetnsID)
 		if err != nil {
 			return false
 		}
 	}
 
-	msg := tc.Msg{
-		Family:  unix.AF_UNSPEC,
-		Ifindex: uint32(p.Ifindex),
-		Parent:  core.BuildHandle(tc.HandleRoot, uint32(p.NetworkDirection)),
-	}
-
-	resp, err := ntl.rtNetlink.Filter().Get(&msg)
+	resp, err := ntl.rtNetlink.Filter().Get(&p.tcFilterMsg)
 	if err != nil {
 		return false
 	}
 
 	for _, elem := range resp {
-		if elem.Attribute.BPF != nil {
-			if elem.Attribute.BPF.ID != nil && *elem.Attribute.BPF.ID == p.systemWideID {
-				return true
-			}
+		if elem.Attribute.BPF == nil {
+			continue
+		}
+		if elem.Attribute.BPF.ID == nil || elem.Attribute.BPF.Tag == nil {
+			continue
+		}
+
+		if *elem.Attribute.BPF.ID == p.systemWideID && bytes.Compare(*elem.Attribute.BPF.Tag, p.programTag) == 0 {
+			return true
 		}
 	}
 	return false
@@ -997,23 +1087,118 @@ func (p *Probe) IsTCCLSActive() bool {
 // detachTCCLS - Detaches the probe from its TC classifier hook point
 func (p *Probe) detachTCCLS() error {
 	// Recover the netlink socket of the interface from the manager
-	ntl, ok := p.manager.netlinkCache[netlinkCacheKey{p.Ifindex, p.IfindexNetns}]
+	ntl, ok := p.manager.netlinkCache[p.IfIndexNetnsID]
 	if !ok {
-		return fmt.Errorf("couldn't find qdisc from which the probe %v was meant to be detached", p.ProbeIdentificationPair)
+		// Set up new netlink connection
+		var err error
+		ntl, err = p.manager.NewNetlinkConnection(p.IfindexNetns, p.IfIndexNetnsID)
+		if err != nil {
+			return err
+		}
 	}
 
-	if ntl.schedClsCount >= 2 {
-		ntl.schedClsCount--
-		// another classifier is still using the qdisc, do not delete it yet
+	// delete the current filter
+	obj := tc.Object{
+		Msg: p.tcFilterMsg,
+		Attribute: tc.Attribute{
+			Kind:  "bpf",
+			Chain: &p.TCFilterChain,
+			BPF:   &tc.Bpf{},
+		},
+	}
+	if err := ntl.rtNetlink.Filter().Delete(&obj); err != nil {
+		return fmt.Errorf("couldn't remove TC classifier %v: %w", p.ProbeIdentificationPair, err)
+	}
+	ntl.schedClsCount--
+
+	// check if the qdisc should be deleted
+	if ntl.schedClsCount >= 1 {
+		// at list one of our classifiers is still using it
 		return nil
 	}
 
-	// Delete qdisc
-	err := ntl.rtNetlink.Qdisc().Delete(p.tcObject)
-	if err != nil {
-		return fmt.Errorf("couldn't detach TC classifier of probe %v: %w", p.ProbeIdentificationPair, err)
+	// check if someone else is using it on ingress
+	filterQuery := tc.Msg{
+		Ifindex: uint32(p.Ifindex),
+		Parent:  core.BuildHandle(0xffff, uint32(Ingress)),
+		// do not specify any chain, protocol or prio to select everything
+	}
+	resp, err := ntl.rtNetlink.Filter().Get(&filterQuery)
+	if err != nil || err == nil && len(resp) > 0 {
+		// someone is still using it
+		return nil
+	}
+
+	// check on egress
+	filterQuery.Parent = core.BuildHandle(0xffff, uint32(Egress))
+	resp, err = ntl.rtNetlink.Filter().Get(&filterQuery)
+	if err != nil || err == nil && len(resp) > 0 {
+		// someone is still using it
+		return nil
+	}
+
+	// delete qdisc
+	if err := ntl.rtNetlink.Qdisc().Delete(&p.tcClsActQdiscObj); err != nil {
+		return fmt.Errorf("couldn't remove clsact qdisc: %w", err)
 	}
 	return nil
+}
+
+// cleanupTCFilters - Cleans up existing TC Filters by removing entries of known UIDs, that they're not used anymore.
+//
+// Previous instances of this manager might have been killed unexpectedly. When this happens, TC filters are not cleaned
+// up properly and can grow indefinitely. To prevent this, start by cleaning up the TC filters of previous managers that
+// are not running anymore.
+func (p *Probe) cleanupTCFilters(ntl *NetlinkCacheValue) error {
+	// build the pattern to look for in the TC filters name
+	pattern, err := regexp.Compile(fmt.Sprintf(`.*(%s)_([0-9]*)`, p.UID))
+	if err != nil {
+		return fmt.Errorf("filter name pattern generation failed: %w", err)
+	}
+
+	filterQuery := tc.Msg{
+		Ifindex: uint32(p.Ifindex),
+		Parent:  core.BuildHandle(0xffff, uint32(p.NetworkDirection)),
+		// do not specify any chain, protocol or prio to select everything
+	}
+	resp, err := ntl.rtNetlink.Filter().Get(&filterQuery)
+	if err != nil {
+		return err
+	}
+
+	var deleteErr error
+	for _, elem := range resp {
+		if elem.Attribute.BPF == nil {
+			continue
+		}
+		if elem.Attribute.BPF.Name == nil {
+			continue
+		}
+
+		match := pattern.FindStringSubmatch(*elem.Attribute.BPF.Name)
+		if len(match) < 3 {
+			continue
+		}
+
+		// check if the manager that loaded this TC filter is still up
+		var pid int
+		pid, err = strconv.Atoi(match[2])
+		if err != nil {
+			continue
+		}
+
+		// this short sleep is used to avoid a CPU spike (5s ~ 60k * 80 microseconds)
+		time.Sleep(80 * time.Microsecond)
+
+		_, err = process.NewProcess(int32(pid))
+		if err == nil {
+			continue
+		}
+
+		// remove this filter
+		deleteErr = ConcatErrors(deleteErr, ntl.rtNetlink.Filter().Delete(&elem))
+	}
+	return deleteErr
 }
 
 // attachXDP - Attaches the probe to an interface with an XDP hook point
