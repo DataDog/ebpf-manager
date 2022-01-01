@@ -577,8 +577,7 @@ func (p *Probe) attach() error {
 		return ErrProbeNotInitialized
 	}
 
-	// TODO: replace with the value of the like at {HOST_PROC}/self
-	p.attachPID = os.Getpid()
+	p.attachPID = Getpid()
 
 	// Per program type start
 	var err error

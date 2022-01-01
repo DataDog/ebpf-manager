@@ -14,10 +14,10 @@ int BPF_KPROBE(kprobe_vfs_mkdir, struct user_namespace *mnt_userns)
     return 0;
 };
 
-SEC("kprobe/utimes_common")
-int kprobe_utimes_common(struct pt_regs *ctx)
+SEC("kretprobe/utimes_common")
+int kretprobe_utimes_common(struct pt_regs *ctx)
 {
-    bpf_printk("utimes_common\n");
+    bpf_printk("utimes_common return\n");
     return 0;
 };
 
