@@ -19,7 +19,7 @@ var m = &manager.Manager{
 				EBPFSection:  "classifier/egress",
 				EBPFFuncName: "egress",
 			},
-			Ifname:           "enp0s3", // change this to the interface connected to the internet
+			IfName:           "enp0s3", // change this to the interface connected to the internet
 			NetworkDirection: manager.Egress,
 		},
 		{
@@ -27,7 +27,7 @@ var m = &manager.Manager{
 				EBPFSection:  "classifier/ingress",
 				EBPFFuncName: "ingress",
 			},
-			Ifname:           "enp0s3", // change this to the interface connected to the internet
+			IfName:           "enp0s3", // change this to the interface connected to the internet
 			NetworkDirection: manager.Ingress,
 			TCFilterChain:    2,
 			TCFilterProtocol: unix.ETH_P_ARP,

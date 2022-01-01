@@ -1581,7 +1581,7 @@ func (m *Manager) NewNetlinkConnection(netns uint64, netnsID uint32) (*NetlinkCa
 // CleanupNetworkNamespace - Cleans up all references to the provided network namespace within the manager. This means
 // that any TC classifier or XDP probe in that network namespace will be stopped and all opened netlink socket in that
 // namespace will be closed.
-// WARNING: Don't forget to call this method if you've provided a IfindexNetns and IfindexNetnsID to one of the probes
+// WARNING: Don't forget to call this method if you've provided a IfIndexNetns and IfIndexNetnsID to one of the probes
 // of this manager. Failing to call this cleanup function may lead to leaking the network namespace. Only call this
 // function when you're sure that the manager no longer needs to perform anything in the provided network namespace (or
 // else call NewNetlinkConnection first).

@@ -208,21 +208,21 @@ type Probe struct {
 	// before they reach user space. The probe will be bound to the provided file descriptor
 	SocketFD int
 
-	// Ifindex - (TC classifier & XDP) Interface index used to identify the interface on which the probe will be
+	// IfIndex - (TC classifier & XDP) Interface index used to identify the interface on which the probe will be
 	// attached. If not set, fall back to Ifname.
-	Ifindex int32
+	IfIndex int32
 
-	// Ifname - (TC Classifier & XDP) Interface name on which the probe will be attached.
-	Ifname string
+	// IfName - (TC Classifier & XDP) Interface name on which the probe will be attached.
+	IfName string
 
-	// IfindexNetns - (TC Classifier & XDP) Network namespace in which the network interface lives. If this value is
+	// IfIndexNetns - (TC Classifier & XDP) Network namespace in which the network interface lives. If this value is
 	// provided, then IfIndexNetnsID is required too.
 	// WARNING: it is up to the caller of "Probe.Start()" to close this netns handle. Failing to close this handle may
 	// lead to leaking the network namespace. This handle can be safely closed once "Probe.Start()" returns.
-	IfindexNetns uint64
+	IfIndexNetns uint64
 
-	// IfIndexNetnsID - (TC Classifier & XDP) Network namespace ID associated of the IfindexNetns handle. If this value
-	// is provided, then IfindexNetns is required too.
+	// IfIndexNetnsID - (TC Classifier & XDP) Network namespace ID associated of the IfIndexNetns handle. If this value
+	// is provided, then IfIndexNetns is required too.
 	// WARNING: it is up to the caller of "Probe.Start()" to call "manager.CleanupNetworkNamespace()" once the provided
 	// IfIndexNetnsID is no longer needed. Failing to call this cleanup function may lead to leaking the network
 	// namespace. Remember that "manager.CleanupNetworkNamespace()" will close the netlink socket opened with the netns
@@ -299,9 +299,10 @@ func (p *Probe) Copy() *Probe {
 		BinaryPath:       p.BinaryPath,
 		CGroupPath:       p.CGroupPath,
 		SocketFD:         p.SocketFD,
-		Ifindex:          p.Ifindex,
-		Ifname:           p.Ifname,
-		IfindexNetns:     p.IfindexNetns,
+		IfIndex:          p.IfIndex,
+		IfName:           p.IfName,
+		IfIndexNetns:     p.IfIndexNetns,
+		IfIndexNetnsID:   p.IfIndexNetnsID,
 		XDPAttachMode:    p.XDPAttachMode,
 		NetworkDirection: p.NetworkDirection,
 		ProbeRetry:       p.ProbeRetry,
@@ -450,8 +451,8 @@ func (p *Probe) init() error {
 	}
 
 	// resolve netns ID from netns handle
-	if p.IfindexNetns == 0 && p.IfIndexNetnsID != 0 || p.IfindexNetns != 0 && p.IfIndexNetnsID == 0 {
-		return fmt.Errorf("both IfindexNetns and IfIndexNetnsID are required if one is provided (IfindexNetns: %d IfIndexNetnsID: %d)", p.IfindexNetns, p.IfIndexNetnsID)
+	if p.IfIndexNetns == 0 && p.IfIndexNetnsID != 0 || p.IfIndexNetns != 0 && p.IfIndexNetnsID == 0 {
+		return fmt.Errorf("both IfIndexNetns and IfIndexNetnsID are required if one is provided (IfIndexNetns: %d IfIndexNetnsID: %d)", p.IfIndexNetns, p.IfIndexNetnsID)
 	}
 
 	// set default TC classifier priority
@@ -503,18 +504,18 @@ func (p *Probe) init() error {
 	return nil
 }
 
-// resolveIfIndex - Returns the interface IfIndex after resolving it from the provided Ifname and IfindexNetns if needed.
+// resolveIfIndex - Returns the interface IfIndex after resolving it from the provided IfName and IfIndexNetns if needed.
 func (p *Probe) resolveIfIndex() (int32, error) {
-	if p.Ifindex == 0 && len(p.Ifname) > 0 {
+	if p.IfIndex == 0 && len(p.IfName) > 0 {
 		// TODO: use the netns handle, the interface might not be in the same network namespace as the manager
-		inter, err := net.InterfaceByName(p.Ifname)
+		inter, err := net.InterfaceByName(p.IfName)
 		if err != nil {
 			p.lastError = err
-			return 0, fmt.Errorf("couldn't find interface %v: %w", p.Ifname, err)
+			return 0, fmt.Errorf("couldn't find interface %v: %w", p.IfName, err)
 		}
-		p.Ifindex = int32(inter.Index)
+		p.IfIndex = int32(inter.Index)
 	}
-	return p.Ifindex, nil
+	return p.IfIndex, nil
 }
 
 // Attach - Attaches the probe to the right hook point in the kernel depending on the program type and the provided
@@ -946,8 +947,8 @@ func (p *Probe) detachSocket() error {
 // attachTCCLS - Attaches the probe to its TC classifier hook point
 func (p *Probe) attachTCCLS() error {
 	var err error
-	// Make sure Ifindex is properly set
-	if p.Ifindex == 0 && p.Ifname == "" {
+	// Make sure IfIndex is properly set
+	if p.IfIndex == 0 && p.IfName == "" {
 		return ErrInterfaceNotSet
 	}
 
@@ -955,7 +956,7 @@ func (p *Probe) attachTCCLS() error {
 	ntl, ok := p.manager.netlinkCache[p.IfIndexNetnsID]
 	if !ok {
 		// Set up new netlink connection
-		ntl, err = p.manager.NewNetlinkConnection(p.IfindexNetns, p.IfIndexNetnsID)
+		ntl, err = p.manager.NewNetlinkConnection(p.IfIndexNetns, p.IfIndexNetnsID)
 		if err != nil {
 			return err
 		}
@@ -964,7 +965,7 @@ func (p *Probe) attachTCCLS() error {
 	// Create a Qdisc for the provided interface
 	p.tcClsActQdiscObj = tc.Object{
 		Msg: tc.Msg{
-			Ifindex: uint32(p.Ifindex),
+			Ifindex: uint32(p.IfIndex),
 			Handle:  core.BuildHandle(0xffff, 0),
 			Parent:  tc.HandleIngress,
 		},
@@ -979,10 +980,10 @@ func (p *Probe) attachTCCLS() error {
 		if err.Error() == "netlink receive: file exists" {
 			// cleanup previous TC filters if necessary
 			if err = p.cleanupTCFilters(ntl); err != nil {
-				return fmt.Errorf("couldn't clean up existing \"clsact\" qdisc filters for %v: %w", p.Ifindex, err)
+				return fmt.Errorf("couldn't clean up existing \"clsact\" qdisc filters for %v: %w", p.IfIndex, err)
 			}
 		} else {
-			return fmt.Errorf("couldn't add a \"clsact\" qdisc to interface %v: %w", p.Ifindex, err)
+			return fmt.Errorf("couldn't add a \"clsact\" qdisc to interface %v: %w", p.IfIndex, err)
 		}
 	}
 
@@ -994,7 +995,7 @@ func (p *Probe) attachTCCLS() error {
 	}
 	fd := uint32(p.program.FD())
 	p.tcFilterMsg = tc.Msg{
-		Ifindex: uint32(p.Ifindex),
+		Ifindex: uint32(p.IfIndex),
 		Parent:  core.BuildHandle(0xffff, uint32(p.NetworkDirection)),
 		Info:    getTCMsgInfo(p.TCFilterPrio, p.TCFilterProtocol),
 	}
@@ -1013,13 +1014,13 @@ func (p *Probe) attachTCCLS() error {
 
 	// Add qdisc filter
 	if err := ntl.rtNetlink.Filter().Add(&filter); err != nil {
-		return fmt.Errorf("couldn't add a %v filter to interface %v: %v", p.NetworkDirection, p.Ifindex, err)
+		return fmt.Errorf("couldn't add a %v filter to interface %v: %v", p.NetworkDirection, p.IfIndex, err)
 	}
 
 	// retrieve filter handle
 	resp, err := ntl.rtNetlink.Filter().Get(&p.tcFilterMsg)
 	if err != nil {
-		return fmt.Errorf("couldn't list filters of interface %v: %v", p.Ifindex, err)
+		return fmt.Errorf("couldn't list filters of interface %v: %v", p.IfIndex, err)
 	}
 
 	var found bool
@@ -1058,7 +1059,7 @@ func (p *Probe) IsTCCLSActive() bool {
 	ntl, ok := p.manager.netlinkCache[p.IfIndexNetnsID]
 	if !ok {
 		// Set up new netlink connection
-		ntl, err = p.manager.NewNetlinkConnection(p.IfindexNetns, p.IfIndexNetnsID)
+		ntl, err = p.manager.NewNetlinkConnection(p.IfIndexNetns, p.IfIndexNetnsID)
 		if err != nil {
 			return false
 		}
@@ -1091,7 +1092,7 @@ func (p *Probe) detachTCCLS() error {
 	if !ok {
 		// Set up new netlink connection
 		var err error
-		ntl, err = p.manager.NewNetlinkConnection(p.IfindexNetns, p.IfIndexNetnsID)
+		ntl, err = p.manager.NewNetlinkConnection(p.IfIndexNetns, p.IfIndexNetnsID)
 		if err != nil {
 			return err
 		}
@@ -1119,7 +1120,7 @@ func (p *Probe) detachTCCLS() error {
 
 	// check if someone else is using it on ingress
 	filterQuery := tc.Msg{
-		Ifindex: uint32(p.Ifindex),
+		Ifindex: uint32(p.IfIndex),
 		Parent:  core.BuildHandle(0xffff, uint32(Ingress)),
 		// do not specify any chain, protocol or prio to select everything
 	}
@@ -1157,7 +1158,7 @@ func (p *Probe) cleanupTCFilters(ntl *NetlinkCacheValue) error {
 	}
 
 	filterQuery := tc.Msg{
-		Ifindex: uint32(p.Ifindex),
+		Ifindex: uint32(p.IfIndex),
 		Parent:  core.BuildHandle(0xffff, uint32(p.NetworkDirection)),
 		// do not specify any chain, protocol or prio to select everything
 	}
@@ -1204,15 +1205,15 @@ func (p *Probe) cleanupTCFilters(ntl *NetlinkCacheValue) error {
 // attachXDP - Attaches the probe to an interface with an XDP hook point
 func (p *Probe) attachXDP() error {
 	// Lookup interface
-	link, err := netlink.LinkByIndex(int(p.Ifindex))
+	link, err := netlink.LinkByIndex(int(p.IfIndex))
 	if err != nil {
-		return fmt.Errorf("couldn't retrieve interface %v: %w", p.Ifindex, err)
+		return fmt.Errorf("couldn't retrieve interface %v: %w", p.IfIndex, err)
 	}
 
 	// Attach program
 	err = netlink.LinkSetXdpFdWithFlags(link, p.program.FD(), int(p.XDPAttachMode))
 	if err != nil {
-		return fmt.Errorf("couldn't attach XDP program %v to interface %v: %w", p.ProbeIdentificationPair, p.Ifindex, err)
+		return fmt.Errorf("couldn't attach XDP program %v to interface %v: %w", p.ProbeIdentificationPair, p.IfIndex, err)
 	}
 	return nil
 }
@@ -1220,15 +1221,15 @@ func (p *Probe) attachXDP() error {
 // detachXDP - Detaches the probe from its XDP hook point
 func (p *Probe) detachXDP() error {
 	// Lookup interface
-	link, err := netlink.LinkByIndex(int(p.Ifindex))
+	link, err := netlink.LinkByIndex(int(p.IfIndex))
 	if err != nil {
-		return fmt.Errorf("couldn't retrieve interface %v: %w", p.Ifindex, err)
+		return fmt.Errorf("couldn't retrieve interface %v: %w", p.IfIndex, err)
 	}
 
 	// Detach program
 	err = netlink.LinkSetXdpFdWithFlags(link, -1, int(p.XDPAttachMode))
 	if err != nil {
-		return fmt.Errorf("couldn't detach XDP program %v from interface %v: %w", p.ProbeIdentificationPair, p.Ifindex, err)
+		return fmt.Errorf("couldn't detach XDP program %v from interface %v: %w", p.ProbeIdentificationPair, p.IfIndex, err)
 	}
 	return nil
 }
