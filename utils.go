@@ -17,6 +17,9 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/vishvananda/netns"
+
+	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 )
 
@@ -650,4 +653,22 @@ func Getpid() int {
 		}
 	}
 	return os.Getpid()
+}
+
+// ListInterfaces returns the list of interfaces in the provided netns. If no netns is provided, the function returns the
+// list of interfaces in the current netns. WARNING: it is up to the caller of this function to close this netns handle
+// once it is no longer in use. Failing to close this handle may lead to leaking the network namespace.
+func ListInterfaces(netnsFD int) ([]netlink.Link, error) {
+	if netnsFD == 0 {
+		return netlink.LinkList()
+	}
+
+	// link devices inside the provided netns
+	nsHandle := netns.NsHandle(netnsFD)
+	handle, err := netlink.NewHandleAt(nsHandle, unix.NETLINK_ROUTE)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't list interfaces: %w", err)
+	}
+
+	return handle.LinkList()
 }

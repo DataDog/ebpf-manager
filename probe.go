@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"regexp"
 	"runtime"
@@ -445,7 +444,7 @@ func (p *Probe) init() error {
 	}
 
 	// resolve interface index if one is provided
-	_, err := p.resolveIfIndex()
+	_, err := p.ResolveIfIndex()
 	if err != nil {
 		return err
 	}
@@ -504,18 +503,37 @@ func (p *Probe) init() error {
 	return nil
 }
 
-// resolveIfIndex - Returns the interface IfIndex after resolving it from the provided IfName and IfIndexNetns if needed.
-func (p *Probe) resolveIfIndex() (int32, error) {
-	if p.IfIndex == 0 && len(p.IfName) > 0 {
-		// TODO: use the netns handle, the interface might not be in the same network namespace as the manager
-		inter, err := net.InterfaceByName(p.IfName)
-		if err != nil {
-			p.lastError = err
-			return 0, fmt.Errorf("couldn't find interface %v: %w", p.IfName, err)
-		}
-		p.IfIndex = int32(inter.Index)
+// ResolveIfIndex - Returns the interface IfIndex after resolving it from the provided Ifname and IfindexNetns if needed.
+func (p *Probe) ResolveIfIndex() (int32, error) {
+	if p.Ifindex > 0 {
+		return p.Ifindex, nil
 	}
-	return p.IfIndex, nil
+	if len(p.Ifname) == 0 {
+		return 0, fmt.Errorf("\"Ifname\" is required to resolve the probe \"Ifindex\"")
+	}
+
+	// list interfaces
+	interfaces, err := ListInterfaces(int(p.IfindexNetns))
+	if err != nil {
+		return 0, fmt.Errorf("couldn't list interfaces in namespace %d: %w", p.IfIndexNetnsID, err)
+	}
+
+	for _, iface := range interfaces {
+		attrs := iface.Attrs()
+		if attrs == nil {
+			continue
+		}
+
+		if attrs.Name == p.Ifname {
+			p.Ifindex = int32(attrs.Index)
+			break
+		}
+	}
+	if p.Ifindex <= 0 {
+		return 0, fmt.Errorf("couldn't find interface %s in namespace %d", p.Ifname, p.IfIndexNetnsID)
+	}
+
+	return p.Ifindex, nil
 }
 
 // Attach - Attaches the probe to the right hook point in the kernel depending on the program type and the provided
