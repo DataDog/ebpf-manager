@@ -899,10 +899,32 @@ func (m *Manager) DetachHook(id ProbeIdentificationPair) error {
 				}
 			}
 			idToDelete = mID
+			break
 		}
 	}
 	if idToDelete >= 0 {
 		m.Probes = append(m.Probes[:idToDelete], m.Probes[idToDelete+1:]...)
+	}
+	return nil
+}
+
+// DetachAndDeleteHook - Detaches an eBPF program from a hook point and delete it from the manager.
+func (m *Manager) DetachAndDeleteHook(id ProbeIdentificationPair) error {
+	idToDelete := -1
+	var err error
+	for mID, mProbe := range m.Probes {
+		if mProbe.Matches(id) {
+			if err = mProbe.Stop(); err != nil {
+				return fmt.Errorf("couldn't stop probe %s: %w", id, err)
+			}
+			idToDelete = mID
+			break
+		}
+	}
+	if idToDelete >= 0 {
+		m.Probes = append(m.Probes[:idToDelete], m.Probes[idToDelete+1:]...)
+	} else {
+		return fmt.Errorf("probe %s not found", id)
 	}
 	return nil
 }
@@ -1635,7 +1657,8 @@ func (m *Manager) getNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket
 // WARNING: Don't forget to call this method if you've provided a IfIndexNetns and IfIndexNetnsID to one of the probes
 // of this manager. Failing to call this cleanup function may lead to leaking the network namespace. Only call this
 // function when you're sure that the manager no longer needs to perform anything in the provided network namespace (or
-// else call NewNetlinkSocket first).
+// else call NewNetlinkSocket first). Any remaining probe within that namespace will be removed from the list of probes
+// of the manager.
 func (m *Manager) CleanupNetworkNamespace(nsID uint32) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
@@ -1644,13 +1667,20 @@ func (m *Manager) CleanupNetworkNamespace(nsID uint32) error {
 	}
 
 	var err error
-	for _, probe := range m.Probes {
+	var toDelete []int
+	for probeIndex, probe := range m.Probes {
 		if probe.IfIndexNetnsID != nsID {
 			continue
 		}
 
 		// stop the probe
 		err = ConcatErrors(err, probe.Stop())
+
+		toDelete = append([]int{probeIndex}, toDelete...)
+	}
+
+	for _, probeIndex := range toDelete {
+		m.Probes = append(m.Probes[:probeIndex], m.Probes[probeIndex+1:]...)
 	}
 
 	// delete all netlink sockets, along with netns handles
