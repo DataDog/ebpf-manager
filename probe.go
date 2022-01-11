@@ -221,7 +221,7 @@ type Probe struct {
 	// unix.PERF_TYPE_HARDWARE and unix.PERF_TYPE_SOFTWARE
 	PerfEventType int
 
-	// PerfEventPID - (Perf event) This parameter defines the PID for which the perf_event program should be triggered.
+	// PerfEventPID - (Perf event, uprobes) This parameter defines the PID for which the program should be triggered.
 	// Do not set this value to monitor the whole host.
 	PerfEventPID int
 
@@ -667,7 +667,7 @@ func (p *Probe) attachWithKprobeEvents() error {
 	}
 
 	// create perf event FD
-	p.perfEventFD, err = perfEventOpenTracingEvent(kprobeID)
+	p.perfEventFD, err = perfEventOpenTracingEvent(kprobeID, -1)
 	if err != nil {
 		return fmt.Errorf("couldn't open perf event FD for %s: %w", p.ProbeIdentificationPair, err)
 	}
@@ -747,7 +747,7 @@ func (p *Probe) attachTracepoint() error {
 	}
 
 	// Hook the eBPF program to the tracepoint
-	p.perfEventFD, err = perfEventOpenTracingEvent(tracepointID)
+	p.perfEventFD, err = perfEventOpenTracingEvent(tracepointID, -1)
 	if err != nil {
 		return fmt.Errorf("couldn't enable tracepoint %s: %w", p.ProbeIdentificationPair, err)
 	}
@@ -794,7 +794,7 @@ func (p *Probe) attachUprobe() error {
 	}
 
 	// Try to use the perf_event_open API first (e12f03d "perf/core: Implement the 'perf_kprobe' PMU")
-	p.perfEventFD, err = perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffset), -1, "uprobe", p.GetUprobeType() == "r", 0)
+	p.perfEventFD, err = perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffset), p.PerfEventPID, "uprobe", p.GetUprobeType() == "r", 0)
 	if err != nil {
 		// fallback to debugfs
 		var uprobeID int
@@ -804,7 +804,7 @@ func (p *Probe) attachUprobe() error {
 		}
 
 		// Activate perf event
-		p.perfEventFD, err = perfEventOpenTracingEvent(uprobeID)
+		p.perfEventFD, err = perfEventOpenTracingEvent(uprobeID, p.PerfEventPID)
 		if err != nil {
 			return fmt.Errorf("couldn't enable uprobe %s: %w", p.ProbeIdentificationPair, err)
 		}
