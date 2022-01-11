@@ -861,7 +861,7 @@ func (m *Manager) AddHook(UID string, newProbe *Probe) error {
 // kernel, then the probe will be detached but the program will not be closed (so that it can be used later). In that
 // case, calling DetachHook has essentially the same effect as calling Detach() on the right Probe instance. However,
 // if there are more than one instance in the kernel of the requested program, then the probe selected by the provided
-// ProbeIdentificationPair is detached, and its own version of the program is closed.
+// ProbeIdentificationPair is detached, and its own handle of the program is closed.
 func (m *Manager) DetachHook(id ProbeIdentificationPair) error {
 	// Check how many instances of the program are left in the kernel
 	progs, _, err := m.GetProgram(ProbeIdentificationPair{UID: "", EBPFSection: id.EBPFSection, EBPFFuncName: id.EBPFFuncName})
@@ -923,7 +923,6 @@ func (m *Manager) CloneProgram(UID string, newProbe *Probe, constantsEditors []C
 	// Clone the program
 	clonedSpec := progSpec.Copy()
 	newProbe.programSpec = clonedSpec
-	newProbe.CopyProgram = true
 
 	// Edit constants
 	for _, editor := range constantsEditors {
@@ -1051,37 +1050,37 @@ func (m *Manager) updateTailCallRoute(route TailCallRoute) error {
 	return nil
 }
 
-func (m *Manager) getProbeProgramSpec(id ProbeIdentificationPair) (*ebpf.ProgramSpec, error) {
-	spec, ok := m.collectionSpec.Programs[id.EBPFFuncName]
+func (m *Manager) getProbeProgramSpec(funcName string) (*ebpf.ProgramSpec, error) {
+	spec, ok := m.collectionSpec.Programs[funcName]
 	if !ok {
 		// Check if the probe section is in the list of excluded sections
 		var excluded bool
 		for _, excludedFuncName := range m.options.ExcludedFunctions {
-			if excludedFuncName == id.EBPFFuncName {
+			if excludedFuncName == funcName {
 				excluded = true
 				break
 			}
 		}
 		if !excluded {
-			return nil, fmt.Errorf("couldn't find program spec %s: %w", id, ErrUnknownSectionOrFuncName)
+			return nil, fmt.Errorf("couldn't find program spec for func %s: %w", funcName, ErrUnknownSectionOrFuncName)
 		}
 	}
 	return spec, nil
 }
 
-func (m *Manager) getProbeProgram(id ProbeIdentificationPair) (*ebpf.Program, error) {
-	p, ok := m.collection.Programs[id.EBPFFuncName]
+func (m *Manager) getProbeProgram(funcName string) (*ebpf.Program, error) {
+	p, ok := m.collection.Programs[funcName]
 	if !ok {
 		// Check if the probe section is in the list of excluded sections
 		var excluded bool
 		for _, excludedFuncName := range m.options.ExcludedFunctions {
-			if excludedFuncName == id.EBPFFuncName {
+			if excludedFuncName == funcName {
 				excluded = true
 				break
 			}
 		}
 		if !excluded {
-			return nil, fmt.Errorf("couldn't find program %s: %w", id, ErrUnknownSectionOrFuncName)
+			return nil, fmt.Errorf("couldn't find program %s: %w", funcName, ErrUnknownSectionOrFuncName)
 		}
 	}
 	return p, nil
@@ -1091,7 +1090,7 @@ func (m *Manager) getProbeProgram(id ProbeIdentificationPair) (*ebpf.Program, er
 func (m *Manager) matchSpecs() error {
 	// Match programs
 	for _, probe := range m.Probes {
-		programSpec, err := m.getProbeProgramSpec(probe.ProbeIdentificationPair)
+		programSpec, err := m.getProbeProgramSpec(probe.ProbeIdentificationPair.EBPFFuncName)
 		if err != nil {
 			return err
 		}
@@ -1099,7 +1098,7 @@ func (m *Manager) matchSpecs() error {
 			probe.programSpec = programSpec
 		} else {
 			probe.programSpec = programSpec.Copy()
-			m.collectionSpec.Programs[probe.GetEBPFFuncName(probe.CopyProgram)] = probe.programSpec
+			m.collectionSpec.Programs[probe.GetEBPFFuncName()] = probe.programSpec
 		}
 	}
 
@@ -1129,7 +1128,7 @@ func (m *Manager) matchSpecs() error {
 func (m *Manager) matchBPFObjects() error {
 	// Match programs
 	for _, probe := range m.Probes {
-		program, err := m.getProbeProgram(probe.ProbeIdentificationPair)
+		program, err := m.getProbeProgram(probe.GetEBPFFuncName())
 		if err != nil {
 			return err
 		}
@@ -1537,7 +1536,7 @@ func (m *Manager) loadPinnedProgram(prog *Probe) error {
 	prog.program = pinnedProg
 
 	// Detach program from CollectionSpec
-	delete(m.collectionSpec.Programs, prog.GetEBPFFuncName(prog.CopyProgram))
+	delete(m.collectionSpec.Programs, prog.GetEBPFFuncName())
 	return nil
 }
 

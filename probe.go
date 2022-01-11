@@ -80,14 +80,6 @@ func (pip ProbeIdentificationPair) EBPFDefinitionMatches(id ProbeIdentificationP
 	return pip.EBPFFuncName == id.EBPFFuncName && pip.EBPFSection == id.EBPFSection
 }
 
-// GetEBPFFuncName - Returns EBPFFuncName with the UID as a postfix if the Probe was copied
-func (pip ProbeIdentificationPair) GetEBPFFuncName(isCopy bool) string {
-	if isCopy {
-		return pip.EBPFFuncName + pip.UID
-	}
-	return pip.EBPFFuncName
-}
-
 // GetKprobeType - Identifies the probe type of the provided KProbe section
 func (pip ProbeIdentificationPair) GetKprobeType() string {
 	if len(pip.kprobeType) == 0 {
@@ -250,6 +242,14 @@ type Probe struct {
 	tcObject *tc.Object
 }
 
+// GetEBPFFuncName - Returns EBPFFuncName with the UID as a postfix if the Probe was copied
+func (p *Probe) GetEBPFFuncName() string {
+	if p.CopyProgram {
+		return fmt.Sprintf("%s_%s", p.EBPFFuncName, p.UID)
+	}
+	return p.EBPFFuncName
+}
+
 // Copy - Returns a copy of the current probe instance. Only the exported fields are copied.
 func (p *Probe) Copy() *Probe {
 	return &Probe{
@@ -357,20 +357,17 @@ func (p *Probe) init() error {
 		p.program = prog
 	}
 
-	// override section based on the CopyProgram parameter
-	selector := p.GetEBPFFuncName(p.CopyProgram)
-
 	// Retrieve eBPF program if one isn't already set
 	if p.program == nil {
-		if p.program, p.lastError = p.manager.getProbeProgram(p.ProbeIdentificationPair); p.lastError != nil {
-			return fmt.Errorf("couldn't find program %s: %w", selector, ErrUnknownSectionOrFuncName)
+		if p.program, p.lastError = p.manager.getProbeProgram(p.GetEBPFFuncName()); p.lastError != nil {
+			return fmt.Errorf("couldn't find program %s: %w", p.GetEBPFFuncName(), ErrUnknownSectionOrFuncName)
 		}
 		p.checkPin = true
 	}
 
 	if p.programSpec == nil {
-		if p.programSpec, p.lastError = p.manager.getProbeProgramSpec(p.ProbeIdentificationPair); p.lastError != nil {
-			return fmt.Errorf("couldn't find program spec %s: %w", selector, ErrUnknownSectionOrFuncName)
+		if p.programSpec, p.lastError = p.manager.getProbeProgramSpec(p.GetEBPFFuncName()); p.lastError != nil {
+			return fmt.Errorf("couldn't find program spec %s: %w", p.GetEBPFFuncName(), ErrUnknownSectionOrFuncName)
 		}
 	}
 
@@ -379,7 +376,7 @@ func (p *Probe) init() error {
 		if p.PinPath != "" {
 			if err := p.program.Pin(p.PinPath); err != nil {
 				p.lastError = err
-				return fmt.Errorf("couldn't pin program %s at %s: %w", selector, p.PinPath, err)
+				return fmt.Errorf("couldn't pin program %s at %s: %w", p.GetEBPFFuncName(), p.PinPath, err)
 			}
 		}
 		p.checkPin = false
