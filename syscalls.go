@@ -58,7 +58,7 @@ func perfEventOpenPMU(name string, offset, pid int, eventType string, retProbe b
 		attr.Ext1 = uint64(uintptr(unsafe.Pointer(namePtr))) // Uprobe path
 		attr.Ext2 = uint64(offset)                           // Uprobe offset
 		// PID filter is only possible for uprobe events
-		if pid < 0 {
+		if pid <= 0 {
 			pid = -1
 		}
 	}
@@ -82,7 +82,10 @@ func perfEventOpenPMU(name string, offset, pid int, eventType string, retProbe b
 	return NewFD(uint32(efd)), nil
 }
 
-func perfEventOpenTracingEvent(probeID int) (*FD, error) {
+func perfEventOpenTracingEvent(probeID int, pid int) (*FD, error) {
+	if pid <= 0 {
+		pid = -1
+	}
 	attr := unix.PerfEventAttr{
 		Type:        unix.PERF_TYPE_TRACEPOINT,
 		Sample_type: unix.PERF_SAMPLE_RAW,
@@ -91,7 +94,7 @@ func perfEventOpenTracingEvent(probeID int) (*FD, error) {
 		Config:      uint64(probeID),
 	}
 	attr.Size = uint32(unsafe.Sizeof(attr))
-	return perfEventOpenRaw(&attr, -1, 0, -1, unix.PERF_FLAG_FD_CLOEXEC)
+	return perfEventOpenRaw(&attr, pid, 0, -1, unix.PERF_FLAG_FD_CLOEXEC)
 }
 
 func perfEventOpenRaw(attr *unix.PerfEventAttr, pid int, cpu int, groupFd int, flags int) (*FD, error) {
