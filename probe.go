@@ -221,7 +221,7 @@ type Probe struct {
 	// unix.PERF_TYPE_HARDWARE and unix.PERF_TYPE_SOFTWARE
 	PerfEventType int
 
-	// PerfEventPID - (Perf event) This parameter defines the PID for which the perf_event program should be triggered.
+	// PerfEventPID - (Perf event, uprobes) This parameter defines the PID for which the program should be triggered.
 	// Do not set this value to monitor the whole host.
 	PerfEventPID int
 
