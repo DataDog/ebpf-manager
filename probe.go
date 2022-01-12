@@ -155,6 +155,16 @@ type Probe struct {
 	// are ignored.
 	HookFuncName string
 
+	// TracepointCategory - (Tracepoint) The manager expects the tracepoint category to be parsed from the eBPF section
+	// in which the eBPF function of this Probe lives (SEC("tracepoint/[category]/[name])). However you can use this
+	// field to override it.
+	TracepointCategory string
+
+	// TracepointName - (Tracepoint) The manager expects the tracepoint name to be parsed from the eBPF section
+	// in which the eBPF function of this Probe lives (SEC("tracepoint/[category]/[name])). However you can use this
+	// field to override it.
+	TracepointName string
+
 	// Enabled - Indicates if a probe should be enabled or not. This parameter can be set at runtime using the
 	// Manager options (see ActivatedProbes)
 	Enabled bool
@@ -258,27 +268,29 @@ func (p *Probe) Copy() *Probe {
 			EBPFFuncName: p.EBPFFuncName,
 			EBPFSection:  p.EBPFSection,
 		},
-		SyscallFuncName:  p.SyscallFuncName,
-		CopyProgram:      p.CopyProgram,
-		SamplePeriod:     p.SamplePeriod,
-		SampleFrequency:  p.SampleFrequency,
-		PerfEventType:    p.PerfEventType,
-		PerfEventPID:     p.PerfEventPID,
-		PerfEventConfig:  p.PerfEventConfig,
-		MatchFuncName:    p.MatchFuncName,
-		Enabled:          p.Enabled,
-		PinPath:          p.PinPath,
-		KProbeMaxActive:  p.KProbeMaxActive,
-		BinaryPath:       p.BinaryPath,
-		CGroupPath:       p.CGroupPath,
-		SocketFD:         p.SocketFD,
-		Ifindex:          p.Ifindex,
-		Ifname:           p.Ifname,
-		IfindexNetns:     p.IfindexNetns,
-		XDPAttachMode:    p.XDPAttachMode,
-		NetworkDirection: p.NetworkDirection,
-		ProbeRetry:       p.ProbeRetry,
-		ProbeRetryDelay:  p.ProbeRetryDelay,
+		SyscallFuncName:    p.SyscallFuncName,
+		CopyProgram:        p.CopyProgram,
+		SamplePeriod:       p.SamplePeriod,
+		SampleFrequency:    p.SampleFrequency,
+		PerfEventType:      p.PerfEventType,
+		PerfEventPID:       p.PerfEventPID,
+		PerfEventConfig:    p.PerfEventConfig,
+		MatchFuncName:      p.MatchFuncName,
+		TracepointCategory: p.TracepointCategory,
+		TracepointName:     p.TracepointName,
+		Enabled:            p.Enabled,
+		PinPath:            p.PinPath,
+		KProbeMaxActive:    p.KProbeMaxActive,
+		BinaryPath:         p.BinaryPath,
+		CGroupPath:         p.CGroupPath,
+		SocketFD:           p.SocketFD,
+		Ifindex:            p.Ifindex,
+		Ifname:             p.Ifname,
+		IfindexNetns:       p.IfindexNetns,
+		XDPAttachMode:      p.XDPAttachMode,
+		NetworkDirection:   p.NetworkDirection,
+		ProbeRetry:         p.ProbeRetry,
+		ProbeRetryDelay:    p.ProbeRetryDelay,
 	}
 }
 
@@ -733,15 +745,17 @@ func (p *Probe) detachKprobe() error {
 // attachTracepoint - Attaches the probe to its tracepoint
 func (p *Probe) attachTracepoint() error {
 	// Parse section
-	traceGroup := strings.SplitN(p.EBPFSection, "/", 3)
-	if len(traceGroup) != 3 {
-		return fmt.Errorf("expected SEC(\"tracepoint/[category]/[name]\") got %s: %w", p.EBPFSection, ErrSectionFormat)
+	if len(p.TracepointCategory) == 0 || len(p.TracepointName) == 0 {
+		traceGroup := strings.SplitN(p.EBPFSection, "/", 3)
+		if len(traceGroup) != 3 {
+			return fmt.Errorf("expected SEC(\"tracepoint/[category]/[name]\") got %s: %w", p.EBPFSection, ErrSectionFormat)
+		}
+		p.TracepointCategory = traceGroup[1]
+		p.TracepointName = traceGroup[2]
 	}
-	category := traceGroup[1]
-	name := traceGroup[2]
 
 	// Get the ID of the tracepoint to activate
-	tracepointID, err := GetTracepointID(category, name)
+	tracepointID, err := GetTracepointID(p.TracepointCategory, p.TracepointName)
 	if err != nil {
 		return fmt.Errorf("couldn's activate tracepoint %s: %w", p.ProbeIdentificationPair, err)
 	}

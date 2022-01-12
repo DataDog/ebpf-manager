@@ -14,6 +14,14 @@ var m = &manager.Manager{
 				EBPFFuncName: "sys_enter_mkdirat",
 			},
 		},
+		{
+			ProbeIdentificationPair: manager.ProbeIdentificationPair{
+				EBPFSection:  "tracepoint/my_tracepoint",
+				EBPFFuncName: "my_tracepoint",
+			},
+			TracepointCategory: "sched",
+			TracepointName:     "sched_process_exec",
+		},
 	},
 }
 
