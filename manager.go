@@ -532,10 +532,16 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	m.activateProbes()
 	m.state = initialized
 	m.stateLock.Unlock()
+	resetManager := func(m *Manager) {
+		m.stateLock.Lock()
+		m.state = reset
+		m.stateLock.Unlock()
+	}
 
 	// Edit program constants
 	if len(options.ConstantEditors) > 0 {
 		if err = m.editConstants(); err != nil {
+			resetManager(m)
 			return err
 		}
 	}
@@ -543,6 +549,7 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	// Edit map spec
 	if len(options.MapSpecEditors) > 0 {
 		if err = m.editMapSpecs(); err != nil {
+			resetManager(m)
 			return err
 		}
 	}
@@ -551,6 +558,7 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	if len(options.InnerOuterMapSpecs) > 0 {
 		for _, ioMapSpec := range options.InnerOuterMapSpecs {
 			if err = m.editInnerOuterMapSpec(ioMapSpec); err != nil {
+				resetManager(m)
 				return err
 			}
 		}
@@ -559,17 +567,23 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	// Edit program maps
 	if len(options.MapEditors) > 0 {
 		if err = m.editMaps(options.MapEditors); err != nil {
+			resetManager(m)
 			return err
 		}
 	}
 
 	// Load pinned maps and pinned programs to avoid loading them twice
 	if err = m.loadPinnedObjects(); err != nil {
+		resetManager(m)
 		return err
 	}
 
 	// Load eBPF program with the provided verifier options
 	if err = m.loadCollection(); err != nil {
+		if m.collection != nil {
+			_ = m.collection.Close
+		}
+		resetManager(m)
 		return err
 	}
 	return nil
