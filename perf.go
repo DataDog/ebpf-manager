@@ -131,7 +131,7 @@ func (m *PerfMap) Start() error {
 func (m *PerfMap) Stop(cleanup MapCleanupType) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
-	if m.state < running {
+	if m.state < paused {
 		return nil
 	}
 

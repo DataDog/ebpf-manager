@@ -1263,7 +1263,7 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 
 	if validationErrs != nil {
 		// Clean up
-		_ = m.Stop(CleanInternal)
+		_ = m.stop(CleanInternal)
 		return fmt.Errorf("probes activation validation failed: %w", validationErrs)
 	}
 
