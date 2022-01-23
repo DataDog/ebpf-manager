@@ -25,7 +25,7 @@ var m = &manager.Manager{
 				EBPFSection:  "kprobe/utimes_common",
 				EBPFFuncName: "kprobe_utimes_common",
 			},
-			MatchFuncName: "utimes_common",
+			MatchFuncName: "utimes",
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
