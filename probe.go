@@ -704,14 +704,14 @@ func (p *Probe) attachKprobe() error {
 	p.attachPID = os.Getpid()
 
 	// currently the perf event open ABI doesn't allow to specify the max active parameter
-	if p.KProbeMaxActive > 0 {
+	if p.KProbeMaxActive > 0 && p.GetKprobeType() == RetProbeType {
 		if err = p.attachWithKprobeEvents(); err != nil {
-			if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", p.GetKprobeType() == "r", 0); err != nil {
+			if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", true, 0); err != nil {
 				return err
 			}
 		}
 	} else {
-		if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", p.GetKprobeType() == "r", 0); err != nil {
+		if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", false, 0); err != nil {
 			if err = p.attachWithKprobeEvents(); err != nil {
 				return err
 			}

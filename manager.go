@@ -1239,9 +1239,9 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 			if err := probe.Init(m); err != nil {
 				return err
 			}
-			if err := probe.Attach(); err != nil {
-				return err
-			}
+			// ignore the error, they are already collected per probes and will be surfaced by the
+			// activation validators if needed.
+			_ = probe.Attach()
 		}
 	}
 
