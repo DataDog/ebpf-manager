@@ -14,6 +14,12 @@ var m = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
+				EBPFSection:  "lsm/inode_getattr",
+				EBPFFuncName: "lsm_security_inode_getattr",
+			},
+		},
+		{
+			ProbeIdentificationPair: manager.ProbeIdentificationPair{
 				EBPFSection:  "lsm/bpf",
 				EBPFFuncName: "lsm_security_bpf",
 			},

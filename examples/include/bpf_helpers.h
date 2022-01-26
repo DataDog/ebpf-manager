@@ -308,6 +308,7 @@ static unsigned int (*bpf_set_hash)(void *ctx, __u32 hash) =
 static int (*bpf_skb_adjust_room)(void *ctx, __s32 len_diff, __u32 mode,
 				  unsigned long long flags) =
 	(void *) BPF_FUNC_skb_adjust_room;
+static long (*bpf_d_path)(struct path *path, char *buf, u32 sz) = (void *) BPF_FUNC_d_path;
 
 /*
  * BPF_CORE_READ abstracts away bpf_probe_read() call and captures offset
