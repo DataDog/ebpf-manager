@@ -8,9 +8,9 @@ struct bpf_map_def SEC("maps/cache") cache = {
 };
 
 SEC("kprobe/vfs_mkdir")
-int kprobe_vfs_mkdir(struct pt_regs *ctx)
+int BPF_KPROBE(kprobe_vfs_mkdir, struct user_namespace *mnt_userns)
 {
-    bpf_printk("mkdir (vfs hook point)\n");
+    bpf_printk("mkdir (vfs hook point) user_ns_ptr:%p\n", mnt_userns);
     return 0;
 };
 
@@ -22,9 +22,9 @@ int kprobe_utimes_common(struct pt_regs *ctx)
 };
 
 SEC("kretprobe/mkdirat")
-int kretprobe_mkdirat(struct pt_regs *ctx)
+int BPF_KRETPROBE(kretprobe_mkdirat, int ret)
 {
-    bpf_printk("mkdirat return (syscall hook point)\n");
+    bpf_printk("mkdirat return (syscall hook point) ret:%d\n", ret);
     return 0;
 }
 

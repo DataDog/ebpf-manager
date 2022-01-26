@@ -8,9 +8,8 @@ struct bpf_map_def SEC("maps/cache") cache = {
 };
 
 SEC("lsm/bpf")
-int lsm_security_bpf(struct pt_regs *ctx)
-{
-    bpf_printk("lsm_security_bpf\n");
+int BPF_PROG(lsm_security_bpf, int cmd) {
+    bpf_printk("lsm_security_bpf cmd:%d\n", cmd);
     return -EPERM;
 };
 
