@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/cilium/ebpf"
@@ -104,7 +105,7 @@ func (m *PerfMap) Start() error {
 		for {
 			record, err = m.perfReader.Read()
 			if err != nil {
-				if perf.IsClosed(err) {
+				if isPerfClosed(err) {
 					m.manager.wg.Done()
 					return
 				}
@@ -173,4 +174,8 @@ func (m *PerfMap) Resume() error {
 	}
 	m.state = running
 	return nil
+}
+
+func isPerfClosed(err error) bool {
+	return errors.Is(err, perf.ErrClosed)
 }
