@@ -5,7 +5,7 @@ go 1.15
 require (
 	github.com/DataDog/gopsutil v0.0.0-20200624212600-1b53412ef321
 	github.com/avast/retry-go v3.0.0+incompatible
-	github.com/cilium/ebpf v0.8.0
+	github.com/cilium/ebpf v0.8.1-0.20220207145041-7816b93564ca
 	github.com/florianl/go-tc v0.3.0
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/sirupsen/logrus v1.8.1
