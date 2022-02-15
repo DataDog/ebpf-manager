@@ -22,10 +22,11 @@ var m = &manager.Manager{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
 				UID:          "UtimesCommon",
-				EBPFSection:  "kprobe/utimes_common",
-				EBPFFuncName: "kprobe_utimes_common",
+				EBPFSection:  "kretprobe/utimes_common",
+				EBPFFuncName: "kretprobe_utimes_common",
 			},
-			MatchFuncName: "utimes",
+			MatchFuncName:   "utimes",
+			KProbeMaxActive: 100,
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
@@ -37,7 +38,6 @@ var m = &manager.Manager{
 				EBPFFuncName: "kretprobe_mkdirat",
 			},
 			SyscallFuncName: "mkdirat",
-			KProbeMaxActive: 100,
 		},
 	},
 }
