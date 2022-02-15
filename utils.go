@@ -31,6 +31,10 @@ const (
 	// MAX_EVENT_NAME_LEN (linux/kernel/trace/trace.h)
 	MaxEventNameLen    = 64
 	MinFunctionNameLen = 10
+
+	// MaxBPFClassifierNameLen - maximum length for a TC
+	// CLS_BPF_NAME_LEN (linux/net/sched/cls_bpf.c)
+	MaxBPFClassifierNameLen = 256
 )
 
 // ConcatErrors - Concatenate 2 errors into one error.
@@ -182,7 +186,7 @@ var safeEventRegexp = regexp.MustCompile("[^a-zA-Z0-9]")
 func GenerateEventName(probeType, funcName, UID string, attachPID int) (string, error) {
 	// truncate the function name and UID name to reduce the length of the event
 	attachPIDstr := strconv.Itoa(attachPID)
-	maxFuncNameLen := (MaxEventNameLen - 3 /* _ */ - len(probeType) - len(UID) - len(attachPIDstr))
+	maxFuncNameLen := MaxEventNameLen - 3 /* _ */ - len(probeType) - len(UID) - len(attachPIDstr)
 	if maxFuncNameLen < MinFunctionNameLen { /* let's guarantee that we have a function name minimum of 10 chars (MinFunctionNameLen) or trow an error */
 		dbgFullEventString := safeEventRegexp.ReplaceAllString(fmt.Sprintf("%s_%s_%s_%s", probeType, funcName, UID, attachPIDstr), "_")
 		return "", fmt.Errorf("event name is too long (kernel limit is %d (MAX_EVENT_NAME_LEN)): MinFunctionNameLen %d, len 3, probeType %d, funcName %d, UID %d, attachPIDstr %d ; full event string : '%s'", MaxEventNameLen, MinFunctionNameLen, len(probeType), len(funcName), len(UID), len(attachPIDstr), dbgFullEventString)
@@ -193,6 +197,21 @@ func GenerateEventName(probeType, funcName, UID string, attachPID int) (string, 
 		return "", fmt.Errorf("event name too long (kernel limit MAX_EVENT_NAME_LEN is %d): '%s'", MaxEventNameLen, eventName)
 	}
 	return eventName, nil
+}
+
+func GenerateTCFilterName(UID, sectionName string, attachPID int) (string, error) {
+	attachPIDstr := strconv.Itoa(attachPID)
+	maxSectionNameLen := MaxBPFClassifierNameLen - 3 /* _ */ - len(UID) - len(attachPIDstr)
+	if maxSectionNameLen < 0 {
+		dbgFullFilterString := safeEventRegexp.ReplaceAllString(fmt.Sprintf("%s_%s_%s", sectionName, UID, attachPIDstr), "_")
+		return "", fmt.Errorf("filter name is too long (kernel limit is %d (CLS_BPF_NAME_LEN)): sectionName %d, UID %d, attachPIDstr %d ; full event string : '%s'", MaxEventNameLen, len(sectionName), len(UID), len(attachPIDstr), dbgFullFilterString)
+	}
+	filterName := safeEventRegexp.ReplaceAllString(fmt.Sprintf("%.*s_%s_%s", maxSectionNameLen, sectionName, UID, attachPIDstr), "_")
+
+	if len(filterName) > MaxBPFClassifierNameLen {
+		return "", fmt.Errorf("filter name too long (kernel limit CLS_BPF_NAME_LEN is %d): '%s'", MaxBPFClassifierNameLen, filterName)
+	}
+	return filterName, nil
 }
 
 // getKernelGeneratedEventName returns the pattern used by the kernel when a [k|u]probe is loaded without an event name.

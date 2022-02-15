@@ -12,8 +12,9 @@ import (
 
 	"github.com/DataDog/gopsutil/process"
 	"github.com/cilium/ebpf"
-	"github.com/florianl/go-tc"
 	"github.com/hashicorp/go-multierror"
+	"github.com/vishvananda/netlink"
+	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
 )
 
@@ -223,28 +224,44 @@ type Options struct {
 	RLimit *unix.Rlimit
 }
 
-// netlinkCacheKey - (TC classifier programs only) Key used to recover the netlink cache of an interface
-type netlinkCacheKey struct {
-	Ifindex int32
-	Netns   uint64
+// NetlinkSocket - (TC classifier programs and XDP) Netlink socket cache entry holding the netlink socket and the
+// TC filter count
+type NetlinkSocket struct {
+	Sock          *netlink.Handle
+	TCFilterCount map[int]int
 }
 
-// netlinkCacheValue - (TC classifier programs only) Netlink socket and qdisc object used to update the classifiers of
-// an interface
-type netlinkCacheValue struct {
-	rtNetlink     *tc.Tc
-	schedClsCount int
+// NewNetlinkSocket - Returns a new NetlinkSocket instance
+func NewNetlinkSocket(nsHandle uint64) (*NetlinkSocket, error) {
+	var err error
+	var netnsHandle netns.NsHandle
+	cacheEntry := NetlinkSocket{
+		TCFilterCount: make(map[int]int),
+	}
+
+	if nsHandle == 0 {
+		netnsHandle = netns.None()
+	} else {
+		netnsHandle = netns.NsHandle(nsHandle)
+	}
+
+	// Open a netlink socket for the requested namespace
+	cacheEntry.Sock, err = netlink.NewHandleAt(netnsHandle, unix.NETLINK_ROUTE)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't open a netlink socket: %w", err)
+	}
+	return &cacheEntry, nil
 }
 
 // Manager - Helper structure that manages multiple eBPF programs and maps
 type Manager struct {
-	wg             *sync.WaitGroup
-	collectionSpec *ebpf.CollectionSpec
-	collection     *ebpf.Collection
-	options        Options
-	netlinkCache   map[netlinkCacheKey]*netlinkCacheValue
-	state          state
-	stateLock      sync.RWMutex
+	wg                 *sync.WaitGroup
+	collectionSpec     *ebpf.CollectionSpec
+	collection         *ebpf.Collection
+	options            Options
+	netlinkSocketCache map[uint32]*NetlinkSocket
+	state              state
+	stateLock          sync.RWMutex
 
 	// Probes - List of probes handled by the manager
 	Probes []*Probe
@@ -490,7 +507,7 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 
 	m.wg = &sync.WaitGroup{}
 	m.options = options
-	m.netlinkCache = make(map[netlinkCacheKey]*netlinkCacheValue)
+	m.netlinkSocketCache = make(map[uint32]*NetlinkSocket)
 	if m.options.DefaultPerfRingBufferSize == 0 {
 		m.options.DefaultPerfRingBufferSize = os.Getpagesize()
 	}
@@ -692,15 +709,12 @@ func (m *Manager) stop(cleanup MapCleanupType) error {
 	}
 
 	// Close all netlink sockets
-	for _, entry := range m.netlinkCache {
-		err = ConcatErrors(err, entry.rtNetlink.Close())
-	}
+	m.cleanupNetlinkSockets()
 
 	// Clean up collection
-	// Note: we might end up closing the same programs and maps multiple times but the library gracefully handles those
-	// situations. We can't only rely on the collection to close all maps and programs because some pinned objects were
+	// Note: we might end up closing the same programs or maps multiple times but the library gracefully handles those
+	// situations. We can't rely only on the collection to close all maps and programs because some pinned objects were
 	// removed from the collection.
-	//if m.collection
 	m.collection.Close()
 
 	// Wait for all go routines to stop
@@ -1585,23 +1599,95 @@ func (m *Manager) sanityCheck() error {
 	return nil
 }
 
-// newNetlinkConnection - (TC classifier) TC classifiers are attached by creating a qdisc on the requested
-// interface. A netlink socket is required to create a qdisc. Since this socket can be re-used for multiple classifiers,
-// instantiate the connection at the manager level and cache the netlink socket.
-func (m *Manager) newNetlinkConnection(ifindex int32, netns uint64) (*netlinkCacheValue, error) {
-	var cacheEntry netlinkCacheValue
-	var err error
-	// Open a netlink socket for the requested namespace
-	cacheEntry.rtNetlink, err = tc.Open(&tc.Config{
-		NetNS: int(netns),
-	})
+// NewCachedNetlinkSocket - TC classifiers are attached by creating a qdisc on the requested interface. A netlink socket
+// is required to create a qdisc (or to attach an XDP program to an interface). Since this socket can be re-used for
+// multiple probes, instantiate the connection at the manager level and cache the netlink socket. The provided nsID
+// should be the ID of the network namespaced returned by a readlink on `/proc/[pid]/ns/net` for a [pid] that lives in
+// the network namespace pointed to by the nsHandle.
+func (m *Manager) NewCachedNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
+	if m.state < initialized {
+		return nil, ErrManagerNotInitialized
+	}
+	return m.newCachedNetlinkSocket(nsHandle, nsID)
+}
+
+// newCachedNetlinkSocket - Internal function (see NewCachedNetlinkSocket)
+func (m *Manager) newCachedNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
+	cacheEntry, err := NewNetlinkSocket(nsHandle)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't open a NETLink socket in namespace %v: %w", netns, err)
+		return nil, fmt.Errorf("namespace %v: %w", nsID, err)
 	}
 
 	// Insert in manager cache
-	m.netlinkCache[netlinkCacheKey{Ifindex: ifindex, Netns: netns}] = &cacheEntry
-	return &cacheEntry, nil
+	m.netlinkSocketCache[nsID] = cacheEntry
+	return cacheEntry, nil
+}
+
+// GetNetlinkSocket - Returns a netlink socket in the requested network namespace from cache or creates a new one.
+func (m *Manager) GetNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
+	if m.state < initialized {
+		return nil, ErrManagerNotInitialized
+	}
+	return m.getNetlinkSocket(nsHandle, nsID)
+}
+
+// getNetlinkSocket - Internal function (see GetNetlinkSocket)
+func (m *Manager) getNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
+	sock, ok := m.netlinkSocketCache[nsID]
+	if ok {
+		return sock, nil
+	}
+
+	return m.newCachedNetlinkSocket(nsHandle, nsID)
+}
+
+// CleanupNetworkNamespace - Cleans up all references to the provided network namespace within the manager. This means
+// that any TC classifier or XDP probe in that network namespace will be stopped and all opened netlink socket in that
+// namespace will be closed.
+// WARNING: Don't forget to call this method if you've provided a IfIndexNetns and IfIndexNetnsID to one of the probes
+// of this manager. Failing to call this cleanup function may lead to leaking the network namespace. Only call this
+// function when you're sure that the manager no longer needs to perform anything in the provided network namespace (or
+// else call NewNetlinkSocket first).
+func (m *Manager) CleanupNetworkNamespace(nsID uint32) error {
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
+	if m.state < initialized {
+		return ErrManagerNotInitialized
+	}
+
+	var err error
+	for _, probe := range m.Probes {
+		if probe.IfIndexNetnsID != nsID {
+			continue
+		}
+
+		// stop the probe
+		err = ConcatErrors(err, probe.Stop())
+	}
+
+	// delete all netlink sockets, along with netns handles
+	s, ok := m.netlinkSocketCache[nsID]
+	if ok {
+		delete(m.netlinkSocketCache, nsID)
+
+		// close the netlink socket
+		s.Sock.Delete()
+	}
+	return err
+}
+
+// cleanupNetlinkSockets - Cleans up all opened netlink sockets in cache. This function is expected to be called when a
+// manager is stopped.
+func (m *Manager) cleanupNetlinkSockets() {
+	for key, s := range m.netlinkSocketCache {
+		delete(m.netlinkSocketCache, key)
+		// close the netlink socket
+		s.Sock.Delete()
+	}
 }
 
 type procMask uint8
@@ -1611,17 +1697,8 @@ const (
 	Exited
 )
 
-// cleanupKprobeEvents - Cleans up kprobe_events and uprobe_events by removing entries of known UIDs, that are not used
-// anymore.
-//
-// Previous instances of this manager might have been killed unexpectedly. When this happens,
-// kprobe_events is not cleaned up properly and can grow indefinitely until it reaches 65k
-// entries (see: https://elixir.bootlin.com/linux/latest/source/kernel/trace/trace_output.c#L696)
-// Once the limit is reached, the kernel refuses to load new probes and throws a "no such device"
-// error. To prevent this, start by cleaning up the kprobe_events entries of previous managers that
-// are not running anymore.
-func (m *Manager) cleanupTracefs() error {
-	// build the pattern to look for in kprobe_events and uprobe_events
+// getUIDSet - Returns the list of UIDs used by this manager.
+func (m *Manager) getUIDSet() []string {
 	var uidSet []string
 	for _, p := range m.Probes {
 		if len(p.UID) == 0 {
@@ -1639,9 +1716,23 @@ func (m *Manager) cleanupTracefs() error {
 			uidSet = append(uidSet, p.UID)
 		}
 	}
-	pattern, err := regexp.Compile(fmt.Sprintf(`(p|r)[0-9]*:(kprobes|uprobes)/(.*(%s)_([0-9]*)) .*`, strings.Join(uidSet, "|")))
+	return uidSet
+}
+
+// cleanupKprobeEvents - Cleans up kprobe_events and uprobe_events by removing entries of known UIDs, that are not used
+// anymore.
+//
+// Previous instances of this manager might have been killed unexpectedly. When this happens,
+// kprobe_events is not cleaned up properly and can grow indefinitely until it reaches 65k
+// entries (see: https://elixir.bootlin.com/linux/v5.6.1/source/kernel/trace/trace_output.c#L699)
+// Once the limit is reached, the kernel refuses to load new probes and throws a "no such device"
+// error. To prevent this, start by cleaning up the kprobe_events entries of previous managers that
+// are not running anymore.
+func (m *Manager) cleanupTracefs() error {
+	// build the pattern to look for in kprobe_events and uprobe_events
+	pattern, err := regexp.Compile(fmt.Sprintf(`(p|r)[0-9]*:(kprobes|uprobes)\/(.*(%s)*_([0-9]*)) .*`, strings.Join(m.getUIDSet(), "|")))
 	if err != nil {
-		return fmt.Errorf("pattern generation failed: %w", err)
+		return fmt.Errorf("event name pattern generation failed: %w", err)
 	}
 
 	// clean up kprobe_events
