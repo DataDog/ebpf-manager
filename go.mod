@@ -6,7 +6,7 @@ require (
 	github.com/DataDog/gopsutil v0.0.0-20200624212600-1b53412ef321
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/cilium/ebpf v0.8.1
-	github.com/florianl/go-tc v0.3.0
+	github.com/florianl/go-tc v0.3.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/sirupsen/logrus v1.8.1
 	github.com/vishvananda/netlink v1.1.0
