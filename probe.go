@@ -1017,7 +1017,7 @@ func (p *Probe) attachTCCLS() error {
 	var err error
 	// Resolve Probe's interface
 	if _, err = p.resolveLink(); err != nil {
-		return ErrInterfaceNotSet
+		return err
 	}
 
 	// Recover the netlink socket of the interface from the manager
@@ -1230,7 +1230,7 @@ func (p *Probe) attachXDP() error {
 	var err error
 	// Resolve Probe's interface
 	if _, err = p.resolveLink(); err != nil {
-		return ErrInterfaceNotSet
+		return err
 	}
 
 	// Attach program
@@ -1246,7 +1246,7 @@ func (p *Probe) detachXDP() error {
 	var err error
 	// Resolve Probe's interface
 	if _, err = p.resolveLink(); err != nil {
-		return ErrInterfaceNotSet
+		return err
 	}
 
 	// Detach program
