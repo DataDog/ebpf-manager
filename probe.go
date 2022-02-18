@@ -509,8 +509,8 @@ func (p *Probe) init() error {
 	return nil
 }
 
-// resolveLink - Resolves the Probe's network interface
-func (p *Probe) resolveLink() (netlink.Link, error) {
+// ResolveLink - Resolves the Probe's network interface
+func (p *Probe) ResolveLink() (netlink.Link, error) {
 	if p.link != nil {
 		return p.link, nil
 	}
@@ -1016,7 +1016,7 @@ func (p *Probe) buildTCFilter() (netlink.BpfFilter, error) {
 func (p *Probe) attachTCCLS() error {
 	var err error
 	// Resolve Probe's interface
-	if _, err = p.resolveLink(); err != nil {
+	if _, err = p.ResolveLink(); err != nil {
 		return err
 	}
 
@@ -1229,7 +1229,7 @@ func (p *Probe) cleanupTCFilters(ntl *NetlinkSocket) error {
 func (p *Probe) attachXDP() error {
 	var err error
 	// Resolve Probe's interface
-	if _, err = p.resolveLink(); err != nil {
+	if _, err = p.ResolveLink(); err != nil {
 		return err
 	}
 
@@ -1245,7 +1245,7 @@ func (p *Probe) attachXDP() error {
 func (p *Probe) detachXDP() error {
 	var err error
 	// Resolve Probe's interface
-	if _, err = p.resolveLink(); err != nil {
+	if _, err = p.ResolveLink(); err != nil {
 		return err
 	}
 
