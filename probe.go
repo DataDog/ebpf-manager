@@ -775,6 +775,8 @@ func (p *Probe) attachWithKprobeEvents() error {
 	return nil
 }
 
+var kprobePMUNotSupported = false
+
 // attachKprobe - Attaches the probe to its kprobe
 func (p *Probe) attachKprobe() error {
 	var err error
@@ -788,15 +790,25 @@ func (p *Probe) attachKprobe() error {
 		return p.attachUprobe()
 	}
 
-	// currently the perf event open ABI doesn't allow to specify the max active parameter
-	if p.KProbeMaxActive > 0 && p.GetKprobeType() == RetProbeType {
+	if kprobePMUNotSupported {
+		if err = p.attachWithKprobeEvents(); err != nil {
+			return err
+		}
+	} else if p.KProbeMaxActive > 0 && p.GetKprobeType() == RetProbeType { // currently the perf event open ABI doesn't allow to specify the max active parameter
 		if err = p.attachWithKprobeEvents(); err != nil {
 			if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", true, 0); err != nil {
+				if errors.Is(err, ErrNotSupported) {
+					kprobePMUNotSupported = true
+				}
 				return err
 			}
 		}
 	} else {
 		if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", false, 0); err != nil {
+			if errors.Is(err, ErrNotSupported) {
+				kprobePMUNotSupported = true
+			}
+
 			if err = p.attachWithKprobeEvents(); err != nil {
 				return err
 			}
