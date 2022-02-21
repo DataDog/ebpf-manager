@@ -368,10 +368,10 @@ func (p *Probe) InitWithOptions(manager *Manager, manualLoadNeeded bool, checkPi
 	if !p.Enabled {
 		return nil
 	}
+
 	p.manager = manager
 	p.stateLock.Lock()
 	defer p.stateLock.Unlock()
-	p.state = reset
 	p.manualLoadNeeded = manualLoadNeeded
 	p.checkPin = checkPin
 	return p.init()
@@ -385,7 +385,6 @@ func (p *Probe) Init(manager *Manager) error {
 	p.manager = manager
 	p.stateLock.Lock()
 	defer p.stateLock.Unlock()
-	p.state = reset
 	return p.init()
 }
 
@@ -395,6 +394,11 @@ func (p *Probe) Program() *ebpf.Program {
 
 // init - Internal initialization function
 func (p *Probe) init() error {
+	if p.state >= initialized {
+		return nil
+	}
+
+	p.state = reset
 	// Load spec if necessary
 	if p.manualLoadNeeded {
 		prog, err := ebpf.NewProgramWithOptions(p.programSpec, p.manager.options.VerifierOptions.Programs)
