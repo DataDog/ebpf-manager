@@ -776,7 +776,7 @@ func (p *Probe) attachWithKprobeEvents() error {
 	return nil
 }
 
-var kprobePMUNotSupported uint32 = 0
+var kprobePMUNotSupported uint32
 
 // attachKprobe - Attaches the probe to its kprobe
 func (p *Probe) attachKprobe() error {
