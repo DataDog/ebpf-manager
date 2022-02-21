@@ -766,10 +766,11 @@ func (p *Probe) attachWithKprobeEvents() error {
 		// fallback without KProbeMaxActive
 		kprobeID, err = registerKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, "", p.attachPID)
 	}
-	if errors.Is(err, os.ErrNotExist) {
-		p.kprobeEventUnavailable = true
-	}
+
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			p.kprobeEventUnavailable = true
+		}
 		return fmt.Errorf("couldn't enable kprobe %s: %w", p.ProbeIdentificationPair, err)
 	}
 
