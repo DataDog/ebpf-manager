@@ -790,13 +790,15 @@ func (p *Probe) attachKprobe() error {
 		return p.attachUprobe()
 	}
 
+	isKRetProbe := p.GetKprobeType() == RetProbeType
+
 	if kprobePMUNotSupported {
 		if err = p.attachWithKprobeEvents(); err != nil {
 			return err
 		}
-	} else if p.KProbeMaxActive > 0 && p.GetKprobeType() == RetProbeType { // currently the perf event open ABI doesn't allow to specify the max active parameter
+	} else if p.KProbeMaxActive > 0 && isKRetProbe { // currently the perf event open ABI doesn't allow to specify the max active parameter
 		if err = p.attachWithKprobeEvents(); err != nil {
-			if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", true, 0); err != nil {
+			if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", isKRetProbe, 0); err != nil {
 				if errors.Is(err, ErrNotSupported) {
 					kprobePMUNotSupported = true
 				}
@@ -804,7 +806,7 @@ func (p *Probe) attachKprobe() error {
 			}
 		}
 	} else {
-		if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", false, 0); err != nil {
+		if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", isKRetProbe, 0); err != nil {
 			if errors.Is(err, ErrNotSupported) {
 				kprobePMUNotSupported = true
 			}
