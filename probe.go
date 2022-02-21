@@ -125,23 +125,24 @@ func (pip ProbeIdentificationPair) GetUprobeType() string {
 // Probe - Main eBPF probe wrapper. This structure is used to store the required data to attach a loaded eBPF
 // program to its hook point.
 type Probe struct {
-	manager             *Manager
-	program             *ebpf.Program
-	programSpec         *ebpf.ProgramSpec
-	perfEventFD         *FD
-	rawTracepointFD     *FD
-	state               state
-	stateLock           sync.RWMutex
-	manualLoadNeeded    bool
-	checkPin            bool
-	attachPID           int
-	attachRetryAttempt  uint
-	attachedWithDebugFS bool
-	systemWideID        int
-	programTag          string
-	link                netlink.Link
-	tcFilter            netlink.BpfFilter
-	tcClsActQdisc       netlink.Qdisc
+	manager                *Manager
+	program                *ebpf.Program
+	programSpec            *ebpf.ProgramSpec
+	perfEventFD            *FD
+	rawTracepointFD        *FD
+	state                  state
+	stateLock              sync.RWMutex
+	manualLoadNeeded       bool
+	checkPin               bool
+	attachPID              int
+	attachRetryAttempt     uint
+	attachedWithDebugFS    bool
+	kprobeEventUnavailable bool
+	systemWideID           int
+	programTag             string
+	link                   netlink.Link
+	tcFilter               netlink.BpfFilter
+	tcClsActQdisc          netlink.Qdisc
 
 	// lastError - stores the last error that the probe encountered, it is used to surface a more useful error message
 	// when one of the validators (see Options.ActivatedProbes) fails.
@@ -744,6 +745,10 @@ func (p *Probe) getNetlinkSocket() (*NetlinkSocket, error) {
 
 // attachWithKprobeEvents attaches the kprobe using the kprobes_events ABI
 func (p *Probe) attachWithKprobeEvents() error {
+	if p.kprobeEventUnavailable {
+		return fmt.Errorf("couldn't enable kprobe: kprobe_event is not available")
+	}
+
 	// Prepare kprobe_events line parameters
 	var maxActiveStr string
 	if p.GetKprobeType() == RetProbeType {
@@ -760,6 +765,9 @@ func (p *Probe) attachWithKprobeEvents() error {
 		_ = unregisterKprobeEventWithEventName(getKernelGeneratedEventName(p.GetKprobeType(), p.HookFuncName))
 		// fallback without KProbeMaxActive
 		kprobeID, err = registerKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, "", p.attachPID)
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		p.kprobeEventUnavailable = true
 	}
 	if err != nil {
 		return fmt.Errorf("couldn't enable kprobe %s: %w", p.ProbeIdentificationPair, err)
