@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -775,7 +776,7 @@ func (p *Probe) attachWithKprobeEvents() error {
 	return nil
 }
 
-var kprobePMUNotSupported = false
+var kprobePMUNotSupported uint32 = 0
 
 // attachKprobe - Attaches the probe to its kprobe
 func (p *Probe) attachKprobe() error {
@@ -792,7 +793,7 @@ func (p *Probe) attachKprobe() error {
 
 	isKRetProbe := p.GetKprobeType() == RetProbeType
 
-	if kprobePMUNotSupported {
+	if atomic.LoadUint32(&kprobePMUNotSupported) != 0 {
 		if err = p.attachWithKprobeEvents(); err != nil {
 			return err
 		}
@@ -800,7 +801,7 @@ func (p *Probe) attachKprobe() error {
 		if err = p.attachWithKprobeEvents(); err != nil {
 			if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", isKRetProbe, 0); err != nil {
 				if errors.Is(err, ErrNotSupported) {
-					kprobePMUNotSupported = true
+					atomic.StoreUint32(&kprobePMUNotSupported, 1)
 				}
 				return err
 			}
@@ -808,7 +809,7 @@ func (p *Probe) attachKprobe() error {
 	} else {
 		if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", isKRetProbe, 0); err != nil {
 			if errors.Is(err, ErrNotSupported) {
-				kprobePMUNotSupported = true
+				atomic.StoreUint32(&kprobePMUNotSupported, 1)
 			}
 
 			if err = p.attachWithKprobeEvents(); err != nil {
