@@ -485,7 +485,7 @@ func (p *Probe) init() error {
 
 	// Default retry
 	if p.ProbeRetry == 0 {
-		p.ProbeRetry = p.manager.options.DefaultProbeRetry + 1
+		p.ProbeRetry = p.manager.options.DefaultProbeRetry
 	}
 
 	// Default retry delay
@@ -561,7 +561,7 @@ func (p *Probe) Attach() error {
 		}
 
 		return err
-	}, retry.Attempts(p.ProbeRetry), retry.Delay(p.ProbeRetryDelay), retry.LastErrorOnly(true))
+	}, retry.Attempts(p.getRetryAttemptCount()), retry.Delay(p.ProbeRetryDelay), retry.LastErrorOnly(true))
 }
 
 // attach - Thread unsafe version of attach
@@ -613,7 +613,7 @@ func (p *Probe) attach() error {
 
 	// update probe state
 	p.state = running
-	p.attachRetryAttempt = p.ProbeRetry
+	p.attachRetryAttempt = p.getRetryAttemptCount()
 	return nil
 }
 
@@ -641,7 +641,7 @@ func (p *Probe) Detach() error {
 
 // detachRetry - Thread unsafe version of Detach with retry
 func (p *Probe) detachRetry() error {
-	return retry.Do(p.detach, retry.Attempts(p.ProbeRetry), retry.Delay(p.ProbeRetryDelay), retry.LastErrorOnly(true))
+	return retry.Do(p.detach, retry.Attempts(p.getRetryAttemptCount()), retry.Delay(p.ProbeRetryDelay), retry.LastErrorOnly(true))
 }
 
 // detach - Thread unsafe version of Detach.
@@ -699,7 +699,7 @@ func (p *Probe) stop(saveStopError bool) error {
 	err := p.detachRetry()
 
 	// close the loaded program
-	if p.attachRetryAttempt >= p.ProbeRetry {
+	if p.attachRetryAttempt >= p.getRetryAttemptCount() {
 		err = ConcatErrors(err, p.program.Close())
 	}
 
@@ -709,7 +709,7 @@ func (p *Probe) stop(saveStopError bool) error {
 	}
 
 	// Cleanup probe if stop was successful
-	if err == nil && p.attachRetryAttempt >= p.ProbeRetry {
+	if err == nil && p.attachRetryAttempt >= p.getRetryAttemptCount() {
 		p.reset()
 	}
 	if err != nil {
@@ -1336,4 +1336,8 @@ func (p *Probe) detachPerfEvent() error {
 	}
 	p.perfEventCPUFDs = []*FD{}
 	return err
+}
+
+func (p *Probe) getRetryAttemptCount() uint {
+	return p.ProbeRetry + 1
 }
