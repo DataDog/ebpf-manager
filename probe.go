@@ -732,6 +732,7 @@ func (p *Probe) reset() {
 	p.attachPID = 0
 	p.attachRetryAttempt = 0
 	p.attachedWithDebugFS = false
+	p.kprobeHookPointNotExist = false
 	p.systemWideID = 0
 	p.programTag = ""
 	p.tcFilter = netlink.BpfFilter{}
