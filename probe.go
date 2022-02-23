@@ -125,23 +125,24 @@ func (pip ProbeIdentificationPair) GetUprobeType() string {
 // Probe - Main eBPF probe wrapper. This structure is used to store the required data to attach a loaded eBPF
 // program to its hook point.
 type Probe struct {
-	manager             *Manager
-	program             *ebpf.Program
-	programSpec         *ebpf.ProgramSpec
-	perfEventFD         *FD
-	rawTracepointFD     *FD
-	state               state
-	stateLock           sync.RWMutex
-	manualLoadNeeded    bool
-	checkPin            bool
-	attachPID           int
-	attachRetryAttempt  uint
-	attachedWithDebugFS bool
-	systemWideID        int
-	programTag          string
-	link                netlink.Link
-	tcFilter            netlink.BpfFilter
-	tcClsActQdisc       netlink.Qdisc
+	manager                 *Manager
+	program                 *ebpf.Program
+	programSpec             *ebpf.ProgramSpec
+	perfEventFD             *FD
+	rawTracepointFD         *FD
+	state                   state
+	stateLock               sync.RWMutex
+	manualLoadNeeded        bool
+	checkPin                bool
+	attachPID               int
+	attachRetryAttempt      uint
+	attachedWithDebugFS     bool
+	kprobeHookPointNotExist bool
+	systemWideID            int
+	programTag              string
+	link                    netlink.Link
+	tcFilter                netlink.BpfFilter
+	tcClsActQdisc           netlink.Qdisc
 
 	// lastError - stores the last error that the probe encountered, it is used to surface a more useful error message
 	// when one of the validators (see Options.ActivatedProbes) fails.
@@ -368,10 +369,10 @@ func (p *Probe) InitWithOptions(manager *Manager, manualLoadNeeded bool, checkPi
 	if !p.Enabled {
 		return nil
 	}
+
 	p.manager = manager
 	p.stateLock.Lock()
 	defer p.stateLock.Unlock()
-	p.state = reset
 	p.manualLoadNeeded = manualLoadNeeded
 	p.checkPin = checkPin
 	return p.init()
@@ -385,7 +386,6 @@ func (p *Probe) Init(manager *Manager) error {
 	p.manager = manager
 	p.stateLock.Lock()
 	defer p.stateLock.Unlock()
-	p.state = reset
 	return p.init()
 }
 
@@ -395,6 +395,11 @@ func (p *Probe) Program() *ebpf.Program {
 
 // init - Internal initialization function
 func (p *Probe) init() error {
+	if p.state >= initialized {
+		return nil
+	}
+
+	p.state = reset
 	// Load spec if necessary
 	if p.manualLoadNeeded {
 		prog, err := ebpf.NewProgramWithOptions(p.programSpec, p.manager.options.VerifierOptions.Programs)
@@ -480,12 +485,8 @@ func (p *Probe) init() error {
 
 	// Default retry
 	if p.ProbeRetry == 0 {
-		if p.manager.options.DefaultProbeRetry > 0 {
-			p.ProbeRetry = p.manager.options.DefaultProbeRetry
-		}
+		p.ProbeRetry = p.manager.options.DefaultProbeRetry
 	}
-	// account for the initial attempt
-	p.ProbeRetry++
 
 	// Default retry delay
 	if p.ProbeRetryDelay == 0 {
@@ -560,7 +561,7 @@ func (p *Probe) Attach() error {
 		}
 
 		return err
-	}, retry.Attempts(p.ProbeRetry), retry.Delay(p.ProbeRetryDelay), retry.LastErrorOnly(true))
+	}, retry.Attempts(p.getRetryAttemptCount()), retry.Delay(p.ProbeRetryDelay), retry.LastErrorOnly(true))
 }
 
 // attach - Thread unsafe version of attach
@@ -612,7 +613,7 @@ func (p *Probe) attach() error {
 
 	// update probe state
 	p.state = running
-	p.attachRetryAttempt = p.ProbeRetry
+	p.attachRetryAttempt = p.getRetryAttemptCount()
 	return nil
 }
 
@@ -640,7 +641,7 @@ func (p *Probe) Detach() error {
 
 // detachRetry - Thread unsafe version of Detach with retry
 func (p *Probe) detachRetry() error {
-	return retry.Do(p.detach, retry.Attempts(p.ProbeRetry), retry.Delay(p.ProbeRetryDelay), retry.LastErrorOnly(true))
+	return retry.Do(p.detach, retry.Attempts(p.getRetryAttemptCount()), retry.Delay(p.ProbeRetryDelay), retry.LastErrorOnly(true))
 }
 
 // detach - Thread unsafe version of Detach.
@@ -698,7 +699,7 @@ func (p *Probe) stop(saveStopError bool) error {
 	err := p.detachRetry()
 
 	// close the loaded program
-	if p.attachRetryAttempt >= p.ProbeRetry {
+	if p.attachRetryAttempt >= p.getRetryAttemptCount() {
 		err = ConcatErrors(err, p.program.Close())
 	}
 
@@ -708,7 +709,7 @@ func (p *Probe) stop(saveStopError bool) error {
 	}
 
 	// Cleanup probe if stop was successful
-	if err == nil && p.attachRetryAttempt >= p.ProbeRetry {
+	if err == nil && p.attachRetryAttempt >= p.getRetryAttemptCount() {
 		p.reset()
 	}
 	if err != nil {
@@ -731,6 +732,7 @@ func (p *Probe) reset() {
 	p.attachPID = 0
 	p.attachRetryAttempt = 0
 	p.attachedWithDebugFS = false
+	p.kprobeHookPointNotExist = false
 	p.systemWideID = 0
 	p.programTag = ""
 	p.tcFilter = netlink.BpfFilter{}
@@ -744,6 +746,10 @@ func (p *Probe) getNetlinkSocket() (*NetlinkSocket, error) {
 
 // attachWithKprobeEvents attaches the kprobe using the kprobes_events ABI
 func (p *Probe) attachWithKprobeEvents() error {
+	if p.kprobeHookPointNotExist {
+		return ErrKProbeHookPointNotExist
+	}
+
 	// Prepare kprobe_events line parameters
 	var maxActiveStr string
 	if p.GetKprobeType() == RetProbeType {
@@ -761,7 +767,11 @@ func (p *Probe) attachWithKprobeEvents() error {
 		// fallback without KProbeMaxActive
 		kprobeID, err = registerKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, "", p.attachPID)
 	}
+
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			p.kprobeHookPointNotExist = true
+		}
 		return fmt.Errorf("couldn't enable kprobe %s: %w", p.ProbeIdentificationPair, err)
 	}
 
@@ -788,15 +798,17 @@ func (p *Probe) attachKprobe() error {
 		return p.attachUprobe()
 	}
 
+	isKRetProbe := p.GetKprobeType() == RetProbeType
+
 	// currently the perf event open ABI doesn't allow to specify the max active parameter
-	if p.KProbeMaxActive > 0 && p.GetKprobeType() == RetProbeType {
+	if p.KProbeMaxActive > 0 && isKRetProbe {
 		if err = p.attachWithKprobeEvents(); err != nil {
-			if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", true, 0); err != nil {
+			if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", isKRetProbe, 0); err != nil {
 				return err
 			}
 		}
 	} else {
-		if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", false, 0); err != nil {
+		if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", isKRetProbe, 0); err != nil {
 			if err = p.attachWithKprobeEvents(); err != nil {
 				return err
 			}
@@ -1325,4 +1337,8 @@ func (p *Probe) detachPerfEvent() error {
 	}
 	p.perfEventCPUFDs = []*FD{}
 	return err
+}
+
+func (p *Probe) getRetryAttemptCount() uint {
+	return p.ProbeRetry + 1
 }
