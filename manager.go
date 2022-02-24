@@ -1034,16 +1034,27 @@ func (m *Manager) updateMapRoute(route MapRoute) error {
 
 // UpdateTailCallRoutes - Update one or multiple program arrays so that the provided keys point to the provided programs.
 func (m *Manager) UpdateTailCallRoutes(router ...TailCallRoute) error {
+	checkProgType := make(map[string]ebpf.ProgramType)
 	for _, route := range router {
-		if err := m.updateTailCallRoute(route); err != nil {
+		var progType ebpf.ProgramType
+		if err := m.updateTailCallRoute(route, &progType); err != nil {
 			return err
+		}
+		// verify tail call program type
+		pt, found := checkProgType[route.ProgArrayName]
+		if !found {
+			checkProgType[route.ProgArrayName] = progType
+			continue
+		}
+		if pt != progType {
+			return fmt.Errorf("tail call probe (%s) program type mismatch want %v have %v", route.ProbeIdentificationPair.String(), pt, progType)
 		}
 	}
 	return nil
 }
 
 // updateTailCallRoute - Update a program array so that the provided key point to the provided program.
-func (m *Manager) updateTailCallRoute(route TailCallRoute) error {
+func (m *Manager) updateTailCallRoute(route TailCallRoute, progType *ebpf.ProgramType) error {
 	// Select the routing map
 	routingMap, found, err := m.GetMap(route.ProgArrayName)
 	if err != nil {
@@ -1054,9 +1065,9 @@ func (m *Manager) updateTailCallRoute(route TailCallRoute) error {
 	}
 
 	// Get file descriptor of the routed program
-	var fd uint32
+	var prog *ebpf.Program
 	if route.Program != nil {
-		fd = uint32(route.Program.FD())
+		prog = route.Program
 	} else {
 		progs, found, err := m.GetProgram(route.ProbeIdentificationPair)
 		if err != nil {
@@ -1068,8 +1079,10 @@ func (m *Manager) updateTailCallRoute(route TailCallRoute) error {
 		if progs[0] == nil {
 			return fmt.Errorf("the program that you are trying to route to is empty")
 		}
-		fd = uint32(progs[0].FD())
+		prog = progs[0]
 	}
+	fd := uint32(prog.FD())
+	*progType = prog.Type()
 
 	// Insert tail call
 	if err = routingMap.Put(route.Key, fd); err != nil {
