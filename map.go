@@ -91,7 +91,7 @@ func loadNewMap(spec ebpf.MapSpec, options MapOptions) (*Map, error) {
 
 	// Pin map if need be
 	if managerMap.PinPath != "" {
-		if err := managerMap.array.Pin(managerMap.PinPath); err != nil {
+		if err = managerMap.array.Pin(managerMap.PinPath); err != nil {
 			return nil, fmt.Errorf("couldn't pin map %s at %s: %w", managerMap.Name, managerMap.PinPath, err)
 		}
 	}
@@ -113,7 +113,9 @@ func (m *Map) Init(manager *Manager) error {
 			return fmt.Errorf("couldn't find map at maps/%s: %w", m.Name, ErrUnknownSection)
 		}
 		m.array = array
+	}
 
+	if m.array != nil {
 		// Pin map if needed
 		if m.PinPath != "" {
 			if err := m.array.Pin(m.PinPath); err != nil {
@@ -121,6 +123,7 @@ func (m *Map) Init(manager *Manager) error {
 			}
 		}
 	}
+
 	m.state = initialized
 	return nil
 }

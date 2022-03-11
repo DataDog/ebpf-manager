@@ -12,6 +12,7 @@ var (
 	ErrMapNameInUse             = errors.New("the provided map name is already taken")
 	ErrIdentificationPairInUse  = errors.New("the provided identification pair already exists")
 	ErrProbeNotInitialized      = errors.New("the probe must be initialized first")
+	ErrProbeRunning             = errors.New("the probe is already running")
 	ErrSectionFormat            = errors.New("invalid section format")
 	ErrSymbolNotFound           = errors.New("symbol not found")
 	ErrKprobeIDNotExist         = errors.New("kprobe id file doesn't exist")

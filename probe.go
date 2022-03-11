@@ -349,6 +349,18 @@ func (p *Probe) IsInitialized() bool {
 	return p.state >= initialized
 }
 
+// RenameProbeIdentificationPair - Renames the probe identification pair of a probe
+func (p *Probe) RenameProbeIdentificationPair(newID ProbeIdentificationPair) error {
+	p.stateLock.Lock()
+	defer p.stateLock.Unlock()
+	if p.state >= running {
+		return fmt.Errorf("couldn't rename ProbeIdentificationPair of %s with %s: %w", p.ProbeIdentificationPair, newID, ErrProbeRunning)
+	}
+	p.EBPFSection = newID.EBPFSection
+	p.UID = newID.UID
+	return nil
+}
+
 // Test - Triggers the probe with the provided test data. Returns the length of the output, the raw output or an error.
 func (p *Probe) Test(in []byte) (uint32, []byte, error) {
 	return p.program.Test(in)
