@@ -5,6 +5,57 @@ import (
 	"strings"
 )
 
+// ProbesSelector - A probe selector defines how a probe (or a group of probes) should be activated.
+//
+// For example, this can be used to specify that out of a group of optional probes, at least one should be activated.
+type ProbesSelector interface {
+	// GetProbesIdentificationPairList - Returns the list of probes that this selector activates
+	GetProbesIdentificationPairList() []ProbeIdentificationPair
+	// runValidator - Ensures that the probes that were successfully activated follow the selector goal.
+	// For example, see OneOf.
+	runValidator(manager *Manager) error
+	// EditProbeIdentificationPair - Changes all the selectors looking for the old ProbeIdentificationPair so that they
+	// mow select the new one
+	EditProbeIdentificationPair(old ProbeIdentificationPair, new ProbeIdentificationPair)
+}
+
+// ProbeSelector - This selector is used to unconditionally select a probe by its identification pair and validate
+// that it is activated
+type ProbeSelector struct {
+	ProbeIdentificationPair
+}
+
+// GetProbesIdentificationPairList - Returns the list of probes that this selector activates
+func (ps *ProbeSelector) GetProbesIdentificationPairList() []ProbeIdentificationPair {
+	return []ProbeIdentificationPair{ps.ProbeIdentificationPair}
+}
+
+// runValidator - Ensures that the probes that were successfully activated follow the selector goal.
+// For example, see OneOf.
+func (ps *ProbeSelector) runValidator(manager *Manager) error {
+	p, ok := manager.getProbe(ps.ProbeIdentificationPair)
+	if !ok {
+		return fmt.Errorf("probe not found: %s", ps.ProbeIdentificationPair)
+	}
+	if !p.IsRunning() && p.Enabled {
+		return fmt.Errorf("%s: %w", ps.ProbeIdentificationPair.String(), p.GetLastError())
+	}
+	if !p.Enabled {
+		return fmt.Errorf(
+			"%s: is disabled, add it to the activation list and check that it was not explicitly excluded by the manager options",
+			ps.ProbeIdentificationPair.String())
+	}
+	return nil
+}
+
+// EditProbeIdentificationPair - Changes all the selectors looking for the old ProbeIdentificationPair so that they
+// mow select the new one
+func (ps *ProbeSelector) EditProbeIdentificationPair(old ProbeIdentificationPair, new ProbeIdentificationPair) {
+	if ps.Matches(old) {
+		ps.ProbeIdentificationPair = new
+	}
+}
+
 // OneOf - This selector is used to ensure that at least of a list of probe selectors is valid. In other words, this
 // can be used to ensure that at least one of a list of optional probes is activated.
 type OneOf struct {
@@ -20,12 +71,12 @@ func (oo *OneOf) GetProbesIdentificationPairList() []ProbeIdentificationPair {
 	return l
 }
 
-// RunValidator - Ensures that the probes that were successfully activated follow the selector goal.
+// runValidator - Ensures that the probes that were successfully activated follow the selector goal.
 // For example, see OneOf.
-func (oo *OneOf) RunValidator(manager *Manager) error {
+func (oo *OneOf) runValidator(manager *Manager) error {
 	var errs []string
 	for _, selector := range oo.Selectors {
-		if err := selector.RunValidator(manager); err != nil {
+		if err := selector.runValidator(manager); err != nil {
 			errs = append(errs, err.Error())
 		}
 	}
@@ -69,12 +120,12 @@ func (ao *AllOf) GetProbesIdentificationPairList() []ProbeIdentificationPair {
 	return l
 }
 
-// RunValidator - Ensures that the probes that were successfully activated follow the selector goal.
+// runValidator - Ensures that the probes that were successfully activated follow the selector goal.
 // For example, see OneOf.
-func (ao *AllOf) RunValidator(manager *Manager) error {
+func (ao *AllOf) runValidator(manager *Manager) error {
 	var errMsg []string
 	for _, selector := range ao.Selectors {
-		if err := selector.RunValidator(manager); err != nil {
+		if err := selector.runValidator(manager); err != nil {
 			errMsg = append(errMsg, err.Error())
 		}
 	}
@@ -118,9 +169,9 @@ func (be *BestEffort) GetProbesIdentificationPairList() []ProbeIdentificationPai
 	return l
 }
 
-// RunValidator - Ensures that the probes that were successfully activated follow the selector goal.
+// runValidator - Ensures that the probes that were successfully activated follow the selector goal.
 // For example, see OneOf.
-func (be *BestEffort) RunValidator(manager *Manager) error {
+func (be *BestEffort) runValidator(manager *Manager) error {
 	return nil
 }
 

@@ -15,7 +15,6 @@ var m = &manager.Manager{
 				EBPFSection:  "kprobe/mkdirat",
 				EBPFFuncName: "kprobe_mkdirat",
 			},
-			PinPath:         "/sys/fs/bpf/mkdirat",
 			SyscallFuncName: "mkdirat",
 		},
 		{
@@ -30,7 +29,6 @@ var m = &manager.Manager{
 				EBPFSection:  "kprobe/mkdir",
 				EBPFFuncName: "kprobe_mkdir",
 			},
-			PinPath:         "/sys/fs/bpf/mkdir",
 			SyscallFuncName: "mkdir",
 		},
 		{
@@ -77,7 +75,7 @@ func main() {
 	}
 
 	if kill {
-		logrus.Println("=> Stopping the program without cleanup, the pinned map and programs should show up in /sys/fs/bpf/")
+		logrus.Println("=> Stopping the program without cleanup, the pinned map should show up in /sys/fs/bpf/")
 		logrus.Println("=> Restart without --kill to load the pinned object from the bpf file system and properly remove them")
 		return
 	}
