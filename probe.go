@@ -40,7 +40,7 @@ const (
 	DefaultTCFilterPriority = 50
 )
 
-type TrafficType uint32
+type TrafficType uint16
 
 func (tt TrafficType) String() string {
 	switch tt {
@@ -54,8 +54,9 @@ func (tt TrafficType) String() string {
 }
 
 const (
-	Ingress          = TrafficType(netlink.HANDLE_MIN_INGRESS)
-	Egress           = TrafficType(netlink.HANDLE_MIN_EGRESS)
+	Ingress          = TrafficType(uint16(netlink.HANDLE_MIN_INGRESS & 0x0000FFFF))
+	Egress           = TrafficType(uint16(netlink.HANDLE_MIN_EGRESS & 0x0000FFFF))
+	clsactQdisc      = uint16(netlink.HANDLE_INGRESS >> 16)
 	UnknownProbeType = ""
 	ProbeType        = "p"
 	RetProbeType     = "r"
@@ -433,6 +434,13 @@ func (p *Probe) init() error {
 	if p.programSpec == nil {
 		if p.programSpec, p.lastError = p.manager.getProbeProgramSpec(p.GetEBPFFuncName()); p.lastError != nil {
 			return fmt.Errorf("couldn't find program spec %s: %w", p.GetEBPFFuncName(), ErrUnknownSectionOrFuncName)
+		}
+	}
+
+	if p.programSpec.Type == ebpf.SchedCLS {
+		// sanity check
+		if p.NetworkDirection == 0 {
+			return fmt.Errorf("%s has an invalid configuration: %w", p.ProbeIdentificationPair, ErrNoNetworkDirection)
 		}
 	}
 
@@ -1024,7 +1032,7 @@ func (p *Probe) buildTCFilter() (netlink.BpfFilter, error) {
 		p.tcFilter = netlink.BpfFilter{
 			FilterAttrs: netlink.FilterAttrs{
 				LinkIndex: p.IfIndex,
-				Parent:    uint32(p.NetworkDirection),
+				Parent:    netlink.MakeHandle(clsactQdisc, uint16(p.NetworkDirection)),
 				Priority:  p.TCFilterPrio,
 				Protocol:  p.TCFilterProtocol,
 			},

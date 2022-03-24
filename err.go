@@ -24,4 +24,5 @@ var (
 	ErrMapNotInitialized        = errors.New("the map must be initialized first")
 	ErrMapNotRunning            = errors.New("the map is not running")
 	ErrNotSupported             = errors.New("not supported")
+	ErrNoNetworkDirection       = errors.New("a valid network direction is required to attach a TC classifier")
 )
