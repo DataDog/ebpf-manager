@@ -439,7 +439,7 @@ func (p *Probe) init() error {
 
 	if p.programSpec.Type == ebpf.SchedCLS {
 		// sanity check
-		if p.NetworkDirection == 0 {
+		if p.NetworkDirection != Egress && p.NetworkDirection != Ingress {
 			return fmt.Errorf("%s has an invalid configuration: %w", p.ProbeIdentificationPair, ErrNoNetworkDirection)
 		}
 	}
@@ -1021,6 +1021,10 @@ func (p *Probe) buildTCClsActQdisc() netlink.Qdisc {
 	return p.tcClsActQdisc
 }
 
+func (p *Probe) getTCFilterParentHandle() uint32 {
+	return netlink.MakeHandle(clsactQdisc, uint16(p.NetworkDirection))
+}
+
 func (p *Probe) buildTCFilter() (netlink.BpfFilter, error) {
 	if p.tcFilter.FilterAttrs.LinkIndex == 0 {
 		var filterName string
@@ -1032,7 +1036,7 @@ func (p *Probe) buildTCFilter() (netlink.BpfFilter, error) {
 		p.tcFilter = netlink.BpfFilter{
 			FilterAttrs: netlink.FilterAttrs{
 				LinkIndex: p.IfIndex,
-				Parent:    netlink.MakeHandle(clsactQdisc, uint16(p.NetworkDirection)),
+				Parent:    p.getTCFilterParentHandle(),
 				Priority:  p.TCFilterPrio,
 				Protocol:  p.TCFilterProtocol,
 			},
@@ -1214,7 +1218,7 @@ func (p *Probe) cleanupTCFilters(ntl *NetlinkSocket) error {
 		return fmt.Errorf("filter name pattern generation failed: %w", err)
 	}
 
-	resp, err := ntl.Sock.FilterList(p.link, uint32(p.NetworkDirection))
+	resp, err := ntl.Sock.FilterList(p.link, p.getTCFilterParentHandle())
 	if err != nil {
 		return err
 	}
