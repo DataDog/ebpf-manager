@@ -155,6 +155,11 @@ type Probe struct {
 	// CopyProgram - When enabled, this option will make a unique copy of the program section for the current program
 	CopyProgram bool
 
+	// KeepProgramSpec - Defines if the internal *ProgramSpec should be cleaned up after the probe has been successfully
+	// attached to free up memory. If you intend to make a copy of this Probe later, you should explicitly set this
+	// option to true.
+	KeepProgramSpec bool
+
 	// SyscallFuncName - Name of the syscall on which the program should be hooked. As the exact kernel symbol may
 	// differ from one kernel version to the other, the right prefix will be computed automatically at runtime.
 	// If a syscall name is not provided, the section name (without its probe type prefix) is assumed to be the
@@ -305,6 +310,7 @@ func (p *Probe) Copy() *Probe {
 		},
 		SyscallFuncName:    p.SyscallFuncName,
 		CopyProgram:        p.CopyProgram,
+		KeepProgramSpec:    p.KeepProgramSpec,
 		SamplePeriod:       p.SamplePeriod,
 		SampleFrequency:    p.SampleFrequency,
 		PerfEventType:      p.PerfEventType,
@@ -634,7 +640,18 @@ func (p *Probe) attach() error {
 	// update probe state
 	p.state = running
 	p.attachRetryAttempt = p.getRetryAttemptCount()
+
+	// cleanup ProgramSpec to free up some memory
+	p.cleanupProgramSpec()
 	return nil
+}
+
+// cleanupProgramSpec - Cleans up the internal ProgramSpec attribute to free up some memory
+func (p *Probe) cleanupProgramSpec() {
+	if p.KeepProgramSpec {
+		return
+	}
+	cleanupProgramSpec(p.programSpec)
 }
 
 // Detach - Detaches the probe from its hook point depending on the program type and the provided parameters. This

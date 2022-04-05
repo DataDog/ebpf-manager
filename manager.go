@@ -115,6 +115,10 @@ type Options struct {
 	// If the list is empty, all probes will be activated.
 	ActivatedProbes []ProbesSelector
 
+	// KeepUnmappedProgramSpecs - Defines if the manager should keep unmapped ProgramSpec instances in the collection.
+	// Enable this feature if you're going to clone one of these ProgramSpec.
+	KeepUnmappedProgramSpecs bool
+
 	// ExcludedFunctions - A list of functions that should not even be verified. This list overrides the ActivatedProbes
 	// list: since the excluded sections aren't loaded in the kernel, all the probes using those sections will be
 	// deactivated.
@@ -940,15 +944,31 @@ func (m *Manager) CloneProgram(UID string, newProbe *Probe, constantsEditors []C
 	}
 
 	oldID := ProbeIdentificationPair{UID: UID, EBPFSection: newProbe.EBPFSection, EBPFFuncName: newProbe.EBPFFuncName}
-	// Find the program specs
-	progSpecs, found, err := m.getProgramSpec(oldID)
-	if err != nil {
-		return err
+	var oldProgramSpec *ebpf.ProgramSpec
+	// look for an existing probe
+	oldProbe, found := m.getProbe(oldID)
+	if found {
+		// check if the program spec of this probe was removed
+		if !oldProbe.KeepProgramSpec {
+			return fmt.Errorf("couldn't clone %s: this probe was cleaned up because KeepProgramSpec was disabled", oldID)
+		}
+		oldProgramSpec = oldProbe.programSpec
+	} else {
+		// the cloned program might not have a dedicated Probe, fallback to a collectionPec lookup
+		progSpecs, found, err := m.getProgramSpec(oldID)
+		if err != nil {
+			return err
+		}
+		if !found || len(progSpecs) == 0 {
+			return fmt.Errorf("couldn't find programSpec %v: %w", oldID, ErrUnknownSectionOrFuncName)
+		}
+		oldProgramSpec = progSpecs[0]
+
+		// the program spec was found
+		if !m.options.KeepUnmappedProgramSpecs {
+			return fmt.Errorf("couldn't clone %s: this probe was cleaned up because KeepUnmappedProgramSpecs was disabled", oldID)
+		}
 	}
-	if !found || len(progSpecs) == 0 {
-		return fmt.Errorf("couldn't find programSpec %v: %w", oldID, ErrUnknownSectionOrFuncName)
-	}
-	progSpec := progSpecs[0]
 
 	// Check if the new probe has a unique identification pair
 	_, exists, _ := m.getProgram(newProbe.ProbeIdentificationPair)
@@ -960,7 +980,7 @@ func (m *Manager) CloneProgram(UID string, newProbe *Probe, constantsEditors []C
 	newProbe.Enabled = true
 
 	// Clone the program
-	clonedSpec := progSpec.Copy()
+	clonedSpec := oldProgramSpec.Copy()
 	newProbe.programSpec = clonedSpec
 
 	// Edit constants
@@ -971,24 +991,24 @@ func (m *Manager) CloneProgram(UID string, newProbe *Probe, constantsEditors []C
 	}
 
 	// Write current maps
-	if err = m.rewriteMaps(newProbe.programSpec, m.collection.Maps, false); err != nil {
+	if err := m.rewriteMaps(newProbe.programSpec, m.collection.Maps, false); err != nil {
 		return fmt.Errorf("couldn't rewrite maps in %v: %w", newProbe.ProbeIdentificationPair, err)
 	}
 
 	// Rewrite with new maps
-	if err = m.rewriteMaps(newProbe.programSpec, mapEditors, true); err != nil {
+	if err := m.rewriteMaps(newProbe.programSpec, mapEditors, true); err != nil {
 		return fmt.Errorf("couldn't rewrite maps in %v: %w", newProbe.ProbeIdentificationPair, err)
 	}
 
 	// Init
-	if err = newProbe.InitWithOptions(m, true, true); err != nil {
+	if err := newProbe.InitWithOptions(m, true, true); err != nil {
 		// clean up
 		_ = newProbe.Stop()
 		return fmt.Errorf("failed to initialize new probe %v: %w", newProbe.ProbeIdentificationPair, err)
 	}
 
 	// Attach new program
-	if err = newProbe.Attach(); err != nil {
+	if err := newProbe.Attach(); err != nil {
 		// clean up
 		_ = newProbe.Stop()
 		return fmt.Errorf("failed to attach new probe %v: %w", newProbe.ProbeIdentificationPair, err)
@@ -1104,7 +1124,7 @@ func (m *Manager) updateTailCallRoute(route TailCallRoute) error {
 func (m *Manager) getProbeProgramSpec(funcName string) (*ebpf.ProgramSpec, error) {
 	spec, ok := m.collectionSpec.Programs[funcName]
 	if !ok {
-		// Check if the probe section is in the list of excluded sections
+		// Check if the probe function is in the list of excluded functions
 		var excluded bool
 		for _, excludedFuncName := range m.options.ExcludedFunctions {
 			if excludedFuncName == funcName {
@@ -1122,7 +1142,7 @@ func (m *Manager) getProbeProgramSpec(funcName string) (*ebpf.ProgramSpec, error
 func (m *Manager) getProbeProgram(funcName string) (*ebpf.Program, error) {
 	p, ok := m.collection.Programs[funcName]
 	if !ok {
-		// Check if the probe section is in the list of excluded sections
+		// Check if the probe function is in the list of excluded functions
 		var excluded bool
 		for _, excludedFuncName := range m.options.ExcludedFunctions {
 			if excludedFuncName == funcName {
@@ -1178,12 +1198,27 @@ func (m *Manager) matchSpecs() error {
 // matchBPFObjects - Match loaded maps and program specs with the maps and programs provided to the manager
 func (m *Manager) matchBPFObjects() error {
 	// Match programs
+	var mappedProgramSpecNames []string
 	for _, probe := range m.Probes {
 		program, err := m.getProbeProgram(probe.GetEBPFFuncName())
 		if err != nil {
 			return err
 		}
 		probe.program = program
+		mappedProgramSpecNames = append(mappedProgramSpecNames, probe.ProbeIdentificationPair.EBPFFuncName)
+	}
+
+	// cleanup unmapped ProgramSpec now
+	if !m.options.KeepUnmappedProgramSpecs {
+	collectionSpec:
+		for specName, spec := range m.collectionSpec.Programs {
+			for _, name := range mappedProgramSpecNames {
+				if specName == name {
+					continue collectionSpec
+				}
+			}
+			cleanupProgramSpec(spec)
+		}
 	}
 
 	// Match maps
@@ -1395,8 +1430,7 @@ func (m *Manager) editConstant(prog *ebpf.ProgramSpec, editor ConstantEditor) er
 // returned when a map couldn't be rewritten.
 func (m *Manager) rewriteMaps(program *ebpf.ProgramSpec, eBPFMaps map[string]*ebpf.Map, failOnError bool) error {
 	for symbol, eBPFMap := range eBPFMaps {
-		fd := eBPFMap.FD()
-		err := program.Instructions.RewriteMapPtr(symbol, fd)
+		err := program.Instructions.AssociateMap(symbol, eBPFMap)
 		if err != nil && failOnError {
 			return fmt.Errorf("couldn't rewrite map %s: %w", symbol, err)
 		}

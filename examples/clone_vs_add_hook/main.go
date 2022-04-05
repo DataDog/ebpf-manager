@@ -14,6 +14,7 @@ var m = &manager.Manager{
 				EBPFSection:  "kprobe/vfs_mkdir",
 				EBPFFuncName: "kprobe_vfs_mkdir",
 			},
+			KeepProgramSpec: true,
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
@@ -69,7 +70,10 @@ var editors = []manager.ConstantEditor{
 
 func main() {
 	// Prepare manager options
-	options := manager.Options{ConstantEditors: editors}
+	options := manager.Options{
+		ConstantEditors:          editors,
+		KeepUnmappedProgramSpecs: true,
+	}
 
 	// Initialize the manager
 	if err := m.InitWithOptions(recoverAssets(), options); err != nil {
