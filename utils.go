@@ -16,6 +16,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/cilium/ebpf"
 	"golang.org/x/sys/unix"
 )
 
@@ -607,7 +608,7 @@ func getRetProbeBit(eventType string) (uint64, error) {
 	}
 }
 
-//GetEnv retrieves the environment variable key. If it does not exist it returns the default.
+// GetEnv retrieves the environment variable key. If it does not exist it returns the default.
 func GetEnv(key string, dfault string, combineWith ...string) string {
 	value := os.Getenv(key)
 	if value == "" {
@@ -642,4 +643,12 @@ func Getpid() int {
 		}
 	}
 	return os.Getpid()
+}
+
+// cleanupProgramSpec removes unused internal fields to free up some memory
+func cleanupProgramSpec(spec *ebpf.ProgramSpec) {
+	if spec != nil {
+		spec.Instructions = nil
+		spec.BTF = nil
+	}
 }
