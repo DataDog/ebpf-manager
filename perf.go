@@ -30,6 +30,9 @@ type PerfMapOptions struct {
 	// ring buffer.
 	TypedDataHandler func(CPU int, v interface{}, perfMap *PerfMap, manager *Manager)
 
+	// DataType is the type of data we expect to read from the perf ring buffer.
+	DataType encoding.BinaryUnmarshaler
+
 	// LostHandler - Callback function called when one or more events where dropped by the kernel
 	// because the perf ring buffer was full.
 	LostHandler func(CPU int, count uint64, perfMap *PerfMap, manager *Manager)
