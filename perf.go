@@ -1,8 +1,10 @@
 package manager
 
 import (
+	"encoding"
 	"errors"
 	"fmt"
+	"reflect"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/perf"
@@ -23,6 +25,10 @@ type PerfMapOptions struct {
 	// DataHandler - Callback function called when a new sample was retrieved from the perf
 	// ring buffer.
 	DataHandler func(CPU int, data []byte, perfMap *PerfMap, manager *Manager)
+
+	// TypedDataHandler - Callback function called when a new typed sample was retrieved from the perf
+	// ring buffer.
+	TypedDataHandler func(CPU int, v interface{}, perfMap *PerfMap, manager *Manager)
 
 	// LostHandler - Callback function called when one or more events where dropped by the kernel
 	// because the perf ring buffer was full.
@@ -121,6 +127,55 @@ func (m *PerfMap) Start() error {
 				continue
 			}
 			m.DataHandler(record.CPU, record.RawSample, m, m.manager)
+		}
+	}()
+
+	m.state = running
+	return nil
+}
+
+func (m *PerfMap) StartUnmarshal(t encoding.BinaryUnmarshaler) error {
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
+	if m.state == running {
+		return nil
+	}
+	if m.state < initialized {
+		return ErrMapNotInitialized
+	}
+	typ := reflect.TypeOf(t)
+
+	// Create and start the perf map
+	var err error
+	opt := perf.ReaderOptions{
+		Watermark: m.Watermark,
+	}
+	if m.perfReader, err = perf.NewReaderWithOptions(m.array, m.PerfRingBufferSize, opt); err != nil {
+		return err
+	}
+	// Start listening for data
+	go func() {
+		m.manager.wg.Add(1)
+		for {
+			record := reflect.New(typ)
+			cpu, lost, err := m.perfReader.Unmarshal(record)
+			if err != nil {
+				if isPerfClosed(err) {
+					m.manager.wg.Done()
+					return
+				}
+				if m.PerfErrChan != nil {
+					m.PerfErrChan <- err
+				}
+				continue
+			}
+			if lost > 0 {
+				if m.LostHandler != nil {
+					m.LostHandler(cpu, lost, m, m.manager)
+				}
+				continue
+			}
+			m.TypedDataHandler(cpu, record, m, m.manager)
 		}
 	}()
 
