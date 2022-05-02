@@ -611,7 +611,7 @@ func (m *Manager) Start() error {
 
 	// Start perf ring readers
 	for _, perfRing := range m.PerfMaps {
-		if perfRing.TypedDataHandler != nil && perfRing.DataFunc != nil {
+		if perfRing.TypedDataHandler != nil {
 			if err := perfRing.StartUnmarshal(); err != nil {
 				// Clean up
 				_ = m.stop(CleanInternal)

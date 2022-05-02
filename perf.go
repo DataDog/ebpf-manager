@@ -66,8 +66,11 @@ func loadNewPerfMap(spec ebpf.MapSpec, options MapOptions, perfOptions PerfMapOp
 func (m *PerfMap) Init(manager *Manager) error {
 	m.manager = manager
 
-	if m.DataHandler == nil {
-		return fmt.Errorf("no DataHandler set for %s", m.Name)
+	if m.DataHandler == nil && m.TypedDataHandler == nil {
+		return fmt.Errorf("no DataHandler/TypedDataHandler set for %s", m.Name)
+	}
+	if m.TypedDataHandler != nil && m.DataFunc == nil {
+		return fmt.Errorf("no DataFunc set for %s", m.Name)
 	}
 
 	// Set default values if not already set
