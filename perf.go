@@ -4,8 +4,6 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
-	"reflect"
-
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/perf"
 )
@@ -30,8 +28,8 @@ type PerfMapOptions struct {
 	// ring buffer.
 	TypedDataHandler func(CPU int, v interface{}, perfMap *PerfMap, manager *Manager)
 
-	// DataType is the type of data we expect to read from the perf ring buffer.
-	DataType encoding.BinaryUnmarshaler
+	// DataFunc is the function we call to obtain a new record for unmarshalling.
+	DataFunc func() encoding.BinaryUnmarshaler
 
 	// LostHandler - Callback function called when one or more events where dropped by the kernel
 	// because the perf ring buffer was full.
@@ -137,7 +135,7 @@ func (m *PerfMap) Start() error {
 	return nil
 }
 
-func (m *PerfMap) StartUnmarshal(t encoding.BinaryUnmarshaler) error {
+func (m *PerfMap) StartUnmarshal() error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
 	if m.state == running {
@@ -146,7 +144,6 @@ func (m *PerfMap) StartUnmarshal(t encoding.BinaryUnmarshaler) error {
 	if m.state < initialized {
 		return ErrMapNotInitialized
 	}
-	typ := reflect.TypeOf(t)
 
 	// Create and start the perf map
 	var err error
@@ -160,7 +157,7 @@ func (m *PerfMap) StartUnmarshal(t encoding.BinaryUnmarshaler) error {
 	go func() {
 		m.manager.wg.Add(1)
 		for {
-			record := reflect.New(typ)
+			record := m.DataFunc()
 			cpu, lost, err := m.perfReader.Unmarshal(record)
 			if err != nil {
 				if isPerfClosed(err) {
