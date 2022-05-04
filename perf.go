@@ -148,6 +148,7 @@ func (m *PerfMap) StartUnmarshal() error {
 		return ErrMapNotInitialized
 	}
 
+	var buf []byte
 	// Create and start the perf map
 	var err error
 	opt := perf.ReaderOptions{
@@ -160,8 +161,7 @@ func (m *PerfMap) StartUnmarshal() error {
 	go func() {
 		m.manager.wg.Add(1)
 		for {
-			record := m.DataFunc()
-			cpu, lost, err := m.perfReader.Unmarshal(record)
+			record, err := m.perfReader.ReadBuffer(buf)
 			if err != nil {
 				if isPerfClosed(err) {
 					m.manager.wg.Done()
@@ -172,13 +172,21 @@ func (m *PerfMap) StartUnmarshal() error {
 				}
 				continue
 			}
-			if lost > 0 {
+			if record.LostSamples > 0 {
 				if m.LostHandler != nil {
-					m.LostHandler(cpu, lost, m, m.manager)
+					m.LostHandler(record.CPU, record.LostSamples, m, m.manager)
 				}
 				continue
 			}
-			m.TypedDataHandler(cpu, record, m, m.manager)
+			// update buf in case it was resized
+			if cap(buf) != cap(record.RawSample) {
+				buf = record.RawSample[:0]
+			}
+			obj := m.DataFunc()
+			if err := obj.UnmarshalBinary(record.RawSample); err != nil {
+				continue
+			}
+			m.TypedDataHandler(record.CPU, obj, m, m.manager)
 		}
 	}()
 
