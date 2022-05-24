@@ -24,9 +24,16 @@ type PerfMapOptions struct {
 	// ring buffer.
 	DataHandler func(CPU int, data []byte, perfMap *PerfMap, manager *Manager)
 
+	// RecordHandler - Callback function called when a new record was retrieved from the perf
+	// ring buffer.
+	RecordHandler func(record *perf.Record, perfMap *PerfMap, manager *Manager)
+
 	// LostHandler - Callback function called when one or more events where dropped by the kernel
 	// because the perf ring buffer was full.
 	LostHandler func(CPU int, count uint64, perfMap *PerfMap, manager *Manager)
+
+	// RecordGetter - if specified this getter will be used to get a new record
+	RecordGetter func() *perf.Record
 }
 
 // PerfMap - Perf ring buffer reader wrapper
@@ -59,8 +66,8 @@ func loadNewPerfMap(spec ebpf.MapSpec, options MapOptions, perfOptions PerfMapOp
 func (m *PerfMap) Init(manager *Manager) error {
 	m.manager = manager
 
-	if m.DataHandler == nil {
-		return fmt.Errorf("no DataHandler set for %s", m.Name)
+	if m.DataHandler == nil && m.RecordHandler == nil {
+		return fmt.Errorf("no DataHandler/RecordHandler set for %s", m.Name)
 	}
 
 	// Set default values if not already set
@@ -100,11 +107,17 @@ func (m *PerfMap) Start() error {
 	// Start listening for data
 	go func() {
 		var record perf.Record
+		recordPtr := &record
+
 		var err error
 		m.manager.wg.Add(1)
 		for {
-			record, err = m.perfReader.Read()
-			if err != nil {
+			if m.PerfMapOptions.RecordGetter != nil {
+				recordPtr = m.PerfMapOptions.RecordGetter()
+			} else if m.DataHandler != nil {
+				recordPtr = new(perf.Record)
+			}
+			if err = m.perfReader.ReadInto(recordPtr); err != nil {
 				if isPerfClosed(err) {
 					m.manager.wg.Done()
 					return
@@ -120,7 +133,11 @@ func (m *PerfMap) Start() error {
 				}
 				continue
 			}
-			m.DataHandler(record.CPU, record.RawSample, m, m.manager)
+			if m.RecordHandler != nil {
+				m.RecordHandler(recordPtr, m, m.manager)
+			} else if m.DataHandler != nil {
+				m.DataHandler(recordPtr.CPU, recordPtr.RawSample, m, m.manager)
+			}
 		}
 	}()
 
