@@ -20,6 +20,10 @@ type PerfMapOptions struct {
 	// PerfErrChan - Perf reader error channel
 	PerfErrChan chan error
 
+	// RecordHandler - Callback function called when a new record was retrieved from the perf
+	// ring buffer.
+	RecordHandler func(record *perf.Record, perfMap *PerfMap, manager *Manager)
+
 	// DataHandler - Callback function called when a new sample was retrieved from the perf
 	// ring buffer.
 	DataHandler func(CPU int, data []byte, perfMap *PerfMap, manager *Manager)
@@ -59,8 +63,8 @@ func loadNewPerfMap(spec ebpf.MapSpec, options MapOptions, perfOptions PerfMapOp
 func (m *PerfMap) Init(manager *Manager) error {
 	m.manager = manager
 
-	if m.DataHandler == nil {
-		return fmt.Errorf("no DataHandler set for %s", m.Name)
+	if m.DataHandler == nil && m.RecordHandler == nil {
+		return fmt.Errorf("no DataHandler/RecordHandler set for %s", m.Name)
 	}
 
 	// Set default values if not already set
@@ -103,7 +107,7 @@ func (m *PerfMap) Start() error {
 		var err error
 		m.manager.wg.Add(1)
 		for {
-			record, err = m.perfReader.Read()
+			err = m.perfReader.ReadInto(&record)
 			if err != nil {
 				if isPerfClosed(err) {
 					m.manager.wg.Done()
@@ -120,7 +124,15 @@ func (m *PerfMap) Start() error {
 				}
 				continue
 			}
-			m.DataHandler(record.CPU, record.RawSample, m, m.manager)
+			if m.RecordHandler != nil {
+				// it is expected that we maintain ownership of `record` and can reuse once the callback returns
+				m.RecordHandler(&record, m, m.manager)
+			} else if m.DataHandler != nil {
+				// maintain previous semantics of getting a copy of the data
+				buf := make([]byte, len(record.RawSample))
+				copy(buf, record.RawSample)
+				m.DataHandler(record.CPU, buf, m, m.manager)
+			}
 		}
 	}()
 
