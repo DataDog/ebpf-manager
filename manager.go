@@ -815,12 +815,7 @@ func (m *Manager) ClonePerfRing(name string, newName string, options MapOptions,
 	return m.NewPerfRing(*spec, options, perfMapOptions)
 }
 
-// AddHook - Hook an existing program to a hook point. This is particularly useful when you need to trigger an
-// existing program on a hook point that is determined at runtime. For example, you might want to hook an existing
-// eBPF TC classifier to the newly created interface of a container. Make sure to specify a unique uid in the new probe,
-// you will need it if you want to detach the program later. The original program is selected using the provided UID,
-// the section and the eBPF function name provided in the new probe.
-func (m *Manager) AddHook(UID string, newProbe *Probe) error {
+func (m *Manager) prepareAddHook(UID string, newProbe *Probe) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
 	if m.collection == nil || m.state < initialized {
@@ -876,15 +871,31 @@ func (m *Manager) AddHook(UID string, newProbe *Probe) error {
 		}
 	}
 
+	return nil
+}
+
+// AddHook - Hook an existing program to a hook point. This is particularly useful when you need to trigger an
+// existing program on a hook point that is determined at runtime. For example, you might want to hook an existing
+// eBPF TC classifier to the newly created interface of a container. Make sure to specify a unique uid in the new probe,
+// you will need it if you want to detach the program later. The original program is selected using the provided UID,
+// the section and the eBPF function name provided in the new probe.
+func (m *Manager) AddHook(UID string, newProbe *Probe) error {
+	if err := m.prepareAddHook(UID, newProbe); err != nil {
+		return err
+	}
+
 	// Attach program
-	if err = newProbe.Attach(); err != nil {
+	if err := newProbe.Attach(); err != nil {
 		// clean up
 		_ = newProbe.Stop()
 		return fmt.Errorf("couldn't attach new probe: %w", err)
 	}
 
 	// Add probe to the list of probes
+	m.stateLock.Lock()
 	m.Probes = append(m.Probes, newProbe)
+	m.stateLock.Unlock()
+
 	return nil
 }
 
@@ -930,13 +941,7 @@ func (m *Manager) DetachHook(id ProbeIdentificationPair) error {
 	return nil
 }
 
-// CloneProgram - Create a clone of a program, load it in the kernel and attach it to its hook point. Since the eBPF
-// program instructions are copied before the program is loaded, you can edit them with a ConstantEditor, or remap
-// the eBPF maps as you like. This is particularly useful to workaround the absence of Array of Maps and Hash of Maps:
-// first create the new maps you need, then clone the program you're interested in and rewrite it with the new maps,
-// using a MapEditor. The original program is selected using the provided UID and the section provided in the new probe.
-// Note that the BTF based constant edition will note work with this method.
-func (m *Manager) CloneProgram(UID string, newProbe *Probe, constantsEditors []ConstantEditor, mapEditors map[string]*ebpf.Map) error {
+func (m *Manager) prepareCloneProgram(UID string, newProbe *Probe, constantsEditors []ConstantEditor, mapEditors map[string]*ebpf.Map) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
 	if m.collection == nil || m.state < initialized {
@@ -1007,6 +1012,20 @@ func (m *Manager) CloneProgram(UID string, newProbe *Probe, constantsEditors []C
 		return fmt.Errorf("failed to initialize new probe %v: %w", newProbe.ProbeIdentificationPair, err)
 	}
 
+	return nil
+}
+
+// CloneProgram - Create a clone of a program, load it in the kernel and attach it to its hook point. Since the eBPF
+// program instructions are copied before the program is loaded, you can edit them with a ConstantEditor, or remap
+// the eBPF maps as you like. This is particularly useful to workaround the absence of Array of Maps and Hash of Maps:
+// first create the new maps you need, then clone the program you're interested in and rewrite it with the new maps,
+// using a MapEditor. The original program is selected using the provided UID and the section provided in the new probe.
+// Note that the BTF based constant edition will note work with this method.
+func (m *Manager) CloneProgram(UID string, newProbe *Probe, constantsEditors []ConstantEditor, mapEditors map[string]*ebpf.Map) error {
+	if err := m.prepareCloneProgram(UID, newProbe, constantsEditors, mapEditors); err != nil {
+		return err
+	}
+
 	// Attach new program
 	if err := newProbe.Attach(); err != nil {
 		// clean up
@@ -1015,7 +1034,10 @@ func (m *Manager) CloneProgram(UID string, newProbe *Probe, constantsEditors []C
 	}
 
 	// Add probe to the list of probes
+	m.stateLock.Lock()
 	m.Probes = append(m.Probes, newProbe)
+	m.stateLock.Unlock()
+
 	return nil
 }
 
