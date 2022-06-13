@@ -778,7 +778,7 @@ func (p *Probe) reset() {
 
 // getNetlinkSocket returns a netlink socket in the probe network namespace
 func (p *Probe) getNetlinkSocket() (*NetlinkSocket, error) {
-	return p.manager.getNetlinkSocket(p.IfIndexNetns, p.IfIndexNetnsID)
+	return p.manager.GetNetlinkSocket(p.IfIndexNetns, p.IfIndexNetnsID)
 }
 
 // attachWithKprobeEvents attaches the kprobe using the kprobes_events ABI

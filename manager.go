@@ -1689,11 +1689,7 @@ func (m *Manager) GetNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket
 	if m.state < initialized {
 		return nil, ErrManagerNotInitialized
 	}
-	return m.getNetlinkSocket(nsHandle, nsID)
-}
 
-// getNetlinkSocket - Internal function (see GetNetlinkSocket)
-func (m *Manager) getNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
 	sock, ok := m.netlinkSocketCache[nsID]
 	if ok {
 		return sock, nil
