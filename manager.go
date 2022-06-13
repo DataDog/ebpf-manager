@@ -480,13 +480,11 @@ func (m *Manager) Init(elf io.ReaderAt) error {
 	return m.InitWithOptions(elf, Options{})
 }
 
-// InitWithOptions - Initialize the manager.
-// elf: reader containing the eBPF bytecode
-// options: options provided to the manager to configure its initialization
-func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
+func (m *Manager) preInit(elf io.ReaderAt, options Options) error {
 	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
+
 	if m.state > initialized {
-		m.stateLock.Unlock()
 		return ErrManagerRunning
 	}
 
@@ -499,7 +497,6 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 
 	// perform a quick sanity check on the provided probes and maps
 	if err := m.sanityCheck(); err != nil {
-		m.stateLock.Unlock()
 		return err
 	}
 
@@ -515,7 +512,6 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	var err error
 	m.collectionSpec, err = ebpf.LoadCollectionSpecFromReader(elf)
 	if err != nil {
-		m.stateLock.Unlock()
 		return err
 	}
 
@@ -526,32 +522,42 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 
 	// Match Maps and program specs
 	if err = m.matchSpecs(); err != nil {
-		m.stateLock.Unlock()
 		return err
 	}
 
 	// Configure activated probes
 	m.activateProbes()
 	m.state = initialized
-	m.stateLock.Unlock()
-	resetManager := func(m *Manager) {
-		m.stateLock.Lock()
-		m.state = reset
-		m.stateLock.Unlock()
+	return nil
+}
+
+// InitWithOptions - Initialize the manager.
+// elf: reader containing the eBPF bytecode
+// options: options provided to the manager to configure its initialization
+func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
+	if err := m.preInit(elf, options); err != nil {
+		return err
 	}
+
+	shouldReset := true
+	defer func() {
+		if shouldReset {
+			m.stateLock.Lock()
+			m.state = reset
+			m.stateLock.Unlock()
+		}
+	}()
 
 	// Edit program constants
 	if len(options.ConstantEditors) > 0 {
-		if err = m.editConstants(); err != nil {
-			resetManager(m)
+		if err := m.editConstants(); err != nil {
 			return err
 		}
 	}
 
 	// Edit map spec
 	if len(options.MapSpecEditors) > 0 {
-		if err = m.editMapSpecs(); err != nil {
-			resetManager(m)
+		if err := m.editMapSpecs(); err != nil {
 			return err
 		}
 	}
@@ -559,8 +565,7 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	// Setup map routes
 	if len(options.InnerOuterMapSpecs) > 0 {
 		for _, ioMapSpec := range options.InnerOuterMapSpecs {
-			if err = m.editInnerOuterMapSpec(ioMapSpec); err != nil {
-				resetManager(m)
+			if err := m.editInnerOuterMapSpec(ioMapSpec); err != nil {
 				return err
 			}
 		}
@@ -568,44 +573,41 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 
 	// Edit program maps
 	if len(options.MapEditors) > 0 {
-		if err = m.editMaps(options.MapEditors); err != nil {
-			resetManager(m)
+		if err := m.editMaps(options.MapEditors); err != nil {
 			return err
 		}
 	}
 
 	// Load pinned maps and pinned programs to avoid loading them twice
-	if err = m.loadPinnedObjects(); err != nil {
-		resetManager(m)
+	if err := m.loadPinnedObjects(); err != nil {
 		return err
 	}
 
 	// Load eBPF program with the provided verifier options
-	if err = m.loadCollection(); err != nil {
+	if err := m.loadCollection(); err != nil {
 		if m.collection != nil {
 			_ = m.collection.Close
 		}
-		resetManager(m)
 		return err
 	}
+
+	shouldReset = false
 	return nil
 }
 
-// Start - Attach eBPF programs, start perf ring readers and apply maps and tail calls routing.
-func (m *Manager) Start() error {
+func (m *Manager) preStart() error {
 	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
+
 	if m.state < initialized {
-		m.stateLock.Unlock()
 		return ErrManagerNotInitialized
 	}
 	if m.state >= running {
-		m.stateLock.Unlock()
 		return nil
 	}
 
 	// clean up tracefs
 	if err := m.cleanupTracefs(); err != nil {
-		m.stateLock.Unlock()
 		return fmt.Errorf("failed to cleanup tracefs: %w", err)
 	}
 
@@ -614,7 +616,6 @@ func (m *Manager) Start() error {
 		if err := perfRing.Start(); err != nil {
 			// Clean up
 			_ = m.stop(CleanInternal)
-			m.stateLock.Unlock()
 			return err
 		}
 	}
@@ -627,7 +628,14 @@ func (m *Manager) Start() error {
 	}
 
 	m.state = running
-	m.stateLock.Unlock()
+	return nil
+}
+
+// Start - Attach eBPF programs, start perf ring readers and apply maps and tail calls routing.
+func (m *Manager) Start() error {
+	if err := m.preStart(); err != nil {
+		return err
+	}
 
 	// Check probe selectors
 	var validationErrs error
@@ -1296,11 +1304,10 @@ func (m *Manager) activateProbes() {
 // UpdateActivatedProbes - update the list of activated probes
 func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
 	if m.state < initialized {
-		m.stateLock.Unlock()
 		return ErrManagerNotInitialized
 	}
-	defer m.stateLock.Unlock()
 
 	currentProbes := make(map[ProbeIdentificationPair]*Probe)
 	for _, p := range m.Probes {
