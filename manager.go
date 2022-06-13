@@ -158,6 +158,10 @@ type Options struct {
 	// on the system. See PerfMap.PerfRingBuffer for more.
 	DefaultPerfRingBufferSize int
 
+	// RingBufferSize - Manager-level default value for the ring buffers. Defaults to the size of 1 page
+	// on the system.
+	DefaultRingBufferSize int
+
 	// Watermark - Manager-level default value for the watermarks of the perf ring buffers.
 	// See PerfMap.Watermark for more.
 	DefaultWatermark int
@@ -226,6 +230,9 @@ type Manager struct {
 	// PerfMaps - List of perf ring buffers handled by the manager
 	PerfMaps []*PerfMap
 
+	// RingBuffers - List of perf ring buffers handled by the manager
+	RingBuffers []*RingBuffer
+
 	// DumpHandler - Callback function called when manager.DumpMaps() is called
 	// and dump the current state (human readable)
 	DumpHandler func(manager *Manager, mapName string, currentMap *ebpf.Map) string
@@ -282,11 +289,11 @@ func (m *Manager) getMap(name string) (*ebpf.Map, bool, error) {
 			return managerMap.array, true, nil
 		}
 	}
-	// Look in the list of perf maps
-	for _, perfMap := range m.PerfMaps {
-		if perfMap.Name == name {
-			return perfMap.array, true, nil
-		}
+	if perfMap, found := m.getPerfMap(name); found {
+		return perfMap.array, true, nil
+	}
+	if ringBuffer, found := m.getRingBuffer(name); found {
+		return ringBuffer.array, true, nil
 	}
 	return nil, false, nil
 }
@@ -314,11 +321,11 @@ func (m *Manager) getMapSpec(name string) (*ebpf.MapSpec, bool, error) {
 			return managerMap.arraySpec, true, nil
 		}
 	}
-	// Look in the list of perf maps
-	for _, perfMap := range m.PerfMaps {
-		if perfMap.Name == name {
-			return perfMap.arraySpec, true, nil
-		}
+	if perfMap, found := m.getPerfMap(name); found {
+		return perfMap.arraySpec, true, nil
+	}
+	if ringBuffer, found := m.getRingBuffer(name); found {
+		return ringBuffer.arraySpec, true, nil
 	}
 	return nil, false, nil
 }
@@ -348,6 +355,23 @@ func (m *Manager) GetPerfMap(name string) (*PerfMap, bool) {
 	m.stateLock.RLock()
 	defer m.stateLock.RUnlock()
 	return m.getPerfMap(name)
+}
+
+// getRingBuffer - Thread unsafe version of GetRingBuffer
+func (m *Manager) getRingBuffer(name string) (*RingBuffer, bool) {
+	for _, ringBuffer := range m.RingBuffers {
+		if ringBuffer.Name == name {
+			return ringBuffer, true
+		}
+	}
+	return nil, false
+}
+
+// GetRingBuffer - Select a ring buffer by its name
+func (m *Manager) GetRingBuffer(name string) (*RingBuffer, bool) {
+	m.stateLock.RLock()
+	defer m.stateLock.RUnlock()
+	return m.getRingBuffer(name)
 }
 
 // getProgram - Thread unsafe version of GetProgram
@@ -496,6 +520,9 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	if m.options.DefaultPerfRingBufferSize == 0 {
 		m.options.DefaultPerfRingBufferSize = os.Getpagesize()
 	}
+	if m.options.DefaultRingBufferSize == 0 {
+		m.options.DefaultRingBufferSize = os.Getpagesize() * 16
+	}
 
 	// perform a quick sanity check on the provided probes and maps
 	if err := m.sanityCheck(); err != nil {
@@ -619,6 +646,16 @@ func (m *Manager) Start() error {
 		}
 	}
 
+	// Start ring buffer readers
+	for _, ringBuffer := range m.RingBuffers {
+		if err := ringBuffer.Start(); err != nil {
+			// Clean up
+			_ = m.stop(CleanInternal)
+			m.stateLock.Unlock()
+			return err
+		}
+	}
+
 	// Attach eBPF programs
 	for _, probe := range m.Probes {
 		// ignore the error, they are already collected per probes and will be surfaced by the
@@ -676,6 +713,13 @@ func (m *Manager) stop(cleanup MapCleanupType) error {
 	for _, perfRing := range m.PerfMaps {
 		if stopErr := perfRing.Stop(cleanup); stopErr != nil {
 			err = ConcatErrors(err, fmt.Errorf("perf ring reader %s couldn't gracefully shut down: %w", perfRing.Name, stopErr))
+		}
+	}
+
+	// Stop ring buffer readers
+	for _, ringBuffer := range m.RingBuffers {
+		if stopErr := ringBuffer.Stop(cleanup); stopErr != nil {
+			err = ConcatErrors(err, fmt.Errorf("ring buffer reader %s couldn't gracefully shut down: %w", ringBuffer.Name, stopErr))
 		}
 	}
 
@@ -813,6 +857,44 @@ func (m *Manager) ClonePerfRing(name string, newName string, options MapOptions,
 	spec := oldSpec.Copy()
 	spec.Name = newName
 	return m.NewPerfRing(*spec, options, perfMapOptions)
+}
+
+// NewRingBuffer - Creates a new ring buffer and start listening for events.
+// Use a MapRoute to make this map available to the programs of the manager.
+func (m *Manager) NewRingBuffer(spec ebpf.MapSpec, options MapOptions, ringBufferOptions RingBufferOptions) (*ebpf.Map, error) {
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
+	if m.state < initialized {
+		return nil, ErrManagerNotInitialized
+	}
+
+	// check if the name of the new map is available
+	_, exists, _ := m.getMap(spec.Name)
+	if exists {
+		return nil, ErrMapNameInUse
+	}
+
+	// Create new map and ring buffer reader
+	ringBuffer, err := loadNewRingBuffer(spec, options, ringBufferOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	// Setup ring buffer reader
+	if err := ringBuffer.Init(m); err != nil {
+		return nil, err
+	}
+
+	// Start perf buffer reader
+	if err := ringBuffer.Start(); err != nil {
+		// clean up
+		_ = ringBuffer.Stop(CleanInternal)
+		return nil, err
+	}
+
+	// Add map to the list of perf ring managed by the manager
+	m.RingBuffers = append(m.RingBuffers, ringBuffer)
+	return ringBuffer.array, nil
 }
 
 // AddHook - Hook an existing program to a hook point. This is particularly useful when you need to trigger an
@@ -1192,6 +1274,16 @@ func (m *Manager) matchSpecs() error {
 		}
 		perfMap.arraySpec = spec
 	}
+
+	// Match ring buffer
+	for _, ringBuffer := range m.RingBuffers {
+		spec, ok := m.collectionSpec.Maps[ringBuffer.Name]
+		if !ok {
+			return fmt.Errorf("couldn't find map at maps/%s: %w", ringBuffer.Name, ErrUnknownSection)
+		}
+		ringBuffer.arraySpec = spec
+	}
+
 	return nil
 }
 
@@ -1241,6 +1333,16 @@ func (m *Manager) matchBPFObjects() error {
 		}
 		perfMap.array = arr
 	}
+
+	// Match ring buffers
+	for _, ringBuffer := range m.RingBuffers {
+		arr, ok := m.collection.Maps[ringBuffer.Name]
+		if !ok {
+			return fmt.Errorf("couldn't find map at maps/%s: %w", ringBuffer.Name, ErrUnknownSection)
+		}
+		ringBuffer.array = arr
+	}
+
 	return nil
 }
 
@@ -1465,6 +1567,14 @@ func (m *Manager) editMaps(maps map[string]*ebpf.Map) error {
 				found = true
 			}
 		}
+		for _, ringBuffer := range m.RingBuffers {
+			if ringBuffer.Name == name {
+				ringBuffer.array = rwMap
+				ringBuffer.externalMap = true
+				ringBuffer.editedMap = true
+				found = true
+			}
+		}
 		if !found {
 			// Create a new entry
 			m.Maps = append(m.Maps, &Map{
@@ -1531,6 +1641,13 @@ func (m *Manager) loadCollection() error {
 		}
 	}
 
+	// Initialize ring buffers
+	for _, ringBuffer := range m.RingBuffers {
+		if err := ringBuffer.Init(m); err != nil {
+			return err
+		}
+	}
+
 	// Initialize Probes
 	for _, probe := range m.Probes {
 		// Find program
@@ -1564,6 +1681,19 @@ func (m *Manager) loadPinnedObjects() error {
 			continue
 		}
 		if err := m.loadPinnedMap(&perfMap.Map); err != nil {
+			if err == ErrPinnedObjectNotFound {
+				continue
+			}
+			return err
+		}
+	}
+
+	// Look for pinned perf buffer
+	for _, ringBuffer := range m.RingBuffers {
+		if ringBuffer.PinPath == "" {
+			continue
+		}
+		if err := m.loadPinnedMap(&ringBuffer.Map); err != nil {
 			if err == ErrPinnedObjectNotFound {
 				continue
 			}
@@ -1636,12 +1766,21 @@ func (m *Manager) sanityCheck() error {
 		}
 		cache[managerMap.Name] = true
 	}
+
 	for _, perfMap := range m.PerfMaps {
 		_, ok := cache[perfMap.Name]
 		if ok {
 			return fmt.Errorf("map %s failed the sanity check: %w", perfMap.Name, ErrMapNameInUse)
 		}
 		cache[perfMap.Name] = true
+	}
+
+	for _, ringBuffer := range m.RingBuffers {
+		_, ok := cache[ringBuffer.Name]
+		if ok {
+			return fmt.Errorf("map %s failed the sanity check: %w", ringBuffer.Name, ErrMapNameInUse)
+		}
+		cache[ringBuffer.Name] = true
 	}
 
 	// Check if probes identification pairs are unique, request the usage of CloneProbe otherwise
