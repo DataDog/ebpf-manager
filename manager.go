@@ -217,6 +217,7 @@ type Manager struct {
 	collection         *ebpf.Collection
 	options            Options
 	netlinkSocketCache map[uint32]*NetlinkSocket
+	nscLock            sync.Mutex
 	state              state
 	stateLock          sync.RWMutex
 
@@ -516,7 +517,11 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 
 	m.wg = &sync.WaitGroup{}
 	m.options = options
+
+	m.nscLock.Lock()
 	m.netlinkSocketCache = make(map[uint32]*NetlinkSocket)
+	m.nscLock.Unlock()
+
 	if m.options.DefaultPerfRingBufferSize == 0 {
 		m.options.DefaultPerfRingBufferSize = os.Getpagesize()
 	}
@@ -1801,11 +1806,8 @@ func (m *Manager) sanityCheck() error {
 // should be the ID of the network namespaced returned by a readlink on `/proc/[pid]/ns/net` for a [pid] that lives in
 // the network namespace pointed to by the nsHandle.
 func (m *Manager) NewCachedNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
-	m.stateLock.Lock()
-	defer m.stateLock.Unlock()
-	if m.state < initialized {
-		return nil, ErrManagerNotInitialized
-	}
+	m.nscLock.Lock()
+	defer m.nscLock.Unlock()
 	return m.newCachedNetlinkSocket(nsHandle, nsID)
 }
 
@@ -1823,11 +1825,8 @@ func (m *Manager) newCachedNetlinkSocket(nsHandle uint64, nsID uint32) (*Netlink
 
 // GetNetlinkSocket - Returns a netlink socket in the requested network namespace from cache or creates a new one.
 func (m *Manager) GetNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
-	m.stateLock.Lock()
-	defer m.stateLock.Unlock()
-	if m.state < initialized {
-		return nil, ErrManagerNotInitialized
-	}
+	m.nscLock.Lock()
+	defer m.nscLock.Unlock()
 	return m.getNetlinkSocket(nsHandle, nsID)
 }
 
