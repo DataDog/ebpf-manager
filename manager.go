@@ -1808,11 +1808,7 @@ func (m *Manager) sanityCheck() error {
 func (m *Manager) NewCachedNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
 	m.nscLock.Lock()
 	defer m.nscLock.Unlock()
-	return m.newCachedNetlinkSocket(nsHandle, nsID)
-}
 
-// newCachedNetlinkSocket - Internal function (see NewCachedNetlinkSocket)
-func (m *Manager) newCachedNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
 	cacheEntry, err := NewNetlinkSocket(nsHandle)
 	if err != nil {
 		return nil, fmt.Errorf("namespace %v: %w", nsID, err)
@@ -1827,17 +1823,13 @@ func (m *Manager) newCachedNetlinkSocket(nsHandle uint64, nsID uint32) (*Netlink
 func (m *Manager) GetNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
 	m.nscLock.Lock()
 	defer m.nscLock.Unlock()
-	return m.getNetlinkSocket(nsHandle, nsID)
-}
 
-// getNetlinkSocket - Internal function (see GetNetlinkSocket)
-func (m *Manager) getNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
 	sock, ok := m.netlinkSocketCache[nsID]
 	if ok {
 		return sock, nil
 	}
 
-	return m.newCachedNetlinkSocket(nsHandle, nsID)
+	return m.NewCachedNetlinkSocket(nsHandle, nsID)
 }
 
 // CleanupNetworkNamespace - Cleans up all references to the provided network namespace within the manager. This means
