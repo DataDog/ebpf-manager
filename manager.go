@@ -1800,26 +1800,12 @@ func (m *Manager) sanityCheck() error {
 	return nil
 }
 
-// NewCachedNetlinkSocket - TC classifiers are attached by creating a qdisc on the requested interface. A netlink socket
+// GetNetlinkSocket - Returns a netlink socket in the requested network namespace from cache or creates a new one.
+// TC classifiers are attached by creating a qdisc on the requested interface. A netlink socket
 // is required to create a qdisc (or to attach an XDP program to an interface). Since this socket can be re-used for
 // multiple probes, instantiate the connection at the manager level and cache the netlink socket. The provided nsID
 // should be the ID of the network namespaced returned by a readlink on `/proc/[pid]/ns/net` for a [pid] that lives in
 // the network namespace pointed to by the nsHandle.
-func (m *Manager) NewCachedNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
-	m.nscLock.Lock()
-	defer m.nscLock.Unlock()
-
-	cacheEntry, err := NewNetlinkSocket(nsHandle)
-	if err != nil {
-		return nil, fmt.Errorf("namespace %v: %w", nsID, err)
-	}
-
-	// Insert in manager cache
-	m.netlinkSocketCache[nsID] = cacheEntry
-	return cacheEntry, nil
-}
-
-// GetNetlinkSocket - Returns a netlink socket in the requested network namespace from cache or creates a new one.
 func (m *Manager) GetNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
 	m.nscLock.Lock()
 	defer m.nscLock.Unlock()
@@ -1829,7 +1815,14 @@ func (m *Manager) GetNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket
 		return sock, nil
 	}
 
-	return m.NewCachedNetlinkSocket(nsHandle, nsID)
+	cacheEntry, err := NewNetlinkSocket(nsHandle)
+	if err != nil {
+		return nil, fmt.Errorf("namespace %v: %w", nsID, err)
+	}
+
+	// Insert in manager cache
+	m.netlinkSocketCache[nsID] = cacheEntry
+	return cacheEntry, nil
 }
 
 // CleanupNetworkNamespace - Cleans up all references to the provided network namespace within the manager. This means
