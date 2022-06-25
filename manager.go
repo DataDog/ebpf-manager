@@ -1410,6 +1410,7 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 			probe.Enabled = true
 		}
 		if !probe.IsRunning() {
+			fmt.Printf("running init for %s\n", probe.ProbeIdentificationPair)
 			if err := probe.Init(m); err != nil {
 				return err
 			}
