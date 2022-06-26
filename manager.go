@@ -1857,13 +1857,20 @@ func (m *Manager) CleanupNetworkNamespace(nsID uint32) error {
 	}
 
 	var err error
-	for _, probe := range m.Probes {
+	var toDelete []int
+	for i, probe := range m.Probes {
 		if probe.IfIndexNetnsID != nsID {
 			continue
 		}
 
+		// disable probe
+		probe.Enabled = false
+
 		// stop the probe
 		err = ConcatErrors(err, probe.Stop())
+
+		// append probe to delete
+		toDelete = append([]int{i}, toDelete...)
 	}
 
 	// delete all netlink sockets, along with netns handles
@@ -1872,7 +1879,12 @@ func (m *Manager) CleanupNetworkNamespace(nsID uint32) error {
 		delete(m.netlinkSocketCache, nsID)
 
 		// close the netlink socket
-		s.Sock.Delete()
+		s.Sock.Close()
+	}
+
+	// delete probes
+	for _, i := range toDelete {
+		m.Probes = append(m.Probes[:i], m.Probes[i+1:]...)
 	}
 	return err
 }
@@ -1883,7 +1895,7 @@ func (m *Manager) cleanupNetlinkSockets() {
 	for key, s := range m.netlinkSocketCache {
 		delete(m.netlinkSocketCache, key)
 		// close the netlink socket
-		s.Sock.Delete()
+		s.Sock.Close()
 	}
 }
 
