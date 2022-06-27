@@ -106,18 +106,18 @@ func (m *PerfMap) Start() error {
 	}
 	// Start listening for data
 	go func() {
-		var record perf.Record
-		recordPtr := &record
-
+		record := &perf.Record{}
 		var err error
+
 		m.manager.wg.Add(1)
 		for {
 			if m.PerfMapOptions.RecordGetter != nil {
-				recordPtr = m.PerfMapOptions.RecordGetter()
+				record = m.PerfMapOptions.RecordGetter()
 			} else if m.DataHandler != nil {
-				recordPtr = new(perf.Record)
+				record = new(perf.Record)
 			}
-			if err = m.perfReader.ReadInto(recordPtr); err != nil {
+
+			if err = m.perfReader.ReadInto(record); err != nil {
 				if isPerfClosed(err) {
 					m.manager.wg.Done()
 					return
@@ -127,16 +127,18 @@ func (m *PerfMap) Start() error {
 				}
 				continue
 			}
+
 			if record.LostSamples > 0 {
 				if m.LostHandler != nil {
 					m.LostHandler(record.CPU, record.LostSamples, m, m.manager)
 				}
 				continue
 			}
+
 			if m.RecordHandler != nil {
-				m.RecordHandler(recordPtr, m, m.manager)
+				m.RecordHandler(record, m, m.manager)
 			} else if m.DataHandler != nil {
-				m.DataHandler(recordPtr.CPU, recordPtr.RawSample, m, m.manager)
+				m.DataHandler(record.CPU, record.RawSample, m, m.manager)
 			}
 		}
 	}()
