@@ -1866,7 +1866,7 @@ func (m *Manager) CleanupNetworkNamespace(nsID uint32) error {
 		// stop the probe
 		err = ConcatErrors(err, probe.Stop())
 
-		// append probe to delete
+		// append probe to delete (biggest indexes first)
 		toDelete = append([]int{i}, toDelete...)
 	}
 
@@ -1881,6 +1881,7 @@ func (m *Manager) CleanupNetworkNamespace(nsID uint32) error {
 
 	// delete probes
 	for _, i := range toDelete {
+		// we delete the biggest indexes first, so we should be good to go !
 		m.Probes = append(m.Probes[:i], m.Probes[i+1:]...)
 	}
 	return err
