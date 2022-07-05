@@ -37,9 +37,9 @@ func TestGenerateEventName(t *testing.T) {
 	}
 }
 
-// return "/usr/lib/ld-2.33.so" for example
+// return "/usr/lib/ld-linux-x86-64.so.2" for example
 func detectLDLoaderPath(t *testing.T) (string, error) {
-	out, err := exec.Command("bash", "-c", `grep '/ld-.*\.so$' /proc/self/maps | head -n1 | awk '{print $6}'`).Output()
+	out, err := exec.Command("bash", "-c", `grep '/ld-.*\.so.*$' /proc/self/maps | head -n1 | awk '{print $6}'`).Output()
 	if err != nil {
 		return "", err
 	}

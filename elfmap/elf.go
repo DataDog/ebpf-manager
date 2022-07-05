@@ -350,10 +350,7 @@ func rebuildSymtabStrTabFromDynamic(f *elf.File, r io.ReaderAt, vBaseAddr uintpt
 	}
 
 	if addrStrtab-addrSymtab <= 0 {
-		return fmt.Errorf("symtab and strtab are not in order")
-	}
-	if addrStrtab-addrSymtab != 0x2e8 {
-		return fmt.Errorf("double check failed")
+		return fmt.Errorf("symtab and strtab are not in expected order")
 	}
 
 	f.Sections = make([]*elf.Section, 2)
