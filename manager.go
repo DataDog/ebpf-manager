@@ -33,6 +33,9 @@ type ConstantEditor struct {
 	// was missing in at least one program
 	FailOnMissing bool
 
+	// BTFGlobalConstant - Indicates if the constant is a BTF global constant.
+	BTFGlobalConstant bool
+
 	// ProbeIdentificationPairs - Identifies the list of programs to edit. If empty, it will apply to all the programs
 	// of the manager. Will return an error if at least one edition failed.
 	ProbeIdentificationPairs []ProbeIdentificationPair
@@ -1448,15 +1451,24 @@ func (m *Manager) editConstants() error {
 	// Start with the BTF based solution
 	rodata := m.collectionSpec.Maps[".rodata"]
 	if rodata != nil && rodata.BTF != nil {
-		consts := map[string]interface{}{}
 		for _, editor := range m.options.ConstantEditors {
-			consts[editor.Name] = editor.Value
+			if !editor.BTFGlobalConstant {
+				continue
+			}
+			constant := map[string]interface{}{
+				editor.Name: editor.Value,
+			}
+			if err := m.collectionSpec.RewriteConstants(constant); err != nil && editor.FailOnMissing {
+				return err
+			}
 		}
-		return m.collectionSpec.RewriteConstants(consts)
 	}
 
 	// Fall back to the old school constant edition
 	for _, constantEditor := range m.options.ConstantEditors {
+		if constantEditor.BTFGlobalConstant {
+			continue
+		}
 
 		// Edit the constant of the provided programs
 		for _, id := range constantEditor.ProbeIdentificationPairs {
