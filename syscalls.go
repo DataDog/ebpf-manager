@@ -178,6 +178,7 @@ func sockDetach(sockFd int, progFd int) error {
 type bpfRawTracepointOpenAttr struct {
 	name   uint64
 	progFD uint32
+	_      [4]byte
 }
 
 func rawTracepointOpen(name string, progFD int) (*FD, error) {
