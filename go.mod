@@ -7,6 +7,7 @@ require (
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/cilium/ebpf v0.9.0
 	github.com/hashicorp/go-multierror v1.1.1
+	github.com/shuLhan/go-bindata v4.0.0+incompatible // indirect
 	github.com/sirupsen/logrus v1.8.1
 	github.com/vishvananda/netlink v1.1.1-0.20220316193741-b112db377d18
 	github.com/vishvananda/netns v0.0.0-20200728191858-db3c7e526aae
