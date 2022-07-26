@@ -220,6 +220,7 @@ type Manager struct {
 	collection         *ebpf.Collection
 	options            Options
 	netlinkSocketCache map[uint32]*NetlinkSocket
+	nscLock            sync.Mutex
 	state              state
 	stateLock          sync.RWMutex
 
@@ -519,7 +520,11 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 
 	m.wg = &sync.WaitGroup{}
 	m.options = options
+
+	m.nscLock.Lock()
 	m.netlinkSocketCache = make(map[uint32]*NetlinkSocket)
+	m.nscLock.Unlock()
+
 	if m.options.DefaultPerfRingBufferSize == 0 {
 		m.options.DefaultPerfRingBufferSize = os.Getpagesize()
 	}
@@ -1805,22 +1810,21 @@ func (m *Manager) sanityCheck() error {
 	return nil
 }
 
-// NewCachedNetlinkSocket - TC classifiers are attached by creating a qdisc on the requested interface. A netlink socket
+// GetNetlinkSocket - Returns a netlink socket in the requested network namespace from cache or creates a new one.
+// TC classifiers are attached by creating a qdisc on the requested interface. A netlink socket
 // is required to create a qdisc (or to attach an XDP program to an interface). Since this socket can be re-used for
 // multiple probes, instantiate the connection at the manager level and cache the netlink socket. The provided nsID
 // should be the ID of the network namespaced returned by a readlink on `/proc/[pid]/ns/net` for a [pid] that lives in
 // the network namespace pointed to by the nsHandle.
-func (m *Manager) NewCachedNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
-	m.stateLock.Lock()
-	defer m.stateLock.Unlock()
-	if m.state < initialized {
-		return nil, ErrManagerNotInitialized
-	}
-	return m.newCachedNetlinkSocket(nsHandle, nsID)
-}
+func (m *Manager) GetNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
+	m.nscLock.Lock()
+	defer m.nscLock.Unlock()
 
-// newCachedNetlinkSocket - Internal function (see NewCachedNetlinkSocket)
-func (m *Manager) newCachedNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
+	sock, ok := m.netlinkSocketCache[nsID]
+	if ok {
+		return sock, nil
+	}
+
 	cacheEntry, err := NewNetlinkSocket(nsHandle)
 	if err != nil {
 		return nil, fmt.Errorf("namespace %v: %w", nsID, err)
@@ -1829,26 +1833,6 @@ func (m *Manager) newCachedNetlinkSocket(nsHandle uint64, nsID uint32) (*Netlink
 	// Insert in manager cache
 	m.netlinkSocketCache[nsID] = cacheEntry
 	return cacheEntry, nil
-}
-
-// GetNetlinkSocket - Returns a netlink socket in the requested network namespace from cache or creates a new one.
-func (m *Manager) GetNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
-	m.stateLock.Lock()
-	defer m.stateLock.Unlock()
-	if m.state < initialized {
-		return nil, ErrManagerNotInitialized
-	}
-	return m.getNetlinkSocket(nsHandle, nsID)
-}
-
-// getNetlinkSocket - Internal function (see GetNetlinkSocket)
-func (m *Manager) getNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
-	sock, ok := m.netlinkSocketCache[nsID]
-	if ok {
-		return sock, nil
-	}
-
-	return m.newCachedNetlinkSocket(nsHandle, nsID)
 }
 
 // CleanupNetworkNamespace - Cleans up all references to the provided network namespace within the manager. This means
