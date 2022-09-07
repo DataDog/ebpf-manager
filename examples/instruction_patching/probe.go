@@ -5,7 +5,6 @@
 
 package main
 
-
 import (
 	"bytes"
 	"compress/gzip"
@@ -37,7 +36,6 @@ func bindataRead(data []byte, name string) ([]byte, error) {
 
 	return buf.Bytes(), nil
 }
-
 
 type asset struct {
 	bytes []byte
@@ -88,8 +86,6 @@ func bindataProg1OBytes() ([]byte, error) {
 	)
 }
 
-
-
 func bindataProg1O() (*asset, error) {
 	bytes, err := bindataProg1OBytes()
 	if err != nil {
@@ -97,11 +93,11 @@ func bindataProg1O() (*asset, error) {
 	}
 
 	info := bindataFileInfo{
-		name: "/prog1.o",
-		size: 2944,
+		name:        "/prog1.o",
+		size:        2944,
 		md5checksum: "",
-		mode: os.FileMode(420),
-		modTime: time.Unix(1629974255, 0),
+		mode:        os.FileMode(420),
+		modTime:     time.Unix(1629974255, 0),
 	}
 
 	a := &asset{bytes: bytes, info: info}
@@ -118,8 +114,6 @@ func bindataProg2OBytes() ([]byte, error) {
 	)
 }
 
-
-
 func bindataProg2O() (*asset, error) {
 	bytes, err := bindataProg2OBytes()
 	if err != nil {
@@ -127,18 +121,17 @@ func bindataProg2O() (*asset, error) {
 	}
 
 	info := bindataFileInfo{
-		name: "/prog2.o",
-		size: 3040,
+		name:        "/prog2.o",
+		size:        3040,
 		md5checksum: "",
-		mode: os.FileMode(420),
-		modTime: time.Unix(1629974255, 0),
+		mode:        os.FileMode(420),
+		modTime:     time.Unix(1629974255, 0),
 	}
 
 	a := &asset{bytes: bytes, info: info}
 
 	return a, nil
 }
-
 
 //
 // Asset loads and returns the asset for the given name.
@@ -231,18 +224,18 @@ func AssetDir(name string) ([]string, error) {
 			node = node.Children[p]
 			if node == nil {
 				return nil, &os.PathError{
-					Op: "open",
+					Op:   "open",
 					Path: name,
-					Err: os.ErrNotExist,
+					Err:  os.ErrNotExist,
 				}
 			}
 		}
 	}
 	if node.Func != nil {
 		return nil, &os.PathError{
-			Op: "open",
+			Op:   "open",
 			Path: name,
-			Err: os.ErrNotExist,
+			Err:  os.ErrNotExist,
 		}
 	}
 	rv := make([]string, 0, len(node.Children))
@@ -251,7 +244,6 @@ func AssetDir(name string) ([]string, error) {
 	}
 	return rv, nil
 }
-
 
 type bintree struct {
 	Func     func() (*asset, error)
