@@ -5,10 +5,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"os"
 	"unsafe"
 
-	"github.com/cilium/ebpf"
 	"github.com/sirupsen/logrus"
 )
 
@@ -39,31 +37,4 @@ func recoverAsset(asset string) io.ReaderAt {
 		logrus.Fatal(fmt.Errorf("couldn't find asset: %w", err))
 	}
 	return bytes.NewReader(buf)
-}
-
-// trigger - Creates and then removes a tmp folder to trigger the probes
-func trigger() error {
-	logrus.Println("Generating events to trigger the probes ...")
-
-	// Creating a tmp directory to trigger the probes
-	tmpDir := "/tmp/test_folder"
-	logrus.Printf("creating %v", tmpDir)
-	err := os.MkdirAll(tmpDir, 0666)
-	if err != nil {
-		return err
-	}
-
-	// Removing the tmp directory
-	return os.RemoveAll(tmpDir)
-}
-
-// dumpSharedMap - Dumps the content of the provided map at the provided key
-func dumpSharedMap(sharedMap *ebpf.Map) error {
-	var key, val uint32
-	entries := sharedMap.Iterate()
-	for entries.Next(&key, &val) {
-		// Order of keys is non-deterministic due to randomized map seed
-		logrus.Printf("%v contains %v at key %v", sharedMap, val, key)
-	}
-	return entries.Err()
 }

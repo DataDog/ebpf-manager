@@ -78,7 +78,7 @@ func main() {
 	}
 
 	logrus.Println("Use 'bpftool prog dump xlated id <prog-id>' to verify that the instruction has been patched. Press 'Enter' to exit...")
-	bufio.NewReader(os.Stdin).ReadBytes('\n')
+	_, _ = bufio.NewReader(os.Stdin).ReadBytes('\n')
 
 	cleanup()
 }
