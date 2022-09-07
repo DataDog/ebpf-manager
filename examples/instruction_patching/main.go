@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"os"
 
 	manager "github.com/DataDog/ebpf-manager"
 	"github.com/cilium/ebpf"
@@ -75,7 +77,8 @@ func main() {
 		logrus.Fatal(err)
 	}
 
-	logrus.Println("Use 'bpftool prog dump xlated id <prog-id>' to verify that the instruction has been patched")
+	logrus.Println("Use 'bpftool prog dump xlated id <prog-id>' to verify that the instruction has been patched. Press 'Enter' to exit...")
+	bufio.NewReader(os.Stdin).ReadBytes('\n')
 
 	cleanup()
 }
