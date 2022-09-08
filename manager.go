@@ -240,6 +240,8 @@ type Manager struct {
 	// and dump the current state (human readable)
 	DumpHandler func(manager *Manager, mapName string, currentMap *ebpf.Map) string
 
+	// InstructionPatcher - Callback function called before loading probes, to
+	// provide user the ability to perform last minute instruction patching.
 	InstructionPatcher func(m *Manager) error
 }
 
