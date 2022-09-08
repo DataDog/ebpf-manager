@@ -240,7 +240,7 @@ type Manager struct {
 	// and dump the current state (human readable)
 	DumpHandler func(manager *Manager, mapName string, currentMap *ebpf.Map) string
 
-	InstructionPatcher func(m *Manager) error
+	InstructionPatcher func(ident ProbeIdentificationPair, spec *ebpf.ProgramSpec) error
 }
 
 // DumpMaps - Return a string containing human readable info about eBPF maps
@@ -608,7 +608,7 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 
 	// Patch instructions
 	if m.InstructionPatcher != nil {
-		if err := m.InstructionPatcher(m); err != nil {
+		if err := m.patchAllProbes(); err != nil {
 			resetManager(m)
 			return err
 		}
@@ -1675,6 +1675,16 @@ func (m *Manager) loadCollection() error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (m *Manager) patchAllProbes() error {
+	for _, p := range m.Probes {
+		if err := m.InstructionPatcher(p.ProbeIdentificationPair, p.programSpec); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
