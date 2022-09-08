@@ -239,6 +239,10 @@ type Manager struct {
 	// DumpHandler - Callback function called when manager.DumpMaps() is called
 	// and dump the current state (human readable)
 	DumpHandler func(manager *Manager, mapName string, currentMap *ebpf.Map) string
+
+	// InstructionPatcher - Callback function called before loading probes, to
+	// provide user the ability to perform last minute instruction patching.
+	InstructionPatcher func(m *Manager) error
 }
 
 // DumpMaps - Return a string containing human readable info about eBPF maps
@@ -599,6 +603,14 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	// Edit program maps
 	if len(options.MapEditors) > 0 {
 		if err = m.editMaps(options.MapEditors); err != nil {
+			resetManager(m)
+			return err
+		}
+	}
+
+	// Patch instructions
+	if m.InstructionPatcher != nil {
+		if err := m.InstructionPatcher(m); err != nil {
 			resetManager(m)
 			return err
 		}
