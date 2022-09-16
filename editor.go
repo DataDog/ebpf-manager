@@ -28,15 +28,16 @@ func Edit(insns *asm.Instructions) *Editor {
 //
 // The following macro should be used to access the constant:
 //
-//    #define LOAD_CONSTANT(param, var) asm("%0 = " param " ll" : "=r"(var))
+//	#define LOAD_CONSTANT(param, var) asm("%0 = " param " ll" : "=r"(var))
 //
-//    int xdp() {
-//        bool my_constant;
-//        LOAD_CONSTANT("SYMBOL_NAME", my_constant);
+//	int xdp() {
+//	    bool my_constant;
+//	    LOAD_CONSTANT("SYMBOL_NAME", my_constant);
 //
-//        if (my_constant) ...
+//	    if (my_constant) ...
 //
 // Caveats:
+//
 //   - The symbol name you pick must be unique
 //
 //   - Failing to rewrite a symbol will not result in an error,
