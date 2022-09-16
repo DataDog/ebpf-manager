@@ -17,12 +17,11 @@ import (
 //
 // A map can only be in one of the following categories
 //
-//               ----------------------         ---------------------------------------
-//              |   Internally loaded  |       |           Externally loaded           |
-//               ----------------------         ---------------------------------------
-//  Categories: |  Pinned | Not Pinned |       |  Pinned | Pinned and Edited  | Edited |
-//               ----------------------         ---------------------------------------
-//
+//	             ----------------------         ---------------------------------------
+//	            |   Internally loaded  |       |           Externally loaded           |
+//	             ----------------------         ---------------------------------------
+//	Categories: |  Pinned | Not Pinned |       |  Pinned | Pinned and Edited  | Edited |
+//	             ----------------------         ---------------------------------------
 type MapCleanupType int
 
 const (
