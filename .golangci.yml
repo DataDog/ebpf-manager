@@ -10,3 +10,9 @@ linters:
     - gofmt       # Gofmt checks whether code was gofmt-ed
     - revive      # Revive is a replacement for golint, a coding style checker
     - errcheck    # errcheck is a program for checking for unchecked errors in go programs.
+
+linters-settings:
+  revive:
+    rules:
+      - name: package-comments
+        disabled: true
