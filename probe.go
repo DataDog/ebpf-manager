@@ -1080,16 +1080,21 @@ func (p *Probe) attachTCCLS() error {
 	}
 
 	// Create a Qdisc for the provided interface
+	fmt.Printf("%s [TC DEBUG] looking for clsact QDisc on [%v:%v:%v] %+v\n", time.Now(), p.IfName, p.IfIndex, p.IfIndexNetnsID, p.buildTCClsActQdisc())
 	err = ntl.Sock.QdiscAdd(p.buildTCClsActQdisc())
 	if err != nil {
 		if errors.Is(err, fs.ErrExist) {
+			fmt.Printf("%s [TC DEBUG] clsact QDISC was already there on [%v:%v:%v] - looking for existing CWS TC filters\n", time.Now(), p.IfName, p.IfIndex, p.IfIndexNetnsID)
 			// cleanup previous TC filters if necessary
 			if err = p.cleanupTCFilters(ntl); err != nil {
-				return fmt.Errorf("couldn't clean up existing \"clsact\" qdisc filters for %s[%d]: %w", p.IfName, p.IfIndex, err)
+				return fmt.Errorf("couldn't clean up existing \"clsact\" qdisc filters for [%v:%v:%v]: %w", p.IfName, p.IfIndex, p.IfIndexNetnsID, err)
 			}
+			fmt.Printf("%s [TC DEBUG] clsact QDISC was already there - cleanup done\n", time.Now())
 		} else {
-			return fmt.Errorf("couldn't add a \"clsact\" qdisc to interface %s[%d]: %w", p.IfName, p.IfIndex, err)
+			return fmt.Errorf("couldn't add a \"clsact\" qdisc to interface [%v:%v:%v]: %w", p.IfName, p.IfIndex, p.IfIndexNetnsID, err)
 		}
+	} else {
+		fmt.Printf("%s [TC DEBUG] clsact QDisc added to [%v:%v:%v]\n", time.Now(), p.IfName, p.IfIndex, p.IfIndexNetnsID)
 	}
 
 	// Create qdisc filter
@@ -1097,6 +1102,7 @@ func (p *Probe) attachTCCLS() error {
 	if err != nil {
 		return err
 	}
+	fmt.Printf("%s [TC DEBUG] adding new TC filter on [%v:%v:%v] %+v\n", time.Now(), p.IfName, p.IfIndex, p.IfIndexNetnsID, p.tcFilter)
 	if err = ntl.Sock.FilterAdd(&p.tcFilter); err != nil {
 		return fmt.Errorf("couldn't add a %v filter to interface %s[%d]: %v", p.NetworkDirection, p.IfName, p.IfIndex, err)
 	}
@@ -1124,6 +1130,7 @@ func (p *Probe) attachTCCLS() error {
 		if bpfFilter.Id == p.systemWideID && strings.Contains(p.programTag, bpfFilter.Tag) { //
 			found = true
 			p.tcFilter.Handle = bpfFilter.Handle
+			fmt.Printf("%s [TC DEBUG] TC filter handle on [%v:%v:%v] resolved: %+v\n", time.Now(), p.IfName, p.IfIndex, p.IfIndexNetnsID, p.tcFilter)
 		}
 	}
 	if !found {
@@ -1190,6 +1197,7 @@ func (p *Probe) detachTCCLS() error {
 			return fmt.Errorf("couldn't remove TC classifier %v: %w", p.ProbeIdentificationPair, err)
 		}
 	}
+	fmt.Printf("%s [TC DEBUG] deleting TC filter on [%v:%v:%v] %+v\n", time.Now(), p.IfName, p.IfIndex, p.IfIndexNetnsID, p.tcFilter)
 	ntl.TCFilterCount[p.IfIndex]--
 
 	// check if the qdisc should be deleted
@@ -1203,12 +1211,14 @@ func (p *Probe) detachTCCLS() error {
 	resp, err := ntl.Sock.FilterList(p.link, netlink.HANDLE_MIN_INGRESS)
 	if err != nil || err == nil && len(resp) > 0 {
 		// someone is still using it
+		fmt.Printf("%s [TC DEBUG] %+v on [%v:%v:%v] has filters on ingress from a third party, moving on without deleting it\n", time.Now(), p.IfName, p.IfIndex, p.IfIndexNetnsID, p.buildTCClsActQdisc())
 		return nil
 	}
 
 	// check on egress
 	resp, err = ntl.Sock.FilterList(p.link, netlink.HANDLE_MIN_EGRESS)
 	if err != nil || err == nil && len(resp) > 0 {
+		fmt.Printf("%s [TC DEBUG] %+v on [%v:%v:%v] has filters on egress from a third party, moving on without deleting it\n", time.Now(), p.IfName, p.IfIndex, p.IfIndexNetnsID, p.buildTCClsActQdisc())
 		// someone is still using it
 		return nil
 	}
@@ -1220,6 +1230,7 @@ func (p *Probe) detachTCCLS() error {
 			return fmt.Errorf("couldn't remove clsact qdisc: %w", err)
 		}
 	}
+	fmt.Printf("%s [TC DEBUG] deleting clsact qdisc from [%v:%v:%v]: %+v\n", time.Now(), p.IfName, p.IfIndex, p.IfIndexNetnsID, p.buildTCClsActQdisc())
 	return nil
 }
 
@@ -1253,6 +1264,7 @@ func (p *Probe) cleanupTCFilters(ntl *NetlinkSocket) error {
 		}
 
 		match := pattern.FindStringSubmatch(bpfFilter.Name)
+		fmt.Printf("%s [TC DEBUG] pattern is:%s, evaluating:%s, output:%v\n", time.Now(), pattern.String(), bpfFilter.Name, match)
 		if len(match) < 3 {
 			continue
 		}
@@ -1273,6 +1285,7 @@ func (p *Probe) cleanupTCFilters(ntl *NetlinkSocket) error {
 		}
 
 		// remove this filter
+		fmt.Printf("%s [TC DEBUG] deleting TC filter (from cleanup) from [%v:%v:%v] %+v\n", time.Now(), p.IfName, p.IfIndex, p.IfIndexNetnsID, elem)
 		deleteErr = ConcatErrors(deleteErr, ntl.Sock.FilterDel(elem))
 	}
 	return deleteErr
