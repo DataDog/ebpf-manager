@@ -123,6 +123,13 @@ func (pip ProbeIdentificationPair) GetUprobeType() string {
 	return pip.kprobeType
 }
 
+type KprobeAttachMethod uint32
+
+const (
+	AttachKprobeWithPerfEventOpen KprobeAttachMethod = iota
+	AttachKprobeWithKprobeEvents
+)
+
 // Probe - Main eBPF probe wrapper. This structure is used to store the required data to attach a loaded eBPF
 // program to its hook point.
 type Probe struct {
@@ -202,6 +209,9 @@ type Probe struct {
 	// probed simultaneously with maxactive. If maxactive is 0 it will be set to the default value: if CONFIG_PREEMPT is
 	// enabled, this is max(10, 2*NR_CPUS); otherwise, it is NR_CPUS. For kprobes, maxactive is ignored.
 	KProbeMaxActive int
+
+	// DefaultKprobeAttachMethod: Method to use for attaching the kprobe. Either use perfEventOpen ABI or kprobe events
+	DefaultKprobeAttachMethod KprobeAttachMethod
 
 	// UprobeOffset - If UprobeOffset is provided, the uprobe will be attached to it directly without looking for the
 	// symbol in the elf binary. If the file is a non-PIE executable, the provided address must be a virtual address,
@@ -844,12 +854,20 @@ func (p *Probe) attachKprobe() error {
 				return err
 			}
 		}
-	} else {
+	} else if p.DefaultKprobeAttachMethod == AttachKprobeWithPerfEventOpen {
 		if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", isKRetProbe, 0); err != nil {
 			if err = p.attachWithKprobeEvents(); err != nil {
 				return err
 			}
 		}
+	} else if p.DefaultKprobeAttachMethod == AttachKprobeWithKprobeEvents {
+		if err = p.attachWithKprobeEvents(); err != nil {
+			if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", isKRetProbe, 0); err != nil {
+				return err
+			}
+		}
+	} else {
+		return fmt.Errorf("Invalid kprobe attach method: %d\n", p.DefaultKprobeAttachMethod)
 	}
 
 	// enable perf event
