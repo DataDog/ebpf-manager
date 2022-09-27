@@ -1176,6 +1176,11 @@ func (p *Probe) IsTCFilterActive() bool {
 			return true
 		}
 	}
+
+	// This TC filter is no longer active, the interface has been deleted or the filter was replaced by a third party.
+	// Regardless of the reason, we do not hold the current Handle on this filter, remove it so we make sure we won't
+	// delete something that we do not own.
+	p.tcFilter.Handle = 0
 	return false
 }
 
@@ -1187,11 +1192,13 @@ func (p *Probe) detachTCCLS() error {
 		return err
 	}
 
-	// delete the current filter
-	if err = ntl.Sock.FilterDel(&p.tcFilter); err != nil {
-		// the device or the filter might already be gone, ignore the error if that's the case
-		if !errors.Is(err, syscall.ENODEV) && !errors.Is(err, syscall.ENOENT) {
-			return fmt.Errorf("couldn't remove TC classifier %v: %w", p.ProbeIdentificationPair, err)
+	if p.tcFilter.Handle > 0 {
+		// delete the current filter
+		if err = ntl.Sock.FilterDel(&p.tcFilter); err != nil {
+			// the device or the filter might already be gone, ignore the error if that's the case
+			if !errors.Is(err, syscall.ENODEV) && !errors.Is(err, syscall.ENOENT) {
+				return fmt.Errorf("couldn't remove TC classifier %v: %w", p.ProbeIdentificationPair, err)
+			}
 		}
 	}
 	ntl.TCFilterCount[p.IfIndex]--
