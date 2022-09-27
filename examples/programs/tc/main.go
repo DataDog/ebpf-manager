@@ -6,6 +6,7 @@ import (
 	"os/signal"
 
 	"github.com/sirupsen/logrus"
+	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
 	manager "github.com/DataDog/ebpf-manager"
@@ -19,7 +20,7 @@ var m = &manager.Manager{
 				EBPFSection:  "classifier/egress",
 				EBPFFuncName: "egress",
 			},
-			IfName:           "enp0s3", // change this to the interface connected to the internet
+			IfName:           "lo", // change this to the interface connected to the internet
 			NetworkDirection: manager.Egress,
 		},
 		{
@@ -27,10 +28,11 @@ var m = &manager.Manager{
 				EBPFSection:  "classifier/ingress",
 				EBPFFuncName: "ingress",
 			},
-			IfName:           "enp0s3", // change this to the interface connected to the internet
+			IfName:           "lo", // change this to the interface connected to the internet
 			NetworkDirection: manager.Ingress,
 			TCFilterProtocol: unix.ETH_P_ARP,
 			TCFilterPrio:     1000,
+			TCFilterHandle:   netlink.MakeHandle(0, 2),
 		},
 	},
 }
