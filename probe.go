@@ -256,6 +256,9 @@ type Probe struct {
 	// in mind that if you are hooking on the host side of a virtuel ethernet pair, Ingress and Egress are inverted.
 	NetworkDirection TrafficType
 
+	// TCFilterHandle - (TC classifier) defines the handle to use when loading the classifier. Leave unset to let the kernel decide which handle to use.
+	TCFilterHandle uint32
+
 	// TCFilterPrio - (TC classifier) defines the priority of the classifier added to the clsact qdisc. Defaults to DefaultTCFilterPriority.
 	TCFilterPrio uint16
 
@@ -1054,6 +1057,7 @@ func (p *Probe) buildTCFilter() (netlink.BpfFilter, error) {
 			FilterAttrs: netlink.FilterAttrs{
 				LinkIndex: p.IfIndex,
 				Parent:    p.getTCFilterParentHandle(),
+				Handle:    p.TCFilterHandle,
 				Priority:  p.TCFilterPrio,
 				Protocol:  p.TCFilterProtocol,
 			},
