@@ -11,9 +11,9 @@ import (
 type ProbesSelector interface {
 	// GetProbesIdentificationPairList - Returns the list of probes that this selector activates
 	GetProbesIdentificationPairList() []ProbeIdentificationPair
-	// runValidator - Ensures that the probes that were successfully activated follow the selector goal.
+	// RunValidator - Ensures that the probes that were successfully activated follow the selector goal.
 	// For example, see OneOf.
-	runValidator(manager *Manager) error
+	RunValidator(manager *Manager) error
 	// EditProbeIdentificationPair - Changes all the selectors looking for the old ProbeIdentificationPair so that they
 	// mow select the new one
 	EditProbeIdentificationPair(old ProbeIdentificationPair, new ProbeIdentificationPair)
@@ -30,9 +30,9 @@ func (ps *ProbeSelector) GetProbesIdentificationPairList() []ProbeIdentification
 	return []ProbeIdentificationPair{ps.ProbeIdentificationPair}
 }
 
-// runValidator - Ensures that the probes that were successfully activated follow the selector goal.
+// RunValidator - Ensures that the probes that were successfully activated follow the selector goal.
 // For example, see OneOf.
-func (ps *ProbeSelector) runValidator(manager *Manager) error {
+func (ps *ProbeSelector) RunValidator(manager *Manager) error {
 	p, ok := manager.getProbe(ps.ProbeIdentificationPair)
 	if !ok {
 		return fmt.Errorf("probe not found: %s", ps.ProbeIdentificationPair)
@@ -71,12 +71,12 @@ func (oo *OneOf) GetProbesIdentificationPairList() []ProbeIdentificationPair {
 	return l
 }
 
-// runValidator - Ensures that the probes that were successfully activated follow the selector goal.
+// RunValidator - Ensures that the probes that were successfully activated follow the selector goal.
 // For example, see OneOf.
-func (oo *OneOf) runValidator(manager *Manager) error {
+func (oo *OneOf) RunValidator(manager *Manager) error {
 	var errs []string
 	for _, selector := range oo.Selectors {
-		if err := selector.runValidator(manager); err != nil {
+		if err := selector.RunValidator(manager); err != nil {
 			errs = append(errs, err.Error())
 		}
 	}
@@ -120,12 +120,12 @@ func (ao *AllOf) GetProbesIdentificationPairList() []ProbeIdentificationPair {
 	return l
 }
 
-// runValidator - Ensures that the probes that were successfully activated follow the selector goal.
+// RunValidator - Ensures that the probes that were successfully activated follow the selector goal.
 // For example, see OneOf.
-func (ao *AllOf) runValidator(manager *Manager) error {
+func (ao *AllOf) RunValidator(manager *Manager) error {
 	var errMsg []string
 	for _, selector := range ao.Selectors {
-		if err := selector.runValidator(manager); err != nil {
+		if err := selector.RunValidator(manager); err != nil {
 			errMsg = append(errMsg, err.Error())
 		}
 	}
@@ -169,9 +169,9 @@ func (be *BestEffort) GetProbesIdentificationPairList() []ProbeIdentificationPai
 	return l
 }
 
-// runValidator - Ensures that the probes that were successfully activated follow the selector goal.
+// RunValidator - Ensures that the probes that were successfully activated follow the selector goal.
 // For example, see OneOf.
-func (be *BestEffort) runValidator(manager *Manager) error {
+func (be *BestEffort) RunValidator(manager *Manager) error {
 	return nil
 }
 
