@@ -272,6 +272,9 @@ type Probe struct {
 	// TCFilterPrio - (TC classifier) defines the priority of the classifier added to the clsact qdisc. Defaults to DefaultTCFilterPriority.
 	TCFilterPrio uint16
 
+	// TCCleanupQDisc - (TC classifier) defines if the manager should cleanup the clsact qdisc when a probe is unloaded
+	TCCleanupQDisc bool
+
 	// TCFilterProtocol - (TC classifier) defines the protocol to match in order to trigger the classifier. Defaults to
 	// ETH_P_ALL.
 	TCFilterProtocol uint16
@@ -1228,25 +1231,28 @@ func (p *Probe) detachTCCLS() error {
 	}
 	delete(ntl.TCFilterCount, p.IfIndex)
 
-	// check if someone else is using the clsact qdisc on ingress
-	resp, err := ntl.Sock.FilterList(p.link, netlink.HANDLE_MIN_INGRESS)
-	if err != nil || err == nil && len(resp) > 0 {
-		// someone is still using it
-		return nil
-	}
+	if p.TCCleanupQDisc {
 
-	// check on egress
-	resp, err = ntl.Sock.FilterList(p.link, netlink.HANDLE_MIN_EGRESS)
-	if err != nil || err == nil && len(resp) > 0 {
-		// someone is still using it
-		return nil
-	}
+		// check if someone else is using the clsact qdisc on ingress
+		resp, err := ntl.Sock.FilterList(p.link, netlink.HANDLE_MIN_INGRESS)
+		if err != nil || err == nil && len(resp) > 0 {
+			// someone is still using it
+			return nil
+		}
 
-	// delete qdisc
-	if err = ntl.Sock.QdiscDel(p.buildTCClsActQdisc()); err != nil {
-		// the device might already be gone, ignore the error if that's the case
-		if !errors.Is(err, syscall.ENODEV) {
-			return fmt.Errorf("couldn't remove clsact qdisc: %w", err)
+		// check on egress
+		resp, err = ntl.Sock.FilterList(p.link, netlink.HANDLE_MIN_EGRESS)
+		if err != nil || err == nil && len(resp) > 0 {
+			// someone is still using it
+			return nil
+		}
+
+		// delete qdisc
+		if err = ntl.Sock.QdiscDel(p.buildTCClsActQdisc()); err != nil {
+			// the device might already be gone, ignore the error if that's the case
+			if !errors.Is(err, syscall.ENODEV) {
+				return fmt.Errorf("couldn't remove clsact qdisc: %w", err)
+			}
 		}
 	}
 	return nil
