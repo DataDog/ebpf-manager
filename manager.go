@@ -684,7 +684,7 @@ func (m *Manager) Start() error {
 	// Check probe selectors
 	var validationErrs error
 	for _, selector := range m.options.ActivatedProbes {
-		if err := selector.runValidator(m); err != nil {
+		if err := selector.RunValidator(m); err != nil {
 			validationErrs = multierror.Append(validationErrs, err)
 		}
 	}
@@ -1443,7 +1443,7 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 	m.options.ActivatedProbes = selectors
 	var validationErrs error
 	for _, selector := range m.options.ActivatedProbes {
-		if err := selector.runValidator(m); err != nil {
+		if err := selector.RunValidator(m); err != nil {
 			validationErrs = multierror.Append(validationErrs, err)
 		}
 	}
