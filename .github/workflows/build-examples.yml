@@ -1,0 +1,22 @@
+name: Build examples
+
+on: 
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - uses: actions/setup-go@v3
+        with:
+          go-version: '1.16'
+
+      - name: Build example
+        working-directory: examples/programs/kprobe
+        runs: |
+          make build-ebpf
+          make build
