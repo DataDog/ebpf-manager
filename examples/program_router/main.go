@@ -1,10 +1,19 @@
 package main
 
 import (
+	"bytes"
+	_ "embed"
+
 	"github.com/sirupsen/logrus"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
+
+//go:embed ebpf/bin/probe1.o
+var Probe1 []byte
+
+//go:embed ebpf/bin/probe2.o
+var Probe2 []byte
 
 var m = &manager.Manager{
 	Probes: []*manager.Probe{
@@ -13,7 +22,7 @@ var m = &manager.Manager{
 				EBPFSection:  "classifier/one",
 				EBPFFuncName: "one",
 			},
-			IfName:           "enp0s3", // change this to the interface index connected to the internet
+			IfName:           "lo", // change this to the interface index connected to the internet
 			NetworkDirection: manager.Egress,
 		},
 	},
@@ -25,10 +34,10 @@ var m2 = &manager.Manager{
 
 func main() {
 	// Initialize the manager
-	if err := m.Init(recoverAssets("/probe1.o")); err != nil {
+	if err := m.Init(bytes.NewReader(Probe1)); err != nil {
 		logrus.Fatal(err)
 	}
-	if err := m2.Init(recoverAssets("/probe2.o")); err != nil {
+	if err := m2.Init(bytes.NewReader(Probe2)); err != nil {
 		logrus.Fatal(err)
 	}
 

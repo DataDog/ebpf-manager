@@ -2,14 +2,20 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	_ "embed"
 	"fmt"
 	"os"
 
-	manager "github.com/DataDog/ebpf-manager"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
 	"github.com/sirupsen/logrus"
+
+	manager "github.com/DataDog/ebpf-manager"
 )
+
+//go:embed ebpf/bin/probe.o
+var Probe []byte
 
 var m1 = &manager.Manager{
 	Probes: []*manager.Probe{
@@ -70,7 +76,7 @@ func patchBPFTelemetry(m *manager.Manager) error {
 }
 
 func main() {
-	if err := m1.Init(recoverAsset("/main.o")); err != nil {
+	if err := m1.Init(bytes.NewReader(Probe)); err != nil {
 		logrus.Fatal(err)
 	}
 	if err := m1.Start(); err != nil {

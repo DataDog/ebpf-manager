@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/cilium/ebpf"
@@ -35,7 +36,7 @@ func demoMapEditor() error {
 		},
 	}
 	// Initialize m2, edit shared_cache1 and start it
-	if err = m2.InitWithOptions(recoverAsset("/prog2.o"), options); err != nil {
+	if err = m2.InitWithOptions(bytes.NewReader(Probe2), options); err != nil {
 		return fmt.Errorf("couldn't init m2: %w", err)
 	}
 	if err = m2.Start(); err != nil {

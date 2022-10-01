@@ -1,10 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"encoding/binary"
-	"fmt"
-	"io"
 	"os"
 	"unsafe"
 
@@ -30,15 +27,6 @@ func getHostByteOrder() binary.ByteOrder {
 	}
 
 	return binary.BigEndian
-}
-
-// recoverAsset - Recover ebpf asset
-func recoverAsset(asset string) io.ReaderAt {
-	buf, err := Asset(asset)
-	if err != nil {
-		logrus.Fatal(fmt.Errorf("couldn't find asset: %w", err))
-	}
-	return bytes.NewReader(buf)
 }
 
 // trigger - Creates and then removes a tmp folder to trigger the probes

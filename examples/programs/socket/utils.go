@@ -1,22 +1,10 @@
 package main
 
 import (
-	"bytes"
-	"fmt"
-	"io"
 	"syscall"
 
 	"github.com/sirupsen/logrus"
 )
-
-// recoverAssets - Recover ebpf asset
-func recoverAssets() io.ReaderAt {
-	buf, err := Asset("/probe.o")
-	if err != nil {
-		logrus.Fatal(fmt.Errorf("couldn't find asset: %w", err))
-	}
-	return bytes.NewReader(buf)
-}
 
 // trigger - Send a message through the socket pair to trigger the probe
 func trigger(sockPair SocketPair) error {

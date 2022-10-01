@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	_ "embed"
 	"fmt"
 
 	"github.com/cilium/ebpf"
@@ -8,6 +10,9 @@ import (
 
 	manager "github.com/DataDog/ebpf-manager"
 )
+
+//go:embed ebpf/bin/probe.o
+var Probe []byte
 
 type TestData struct {
 	Input  uint32
@@ -30,7 +35,7 @@ var testData = []TestData{
 func main() {
 	// Initialize the manager
 	var m = &manager.Manager{}
-	if err := m.Init(recoverAssets()); err != nil {
+	if err := m.Init(bytes.NewReader(Probe)); err != nil {
 		logrus.Fatal(err)
 	}
 
