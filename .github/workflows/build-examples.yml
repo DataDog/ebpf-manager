@@ -15,6 +15,13 @@ jobs:
         with:
           go-version: '1.16'
 
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y llc
+          clang --version
+          llc --version
+
       - name: Build example
         working-directory: examples/programs/kprobe
         run: |
