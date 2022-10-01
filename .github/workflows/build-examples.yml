@@ -25,6 +25,7 @@ jobs:
           - programs/tracepoint
           - programs/uprobe
           - programs/xdp
+          - tests_and_benchmarks
 
     runs-on: ubuntu-22.04
     steps:
