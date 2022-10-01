@@ -5,8 +5,27 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        example_path:
+          - activated_probes
+          - clone_vs_add_hook
+          - instruction_patching
+          - map_rewrite_vs_map_router
+          - mapspec_editor
+          - object_pinning
+          - program_router
+          - programs/cgroup
+          - programs/kprobe
+          - programs/lsm
+          - programs/perf_event
+          - programs/socket
+          - programs/tc
+          - programs/tracepoint
+          - programs/uprobe
+          - programs/xdp
 
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -23,7 +42,7 @@ jobs:
           llc --version
 
       - name: Build example
-        working-directory: examples/programs/kprobe
+        working-directory: examples/${{ matrix.example_path }}
         run: |
           # to be removed soon
           go get github.com/shuLhan/go-bindata/cmd/go-bindata
