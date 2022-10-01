@@ -17,6 +17,6 @@ jobs:
 
       - name: Build example
         working-directory: examples/programs/kprobe
-        runs: |
+        run: |
           make build-ebpf
           make build
