@@ -25,5 +25,7 @@ jobs:
       - name: Build example
         working-directory: examples/programs/kprobe
         run: |
+          # to be removed soon
+          go get github.com/shuLhan/go-bindata/cmd/go-bindata
           make build-ebpf
           make build
