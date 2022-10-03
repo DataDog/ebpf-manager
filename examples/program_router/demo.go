@@ -10,7 +10,7 @@ import (
 
 func demoTailCall() error {
 	logrus.Println("generating some traffic to show what happens when the tail call is not set up ...")
-	trigger()
+	trigger1()
 	time.Sleep(1 * time.Second)
 
 	prog, _, err := m2.GetProgram(manager.ProbeIdentificationPair{EBPFSection: "classifier/three", EBPFFuncName: "three"})
@@ -40,6 +40,6 @@ func demoTailCall() error {
 		return err
 	}
 	logrus.Println("generating some traffic to show what happens when the tail call is set up ...")
-	trigger()
+	trigger2()
 	return nil
 }

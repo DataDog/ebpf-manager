@@ -19,7 +19,7 @@ build-prog1:
 		-I/lib/modules/$$(uname -r)/build/arch/x86/include/generated \
 		-O2 -emit-llvm \
 		ebpf/prog1.c \
-		-c -o - | llc -march=bpf -filetype=obj -o ebpf/bin/prog1.o
+		-c -o - | llc -march=bpf -filetype=obj -o ebpf/bin/probe1.o
 
 build-prog2:
 	mkdir -p ebpf/bin
@@ -38,10 +38,9 @@ build-prog2:
 		-I/lib/modules/$$(uname -r)/build/arch/x86/include/generated \
 		-O2 -emit-llvm \
 		ebpf/prog2.c \
-		-c -o - | llc -march=bpf -filetype=obj -o ebpf/bin/prog2.o
+		-c -o - | llc -march=bpf -filetype=obj -o ebpf/bin/probe2.o
 
 build:
-	go run github.com/shuLhan/go-bindata/cmd/go-bindata -pkg main -prefix "ebpf/bin" -o "probe.go" "ebpf/bin/prog1.o" "ebpf/bin/prog2.o"
 	go build -o bin/main .
 
 run:

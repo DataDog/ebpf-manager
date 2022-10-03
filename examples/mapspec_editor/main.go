@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	_ "embed"
 	"math"
 
 	"github.com/cilium/ebpf"
@@ -9,6 +11,9 @@ import (
 
 	manager "github.com/DataDog/ebpf-manager"
 )
+
+//go:embed ebpf/bin/probe.o
+var Probe []byte
 
 var m = &manager.Manager{}
 
@@ -28,7 +33,7 @@ func main() {
 	}
 
 	// Initialize the manager
-	if err := m.InitWithOptions(recoverAssets(), options); err != nil {
+	if err := m.InitWithOptions(bytes.NewReader(Probe), options); err != nil {
 		logrus.Fatal(err)
 	}
 

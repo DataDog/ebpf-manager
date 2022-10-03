@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	_ "embed"
 	"fmt"
 	"os"
 	"os/signal"
@@ -9,6 +11,9 @@ import (
 
 	manager "github.com/DataDog/ebpf-manager"
 )
+
+//go:embed ebpf/bin/probe.o
+var Probe []byte
 
 var m1 = &manager.Manager{
 	Probes: []*manager.Probe{
@@ -24,7 +29,7 @@ var m1 = &manager.Manager{
 				EBPFSection:  "kprobe/utimes_common",
 				EBPFFuncName: "kprobe_utimes_common",
 			},
-			MatchFuncName: "utimes_common",
+			MatchFuncName: "utimes",
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
@@ -215,7 +220,7 @@ var m3 = &manager.Manager{
 
 func main() {
 	// Initialize the managers
-	if err := m1.InitWithOptions(recoverAssets(), options1); err != nil {
+	if err := m1.InitWithOptions(bytes.NewReader(Probe), options1); err != nil {
 		logrus.Fatal(err)
 	}
 
@@ -257,7 +262,7 @@ func main() {
 
 	logrus.Println("moving on to m2 (an error is expected)")
 	// Initialize the managers
-	if err := m2.InitWithOptions(recoverAssets(), options2); err != nil {
+	if err := m2.InitWithOptions(bytes.NewReader(Probe), options2); err != nil {
 		logrus.Fatal(err)
 	}
 
@@ -270,7 +275,7 @@ func main() {
 	wait()
 
 	logrus.Println("moving on to m3 (an error is expected)")
-	if err := m3.Init(recoverAssets()); err != nil {
+	if err := m3.Init(bytes.NewReader(Probe)); err != nil {
 		logrus.Fatal(err)
 	}
 
@@ -280,7 +285,7 @@ func main() {
 	}
 
 	logrus.Println("updating activated probes of m3 (no error is expected)")
-	if err := m3.Init(recoverAssets()); err != nil {
+	if err := m3.Init(bytes.NewReader(Probe)); err != nil {
 		logrus.Fatal(err)
 	}
 

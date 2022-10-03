@@ -17,8 +17,7 @@ build-ebpf:
 		-I/lib/modules/$$(uname -r)/build/arch/x86/include/generated \
 		-O2 -emit-llvm \
 		ebpf/main.c \
-		-c -o - | llc -march=bpf -filetype=obj -o ebpf/bin/main.o
-	go run github.com/shuLhan/go-bindata/cmd/go-bindata -pkg main -prefix "ebpf/bin" -o "probe.go" "ebpf/bin/main.o"
+		-c -o - | llc -march=bpf -filetype=obj -o ebpf/bin/probe.o
 
 build:
 	go build -o bin/main .

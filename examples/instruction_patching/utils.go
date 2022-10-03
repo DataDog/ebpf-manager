@@ -1,13 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"encoding/binary"
-	"fmt"
-	"io"
 	"unsafe"
-
-	"github.com/sirupsen/logrus"
 )
 
 // ByteOrder - host byte order
@@ -28,13 +23,4 @@ func getHostByteOrder() binary.ByteOrder {
 	}
 
 	return binary.BigEndian
-}
-
-// recoverAsset - Recover ebpf asset
-func recoverAsset(asset string) io.ReaderAt {
-	buf, err := Asset(asset)
-	if err != nil {
-		logrus.Fatal(fmt.Errorf("couldn't find asset: %w", err))
-	}
-	return bytes.NewReader(buf)
 }

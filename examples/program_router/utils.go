@@ -1,24 +1,15 @@
 package main
 
 import (
-	"bytes"
-	"fmt"
-	"io"
 	"net/http"
-
-	"github.com/sirupsen/logrus"
 )
 
-// recoverAssets - Recover ebpf asset
-func recoverAssets(probe string) io.ReaderAt {
-	buf, err := Asset(probe)
-	if err != nil {
-		logrus.Fatal(fmt.Errorf("couldn't find asset: %w", err))
-	}
-	return bytes.NewReader(buf)
+// trigger1 - Generate some network traffic to trigger the probe
+func trigger1() {
+	_, _ = http.Get("https://www.google.com/")
 }
 
-// trigger - Generate some network traffic to trigger the probe
-func trigger() {
-	_, _ = http.Get("https://www.google.com/")
+// trigger2 - Generate some network traffic to trigger the probe
+func trigger2() {
+	_, _ = http.Get("https://www.google.fr/")
 }
