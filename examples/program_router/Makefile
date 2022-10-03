@@ -1,4 +1,6 @@
-all: build-prog1 build-prog2 build run
+all: build-ebpf build run
+
+build-ebpf: build-prog1 build-prog2
 
 build-prog1:
 	mkdir -p ebpf/bin
