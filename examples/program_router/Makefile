@@ -1,4 +1,6 @@
-all: build-prog1 build-prog2 build run
+all: build-ebpf build run
+
+build-ebpf: build-prog1 build-prog2
 
 build-prog1:
 	mkdir -p ebpf/bin
@@ -37,8 +39,6 @@ build-prog2:
 		-O2 -emit-llvm \
 		ebpf/prog2.c \
 		-c -o - | llc -march=bpf -filetype=obj -o ebpf/bin/probe2.o
-
-build-ebpf: build-prog1 build-prog2
 
 build:
 	go run github.com/shuLhan/go-bindata/cmd/go-bindata -pkg main -prefix "ebpf/bin" -o "probe.go" "ebpf/bin/probe1.o" "ebpf/bin/probe2.o"
