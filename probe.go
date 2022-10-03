@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/DataDog/gopsutil/process"
-	"github.com/avast/retry-go"
+	"github.com/avast/retry-go/v4"
 	"github.com/cilium/ebpf"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"

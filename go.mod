@@ -3,8 +3,8 @@ module github.com/DataDog/ebpf-manager
 go 1.17
 
 require (
-	github.com/DataDog/gopsutil v0.0.0-20200624212600-1b53412ef321
-	github.com/avast/retry-go v3.0.0+incompatible
+	github.com/DataDog/gopsutil v1.2.1
+	github.com/avast/retry-go/v4 v4.1.0
 	github.com/cilium/ebpf v0.9.3
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/sirupsen/logrus v1.8.1
