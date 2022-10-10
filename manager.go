@@ -173,6 +173,9 @@ type Options struct {
 	// See Probe.MaxActive for more.
 	DefaultKProbeMaxActive int
 
+	// DefaultKprobeAttachMethod - Manager-level default value for the Kprobe attach method. Defaults to AttachKprobeWithPerfEventOpen if unset.
+	DefaultKprobeAttachMethod KprobeAttachMethod
+
 	// ProbeRetry - Defines the number of times that a probe will retry to attach / detach on error.
 	DefaultProbeRetry uint
 
