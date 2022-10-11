@@ -39,7 +39,7 @@ func loadNewRingBuffer(spec ebpf.MapSpec, options MapOptions, ringBufferOptions 
 
 	// Create the new map
 	ringBuffer := RingBuffer{
-		Map:               *innerMap, //nolint:copylocks
+		Map:               *innerMap, //nolint:govet
 		RingBufferOptions: ringBufferOptions,
 	}
 	return &ringBuffer, nil

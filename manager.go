@@ -1568,6 +1568,8 @@ func (m *Manager) rewriteMaps(program *ebpf.ProgramSpec, eBPFMaps map[string]*eb
 // editMaps - RewriteMaps replaces all references to specific maps.
 func (m *Manager) editMaps(maps map[string]*ebpf.Map) error {
 	// Rewrite maps
+	// ignore deprecated usage
+	//nolint:staticcheck
 	if err := m.collectionSpec.RewriteMaps(maps); err != nil {
 		return err
 	}
