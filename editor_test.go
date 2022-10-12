@@ -85,7 +85,7 @@ func TestEditorIssue59(t *testing.T) {
 		asm.Mov.Imm(asm.R0, 1),
 		asm.JGT.Imm(asm.R1, 0, "exit"),
 		asm.Mov.Imm(asm.R0, 0),
-		asm.Return().Sym("exit"),
+		asm.Return().WithSymbol("exit"),
 	}
 
 	editor := Edit(&insns)
