@@ -13,11 +13,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/DataDog/gopsutil/process"
 	"github.com/avast/retry-go/v4"
 	"github.com/cilium/ebpf"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
+
+	"github.com/DataDog/gopsutil/process"
 )
 
 // XdpAttachMode selects a way how XDP program will be attached to interface
@@ -643,6 +644,8 @@ func (p *Probe) attach() error {
 		err = p.attachLSM()
 	case ebpf.PerfEvent:
 		err = p.attachPerfEvent()
+	case ebpf.Tracing:
+		err = p.attachTracing()
 	default:
 		err = fmt.Errorf("program type %s not implemented yet", p.programSpec.Type)
 	}
@@ -727,6 +730,8 @@ func (p *Probe) detach() error {
 		err = ConcatErrors(err, p.detachXDP())
 	case ebpf.LSM:
 		err = ConcatErrors(err, p.detachLSM())
+	case ebpf.Tracing:
+		err = ConcatErrors(err, p.detachTracing())
 	case ebpf.PerfEvent:
 		err = ConcatErrors(err, p.detachPerfEvent())
 	default:
@@ -1360,6 +1365,24 @@ func (p *Probe) detachLSM() error {
 	if p.rawTracepointFD != nil {
 		if closeErr := p.rawTracepointFD.Close(); closeErr != nil {
 			return fmt.Errorf("failed to detach LSM hook point: %w", closeErr)
+		}
+	}
+	return nil
+}
+
+func (p *Probe) attachTracing() error {
+	var err error
+	p.rawTracepointFD, err = rawTracepointOpen("", p.program.FD())
+	if err != nil {
+		return fmt.Errorf("failed to attach tracing hook point: %w", err)
+	}
+	return nil
+}
+
+func (p *Probe) detachTracing() error {
+	if p.rawTracepointFD != nil {
+		if closeErr := p.rawTracepointFD.Close(); closeErr != nil {
+			return fmt.Errorf("failed to detach tracing hook point: %w", closeErr)
 		}
 	}
 	return nil
