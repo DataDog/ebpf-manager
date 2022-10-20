@@ -1,6 +1,6 @@
 name: Build examples
 
-on: 
+on:
   push:
 
 jobs:
@@ -17,6 +17,7 @@ jobs:
           - object_pinning
           - program_router
           - programs/cgroup
+          - programs/fentry
           - programs/kprobe
           - programs/lsm
           - programs/perf_event
