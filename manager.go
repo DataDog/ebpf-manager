@@ -173,6 +173,9 @@ type Options struct {
 	// See Probe.MaxActive for more.
 	DefaultKProbeMaxActive int
 
+	// DefaultKprobeAttachMethod - Manager-level default value for the Kprobe attach method. Defaults to AttachKprobeWithPerfEventOpen if unset.
+	DefaultKprobeAttachMethod KprobeAttachMethod
+
 	// ProbeRetry - Defines the number of times that a probe will retry to attach / detach on error.
 	DefaultProbeRetry uint
 
@@ -1565,6 +1568,8 @@ func (m *Manager) rewriteMaps(program *ebpf.ProgramSpec, eBPFMaps map[string]*eb
 // editMaps - RewriteMaps replaces all references to specific maps.
 func (m *Manager) editMaps(maps map[string]*ebpf.Map) error {
 	// Rewrite maps
+	// ignore deprecated usage
+	//nolint:staticcheck
 	if err := m.collectionSpec.RewriteMaps(maps); err != nil {
 		return err
 	}

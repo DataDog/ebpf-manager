@@ -5,7 +5,6 @@ import (
 	"debug/elf"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -61,7 +60,7 @@ func FindFilterFunction(funcName string) (string, error) {
 
 	// Cache available filter functions if necessary
 	if len(availableFilterFunctions) == 0 {
-		funcs, err := ioutil.ReadFile("/sys/kernel/debug/tracing/available_filter_functions")
+		funcs, err := os.ReadFile("/sys/kernel/debug/tracing/available_filter_functions")
 		if err != nil {
 			return "", err
 		}
@@ -131,7 +130,7 @@ const defaultSymFile = "/proc/kallsyms"
 // for older syscall functions to run on newer kernels
 func getSyscallName(name string, symFile string) (string, error) {
 	// Get kernel symbols
-	syms, err := ioutil.ReadFile(symFile)
+	syms, err := os.ReadFile(symFile)
 	if err != nil {
 		return "", err
 	}
@@ -223,7 +222,7 @@ func getKernelGeneratedEventName(probeType, funcName string) string {
 
 // ReadKprobeEvents - Returns the content of kprobe_events
 func ReadKprobeEvents() (string, error) {
-	kprobeEvents, err := ioutil.ReadFile("/sys/kernel/debug/tracing/kprobe_events")
+	kprobeEvents, err := os.ReadFile("/sys/kernel/debug/tracing/kprobe_events")
 	if err != nil {
 		return "", err
 	}
@@ -253,7 +252,7 @@ func registerKprobeEvent(probeType, funcName, UID, maxActiveStr string, kprobeAt
 
 	// Retrieve kprobe ID
 	kprobeIDFile := fmt.Sprintf("/sys/kernel/debug/tracing/events/kprobes/%s/id", eventName)
-	kprobeIDBytes, err := ioutil.ReadFile(kprobeIDFile)
+	kprobeIDBytes, err := os.ReadFile(kprobeIDFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return -1, ErrKprobeIDNotExist
@@ -303,7 +302,7 @@ func unregisterKprobeEventWithEventName(eventName string) error {
 
 // ReadUprobeEvents - Returns the content of uprobe_events
 func ReadUprobeEvents() (string, error) {
-	uprobeEvents, err := ioutil.ReadFile("/sys/kernel/debug/tracing/uprobe_events")
+	uprobeEvents, err := os.ReadFile("/sys/kernel/debug/tracing/uprobe_events")
 	if err != nil {
 		return "", err
 	}
@@ -335,7 +334,7 @@ func registerUprobeEvent(probeType string, funcName, path, UID string, uprobeAtt
 
 	// Retrieve Uprobe ID
 	uprobeIDFile := fmt.Sprintf("/sys/kernel/debug/tracing/events/uprobes/%s/id", eventName)
-	uprobeIDBytes, err := ioutil.ReadFile(uprobeIDFile)
+	uprobeIDBytes, err := os.ReadFile(uprobeIDFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return -1, ErrUprobeIDNotExist
@@ -448,7 +447,7 @@ func FindSymbolOffsets(path string, pattern *regexp.Regexp) ([]elf.Symbol, error
 // GetTracepointID - Returns a tracepoint ID from its category and name
 func GetTracepointID(category, name string) (int, error) {
 	tracepointIDFile := fmt.Sprintf("/sys/kernel/debug/tracing/events/%s/%s/id", category, name)
-	tracepointIDBytes, err := ioutil.ReadFile(tracepointIDFile)
+	tracepointIDBytes, err := os.ReadFile(tracepointIDFile)
 	if err != nil {
 		return -1, fmt.Errorf("cannot read tracepoint id %q: %w", tracepointIDFile, err)
 	}
@@ -574,7 +573,7 @@ var (
 func parseRetProbeBit(eventType string) (uint64, error) {
 	p := filepath.Join("/sys/bus/event_source/devices/", eventType, "/format/retprobe")
 
-	data, err := ioutil.ReadFile(p)
+	data, err := os.ReadFile(p)
 	if err != nil {
 		return 0, err
 	}

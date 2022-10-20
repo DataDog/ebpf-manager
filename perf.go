@@ -56,7 +56,7 @@ func loadNewPerfMap(spec ebpf.MapSpec, options MapOptions, perfOptions PerfMapOp
 
 	// Create the new map
 	perfMap := PerfMap{
-		Map:            *innerMap, //nolint:copylocks
+		Map:            *innerMap, //nolint:govet
 		PerfMapOptions: perfOptions,
 	}
 	return &perfMap, nil

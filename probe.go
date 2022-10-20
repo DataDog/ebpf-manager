@@ -127,7 +127,8 @@ func (pip ProbeIdentificationPair) GetUprobeType() string {
 type KprobeAttachMethod uint32
 
 const (
-	AttachKprobeWithPerfEventOpen KprobeAttachMethod = iota
+	AttachKprobeMethodNotSet KprobeAttachMethod = iota
+	AttachKprobeWithPerfEventOpen
 	AttachKprobeWithKprobeEvents
 )
 
@@ -545,6 +546,16 @@ func (p *Probe) init() error {
 			if available {
 				p.systemWideID = int(id)
 			}
+		}
+	}
+
+	// set default kprobe attach method
+	if p.KprobeAttachMethod == AttachKprobeMethodNotSet {
+		if p.manager != nil {
+			p.KprobeAttachMethod = p.manager.options.DefaultKprobeAttachMethod
+		}
+		if p.KprobeAttachMethod == AttachKprobeMethodNotSet {
+			p.KprobeAttachMethod = AttachKprobeWithPerfEventOpen
 		}
 	}
 
