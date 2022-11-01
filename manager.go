@@ -648,6 +648,10 @@ func (m *Manager) Start() error {
 		return nil
 	}
 
+	// release kernel BTF. It should no longer be needed
+	// FIXME: this will break CloneProgram
+	m.options.VerifierOptions.Programs.KernelTypes = nil
+
 	// clean up tracefs
 	if err := m.cleanupTracefs(); err != nil {
 		m.stateLock.Unlock()
