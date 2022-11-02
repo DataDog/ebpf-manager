@@ -62,8 +62,8 @@ func loadNewPerfMap(spec ebpf.MapSpec, options MapOptions, perfOptions PerfMapOp
 	return &perfMap, nil
 }
 
-// Init - Initialize a map
-func (m *PerfMap) Init(manager *Manager) error {
+// init - Initialize a map
+func (m *PerfMap) init(manager *Manager) error {
 	m.manager = manager
 
 	if m.DataHandler == nil && m.RecordHandler == nil {
@@ -79,7 +79,7 @@ func (m *PerfMap) Init(manager *Manager) error {
 	}
 
 	// Initialize the underlying map structure
-	if err := m.Map.Init(manager); err != nil {
+	if err := m.Map.init(manager); err != nil {
 		return err
 	}
 	return nil

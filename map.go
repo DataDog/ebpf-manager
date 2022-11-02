@@ -97,8 +97,8 @@ func loadNewMap(spec ebpf.MapSpec, options MapOptions) (*Map, error) {
 	return &managerMap, nil
 }
 
-// Init - Initialize a map
-func (m *Map) Init(manager *Manager) error {
+// init - Initialize a map
+func (m *Map) init(manager *Manager) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
 	if m.state >= initialized {
@@ -173,9 +173,9 @@ func (m *Map) close(cleanup MapCleanupType) error {
 		var err error
 		// Remove pin if needed
 		if m.PinPath != "" {
-			err = ConcatErrors(err, os.Remove(m.PinPath))
+			err = concatErrors(err, os.Remove(m.PinPath))
 		}
-		err = ConcatErrors(err, m.array.Close())
+		err = concatErrors(err, m.array.Close())
 		if err != nil {
 			return err
 		}

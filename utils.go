@@ -27,18 +27,18 @@ const (
 	paused
 	running
 
-	// MaxEventNameLen - maximum length for a kprobe (or uprobe) event name
+	// maxEventNameLen - maximum length for a kprobe (or uprobe) event name
 	// MAX_EVENT_NAME_LEN (linux/kernel/trace/trace.h)
-	MaxEventNameLen    = 64
-	MinFunctionNameLen = 10
+	maxEventNameLen    = 64
+	minFunctionNameLen = 10
 
-	// MaxBPFClassifierNameLen - maximum length for a TC
+	// maxBPFClassifierNameLen - maximum length for a TC
 	// CLS_BPF_NAME_LEN (linux/net/sched/cls_bpf.c)
-	MaxBPFClassifierNameLen = 256
+	maxBPFClassifierNameLen = 256
 )
 
-// ConcatErrors - Concatenate 2 errors into one error.
-func ConcatErrors(err1, err2 error) error {
+// concatErrors - Concatenate 2 errors into one error.
+func concatErrors(err1, err2 error) error {
 	if err1 == nil {
 		return err2
 	}
@@ -51,7 +51,7 @@ func ConcatErrors(err1, err2 error) error {
 // availableFilterFunctions - cache of the list of available kernel functions.
 var availableFilterFunctions []string
 
-func FindFilterFunction(funcName string) (string, error) {
+func findFilterFunction(funcName string) (string, error) {
 	// Prepare matching pattern
 	searchedName, err := regexp.Compile(funcName)
 	if err != nil {
@@ -126,7 +126,7 @@ func GetSyscallFnNameWithSymFile(name string, symFile string) (string, error) {
 const defaultSymFile = "/proc/kallsyms"
 
 // Returns the qualified syscall named by going through '/proc/kallsyms' on the
-// system on which its executed. It allows BPF programs that may have been compiled
+// system on which its executed. It allows bpf programs that may have been compiled
 // for older syscall functions to run on newer kernels
 func getSyscallName(name string, symFile string) (string, error) {
 	// Get kernel symbols
@@ -183,33 +183,33 @@ func getSyscallFnNameWithKallsyms(name string, kallsymsContent string) (string, 
 
 var safeEventRegexp = regexp.MustCompile("[^a-zA-Z0-9]")
 
-func GenerateEventName(probeType, funcName, UID string, attachPID int) (string, error) {
+func generateEventName(probeType, funcName, UID string, attachPID int) (string, error) {
 	// truncate the function name and UID name to reduce the length of the event
 	attachPIDstr := strconv.Itoa(attachPID)
-	maxFuncNameLen := MaxEventNameLen - 3 /* _ */ - len(probeType) - len(UID) - len(attachPIDstr)
-	if maxFuncNameLen < MinFunctionNameLen { /* let's guarantee that we have a function name minimum of 10 chars (MinFunctionNameLen) or trow an error */
+	maxFuncNameLen := maxEventNameLen - 3 /* _ */ - len(probeType) - len(UID) - len(attachPIDstr)
+	if maxFuncNameLen < minFunctionNameLen { /* let's guarantee that we have a function name minimum of 10 chars (minFunctionNameLen) or trow an error */
 		dbgFullEventString := safeEventRegexp.ReplaceAllString(fmt.Sprintf("%s_%s_%s_%s", probeType, funcName, UID, attachPIDstr), "_")
-		return "", fmt.Errorf("event name is too long (kernel limit is %d (MAX_EVENT_NAME_LEN)): MinFunctionNameLen %d, len 3, probeType %d, funcName %d, UID %d, attachPIDstr %d ; full event string : '%s'", MaxEventNameLen, MinFunctionNameLen, len(probeType), len(funcName), len(UID), len(attachPIDstr), dbgFullEventString)
+		return "", fmt.Errorf("event name is too long (kernel limit is %d (MAX_EVENT_NAME_LEN)): minFunctionNameLen %d, len 3, probeType %d, funcName %d, UID %d, attachPIDstr %d ; full event string : '%s'", maxEventNameLen, minFunctionNameLen, len(probeType), len(funcName), len(UID), len(attachPIDstr), dbgFullEventString)
 	}
 	eventName := safeEventRegexp.ReplaceAllString(fmt.Sprintf("%s_%.*s_%s_%s", probeType, maxFuncNameLen, funcName, UID, attachPIDstr), "_")
 
-	if len(eventName) > MaxEventNameLen {
-		return "", fmt.Errorf("event name too long (kernel limit MAX_EVENT_NAME_LEN is %d): '%s'", MaxEventNameLen, eventName)
+	if len(eventName) > maxEventNameLen {
+		return "", fmt.Errorf("event name too long (kernel limit MAX_EVENT_NAME_LEN is %d): '%s'", maxEventNameLen, eventName)
 	}
 	return eventName, nil
 }
 
-func GenerateTCFilterName(UID, sectionName string, attachPID int) (string, error) {
+func generateTCFilterName(UID, sectionName string, attachPID int) (string, error) {
 	attachPIDstr := strconv.Itoa(attachPID)
-	maxSectionNameLen := MaxBPFClassifierNameLen - 3 /* _ */ - len(UID) - len(attachPIDstr)
+	maxSectionNameLen := maxBPFClassifierNameLen - 3 /* _ */ - len(UID) - len(attachPIDstr)
 	if maxSectionNameLen < 0 {
 		dbgFullFilterString := safeEventRegexp.ReplaceAllString(fmt.Sprintf("%s_%s_%s", sectionName, UID, attachPIDstr), "_")
-		return "", fmt.Errorf("filter name is too long (kernel limit is %d (CLS_BPF_NAME_LEN)): sectionName %d, UID %d, attachPIDstr %d ; full event string : '%s'", MaxEventNameLen, len(sectionName), len(UID), len(attachPIDstr), dbgFullFilterString)
+		return "", fmt.Errorf("filter name is too long (kernel limit is %d (CLS_BPF_NAME_LEN)): sectionName %d, UID %d, attachPIDstr %d ; full event string : '%s'", maxEventNameLen, len(sectionName), len(UID), len(attachPIDstr), dbgFullFilterString)
 	}
 	filterName := safeEventRegexp.ReplaceAllString(fmt.Sprintf("%.*s_%s_%s", maxSectionNameLen, sectionName, UID, attachPIDstr), "_")
 
-	if len(filterName) > MaxBPFClassifierNameLen {
-		return "", fmt.Errorf("filter name too long (kernel limit CLS_BPF_NAME_LEN is %d): '%s'", MaxBPFClassifierNameLen, filterName)
+	if len(filterName) > maxBPFClassifierNameLen {
+		return "", fmt.Errorf("filter name too long (kernel limit CLS_BPF_NAME_LEN is %d): '%s'", maxBPFClassifierNameLen, filterName)
 	}
 	return filterName, nil
 }
@@ -220,8 +220,8 @@ func getKernelGeneratedEventName(probeType, funcName string) string {
 	return fmt.Sprintf("%s_%s_0", probeType, funcName)
 }
 
-// ReadKprobeEvents - Returns the content of kprobe_events
-func ReadKprobeEvents() (string, error) {
+// readKprobeEvents - Returns the content of kprobe_events
+func readKprobeEvents() (string, error) {
 	kprobeEvents, err := os.ReadFile("/sys/kernel/debug/tracing/kprobe_events")
 	if err != nil {
 		return "", err
@@ -233,7 +233,7 @@ func ReadKprobeEvents() (string, error) {
 // to remove the krpobe.
 func registerKprobeEvent(probeType, funcName, UID, maxActiveStr string, kprobeAttachPID int) (int, error) {
 	// Generate event name
-	eventName, err := GenerateEventName(probeType, funcName, UID, kprobeAttachPID)
+	eventName, err := generateEventName(probeType, funcName, UID, kprobeAttachPID)
 	if err != nil {
 		return -1, err
 	}
@@ -270,7 +270,7 @@ func registerKprobeEvent(probeType, funcName, UID, maxActiveStr string, kprobeAt
 // unregisterKprobeEvent - Removes a kprobe from kprobe_events
 func unregisterKprobeEvent(probeType, funcName, UID string, kprobeAttachPID int) error {
 	// Generate event name
-	eventName, err := GenerateEventName(probeType, funcName, UID, kprobeAttachPID)
+	eventName, err := generateEventName(probeType, funcName, UID, kprobeAttachPID)
 	if err != nil {
 		return err
 	}
@@ -300,8 +300,8 @@ func unregisterKprobeEventWithEventName(eventName string) error {
 	return nil
 }
 
-// ReadUprobeEvents - Returns the content of uprobe_events
-func ReadUprobeEvents() (string, error) {
+// readUprobeEvents - Returns the content of uprobe_events
+func readUprobeEvents() (string, error) {
 	uprobeEvents, err := os.ReadFile("/sys/kernel/debug/tracing/uprobe_events")
 	if err != nil {
 		return "", err
@@ -313,7 +313,7 @@ func ReadUprobeEvents() (string, error) {
 // to remove the krpobe.
 func registerUprobeEvent(probeType string, funcName, path, UID string, uprobeAttachPID int, offset uint64) (int, error) {
 	// Generate event name
-	eventName, err := GenerateEventName(probeType, funcName, UID, uprobeAttachPID)
+	eventName, err := generateEventName(probeType, funcName, UID, uprobeAttachPID)
 	if err != nil {
 		return -1, err
 	}
@@ -352,7 +352,7 @@ func registerUprobeEvent(probeType string, funcName, path, UID string, uprobeAtt
 // unregisterUprobeEvent - Removes a uprobe from uprobe_events
 func unregisterUprobeEvent(probeType string, funcName string, UID string, uprobeAttachPID int) error {
 	// Generate event name
-	eventName, err := GenerateEventName(probeType, funcName, UID, uprobeAttachPID)
+	eventName, err := generateEventName(probeType, funcName, UID, uprobeAttachPID)
 	if err != nil {
 		return err
 	}
@@ -374,8 +374,8 @@ func unregisterUprobeEventWithEventName(eventName string) error {
 	return nil
 }
 
-// OpenAndListSymbols - Opens an elf file and extracts all its symbols
-func OpenAndListSymbols(path string) (*elf.File, []elf.Symbol, error) {
+// openAndListSymbols - Opens an elf file and extracts all its symbols
+func openAndListSymbols(path string) (*elf.File, []elf.Symbol, error) {
 	// open elf file
 	f, err := elf.Open(path)
 	if err != nil {
@@ -404,8 +404,8 @@ func OpenAndListSymbols(path string) (*elf.File, []elf.Symbol, error) {
 	return f, syms, nil
 }
 
-// SanitizeUprobeAddresses - sanitizes the addresses of the provided symbols
-func SanitizeUprobeAddresses(f *elf.File, syms []elf.Symbol) {
+// sanitizeUprobeAddresses - sanitizes the addresses of the provided symbols
+func sanitizeUprobeAddresses(f *elf.File, syms []elf.Symbol) {
 	// If the binary is a non-PIE executable, addr must be a virtual address, otherwise it must be an offset relative to
 	// the file load address. For executable (ET_EXEC) binaries and shared objects (ET_DYN), translate the virtual
 	// address to physical address in the binary file.
@@ -422,9 +422,9 @@ func SanitizeUprobeAddresses(f *elf.File, syms []elf.Symbol) {
 	}
 }
 
-// FindSymbolOffsets - Parses the provided file and returns the offsets of the symbols that match the provided pattern
-func FindSymbolOffsets(path string, pattern *regexp.Regexp) ([]elf.Symbol, error) {
-	f, syms, err := OpenAndListSymbols(path)
+// findSymbolOffsets - Parses the provided file and returns the offsets of the symbols that match the provided pattern
+func findSymbolOffsets(path string, pattern *regexp.Regexp) ([]elf.Symbol, error) {
+	f, syms, err := openAndListSymbols(path)
 	if err != nil {
 		return nil, err
 	}
@@ -440,7 +440,7 @@ func FindSymbolOffsets(path string, pattern *regexp.Regexp) ([]elf.Symbol, error
 		return nil, ErrSymbolNotFound
 	}
 
-	SanitizeUprobeAddresses(f, matches)
+	sanitizeUprobeAddresses(f, matches)
 	return matches, nil
 }
 
@@ -458,38 +458,38 @@ func GetTracepointID(category, name string) (int, error) {
 	return tracepointID, nil
 }
 
-// ErrClosedFd - Use of closed file descriptor error
-var ErrClosedFd = errors.New("use of closed file descriptor")
+// errClosedFd - Use of closed file descriptor error
+var errClosedFd = errors.New("use of closed file descriptor")
 
-// FD - File descriptor
-type FD struct {
+// fd - File descriptor
+type fd struct {
 	raw int64
 }
 
-// NewFD - returns a new file descriptor
-func NewFD(value uint32) *FD {
-	fd := &FD{int64(value)}
-	runtime.SetFinalizer(fd, (*FD).Close)
+// newFD - returns a new file descriptor
+func newFD(value uint32) *fd {
+	fd := &fd{int64(value)}
+	runtime.SetFinalizer(fd, (*fd).Close)
 	return fd
 }
 
-func (fd *FD) String() string {
+func (fd *fd) String() string {
 	return strconv.FormatInt(fd.raw, 10)
 }
 
-func (fd *FD) Value() (uint32, error) {
+func (fd *fd) Value() (uint32, error) {
 	if fd.raw < 0 {
-		return 0, ErrClosedFd
+		return 0, errClosedFd
 	}
 
 	return uint32(fd.raw), nil
 }
 
-func (fd *FD) Forget() {
+func (fd *fd) Forget() {
 	runtime.SetFinalizer(fd, nil)
 }
 
-func (fd *FD) Close() error {
+func (fd *fd) Close() error {
 	if fd.raw < 0 {
 		return nil
 	}
@@ -607,8 +607,8 @@ func getRetProbeBit(eventType string) (uint64, error) {
 	}
 }
 
-// GetEnv retrieves the environment variable key. If it does not exist it returns the default.
-func GetEnv(key string, dfault string, combineWith ...string) string {
+// getEnv retrieves the environment variable key. If it does not exist it returns the default.
+func getEnv(key string, dfault string, combineWith ...string) string {
 	value := os.Getenv(key)
 	if value == "" {
 		value = dfault
@@ -627,15 +627,15 @@ func GetEnv(key string, dfault string, combineWith ...string) string {
 	}
 }
 
-// HostProc returns joins the provided path with the host /proc directory
-func HostProc(combineWith ...string) string {
-	return GetEnv("HOST_PROC", "/proc", combineWith...)
+// hostProc returns joins the provided path with the host /proc directory
+func hostProc(combineWith ...string) string {
+	return getEnv("HOST_PROC", "/proc", combineWith...)
 }
 
 // Getpid returns the current process ID in the host namespace if $HOST_PROC is defined, the pid in the current namespace
 // otherwise
 func Getpid() int {
-	p, err := os.Readlink(HostProc("/self"))
+	p, err := os.Readlink(hostProc("/self"))
 	if err == nil {
 		if pid, err := strconv.ParseInt(p, 10, 32); err == nil {
 			return int(pid)

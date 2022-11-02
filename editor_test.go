@@ -29,7 +29,7 @@ func ExampleEditor_rewriteConstant() {
 		asm.Return(),
 	}
 
-	editor := Edit(&insns)
+	editor := newEditor(&insns)
 	if err := editor.RewriteConstant("my_ret", 42); err != nil {
 		panic(err)
 	}
@@ -47,13 +47,13 @@ func TestEditorRewriteConstant(t *testing.T) {
 	}
 
 	progSpec := spec.Programs["socket"]
-	editor := Edit(&progSpec.Instructions)
+	editor := newEditor(&progSpec.Instructions)
 
 	if err := editor.RewriteConstant("constant", 0x01); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := editor.RewriteConstant("bogus", 0x01); !IsUnreferencedSymbol(err) {
+	if err := editor.RewriteConstant("bogus", 0x01); !isUnreferencedSymbol(err) {
 		t.Error("Rewriting unreferenced symbol doesn't return appropriate error")
 	}
 
@@ -88,7 +88,7 @@ func TestEditorIssue59(t *testing.T) {
 		asm.Return().WithSymbol("exit"),
 	}
 
-	editor := Edit(&insns)
+	editor := newEditor(&insns)
 	if err := editor.RewriteConstant("my_ret", max); err != nil {
 		t.Fatal(err)
 	}
