@@ -1,7 +1,6 @@
 package manager
 
 import (
-	"fmt"
 	"math"
 	"testing"
 
@@ -21,24 +20,24 @@ import (
 //	    LOAD_CONSTANT("SYMBOL_NAME", my_constant);
 //
 //	    if (my_constant) ...
-func ExampleEditor_rewriteConstant() {
-	// This assembly is roughly equivalent to what clang
-	// would emit for the C above.
-	insns := asm.Instructions{
-		asm.LoadImm(asm.R0, 0, asm.DWord).WithReference("my_ret"),
-		asm.Return(),
-	}
-
-	editor := newEditor(&insns)
-	if err := editor.RewriteConstant("my_ret", 42); err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("%0.0s", insns)
-
-	// Output: 0: LdImmDW dst: r0 imm: 42 <my_ret>
-	// 2: Exit
-}
+//func ExampleEditor_rewriteConstant() {
+//	// This assembly is roughly equivalent to what clang
+//	// would emit for the C above.
+//	insns := asm.Instructions{
+//		asm.LoadImm(asm.R0, 0, asm.DWord).WithReference("my_ret"),
+//		asm.Return(),
+//	}
+//
+//	editor := newEditor(&insns)
+//	if err := editor.RewriteConstant("my_ret", 42); err != nil {
+//		panic(err)
+//	}
+//
+//	fmt.Printf("%0.0s", insns)
+//
+//	// Output: 0: LdImmDW dst: r0 imm: 42 <my_ret>
+//	// 2: Exit
+//}
 
 func TestEditorRewriteConstant(t *testing.T) {
 	spec, err := ebpf.LoadCollectionSpec("testdata/rewrite.elf")
