@@ -493,7 +493,7 @@ func (p *Probe) internalInit() error {
 		// if this is a kprobe or a kretprobe, look for the symbol now
 		if p.GetKprobeType() != UnknownProbeType {
 			var err error
-			p.HookFuncName, err = findFilterFunction(p.MatchFuncName)
+			p.HookFuncName, err = FindFilterFunction(p.MatchFuncName)
 			if err != nil {
 				p.lastError = err
 				return err

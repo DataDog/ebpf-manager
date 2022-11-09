@@ -51,7 +51,7 @@ func concatErrors(err1, err2 error) error {
 // availableFilterFunctions - cache of the list of available kernel functions.
 var availableFilterFunctions []string
 
-func findFilterFunction(funcName string) (string, error) {
+func FindFilterFunction(funcName string) (string, error) {
 	// Prepare matching pattern
 	searchedName, err := regexp.Compile(funcName)
 	if err != nil {
@@ -374,8 +374,8 @@ func unregisterUprobeEventWithEventName(eventName string) error {
 	return nil
 }
 
-// openAndListSymbols - Opens an elf file and extracts all its symbols
-func openAndListSymbols(path string) (*elf.File, []elf.Symbol, error) {
+// OpenAndListSymbols - Opens an elf file and extracts all its symbols
+func OpenAndListSymbols(path string) (*elf.File, []elf.Symbol, error) {
 	// open elf file
 	f, err := elf.Open(path)
 	if err != nil {
@@ -404,8 +404,8 @@ func openAndListSymbols(path string) (*elf.File, []elf.Symbol, error) {
 	return f, syms, nil
 }
 
-// sanitizeUprobeAddresses - sanitizes the addresses of the provided symbols
-func sanitizeUprobeAddresses(f *elf.File, syms []elf.Symbol) {
+// SanitizeUprobeAddresses - sanitizes the addresses of the provided symbols
+func SanitizeUprobeAddresses(f *elf.File, syms []elf.Symbol) {
 	// If the binary is a non-PIE executable, addr must be a virtual address, otherwise it must be an offset relative to
 	// the file load address. For executable (ET_EXEC) binaries and shared objects (ET_DYN), translate the virtual
 	// address to physical address in the binary file.
@@ -424,7 +424,7 @@ func sanitizeUprobeAddresses(f *elf.File, syms []elf.Symbol) {
 
 // findSymbolOffsets - Parses the provided file and returns the offsets of the symbols that match the provided pattern
 func findSymbolOffsets(path string, pattern *regexp.Regexp) ([]elf.Symbol, error) {
-	f, syms, err := openAndListSymbols(path)
+	f, syms, err := OpenAndListSymbols(path)
 	if err != nil {
 		return nil, err
 	}
@@ -440,7 +440,7 @@ func findSymbolOffsets(path string, pattern *regexp.Regexp) ([]elf.Symbol, error
 		return nil, ErrSymbolNotFound
 	}
 
-	sanitizeUprobeAddresses(f, matches)
+	SanitizeUprobeAddresses(f, matches)
 	return matches, nil
 }
 
