@@ -577,7 +577,7 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 		m.stateLock.Unlock()
 	}
 
-	// Edit program constants
+	// newEditor program constants
 	if len(options.ConstantEditors) > 0 {
 		if err = m.editConstants(); err != nil {
 			resetManager(m)
@@ -585,7 +585,7 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 		}
 	}
 
-	// Edit map spec
+	// newEditor map spec
 	if len(options.MapSpecEditors) > 0 {
 		if err = m.editMapSpecs(); err != nil {
 			resetManager(m)
@@ -603,7 +603,7 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 		}
 	}
 
-	// Edit program maps
+	// newEditor program maps
 	if len(options.MapEditors) > 0 {
 		if err = m.editMaps(options.MapEditors); err != nil {
 			resetManager(m)
@@ -734,28 +734,28 @@ func (m *Manager) stop(cleanup MapCleanupType) error {
 	// Stop perf ring readers
 	for _, perfRing := range m.PerfMaps {
 		if stopErr := perfRing.Stop(cleanup); stopErr != nil {
-			err = ConcatErrors(err, fmt.Errorf("perf ring reader %s couldn't gracefully shut down: %w", perfRing.Name, stopErr))
+			err = concatErrors(err, fmt.Errorf("perf ring reader %s couldn't gracefully shut down: %w", perfRing.Name, stopErr))
 		}
 	}
 
 	// Stop ring buffer readers
 	for _, ringBuffer := range m.RingBuffers {
 		if stopErr := ringBuffer.Stop(cleanup); stopErr != nil {
-			err = ConcatErrors(err, fmt.Errorf("ring buffer reader %s couldn't gracefully shut down: %w", ringBuffer.Name, stopErr))
+			err = concatErrors(err, fmt.Errorf("ring buffer reader %s couldn't gracefully shut down: %w", ringBuffer.Name, stopErr))
 		}
 	}
 
 	// Detach eBPF programs
 	for _, probe := range m.Probes {
 		if stopErr := probe.Stop(); stopErr != nil {
-			err = ConcatErrors(err, fmt.Errorf("program %s couldn't gracefully shut down: %w", probe.ProbeIdentificationPair, stopErr))
+			err = concatErrors(err, fmt.Errorf("program %s couldn't gracefully shut down: %w", probe.ProbeIdentificationPair, stopErr))
 		}
 	}
 
 	// Close maps
 	for _, managerMap := range m.Maps {
 		if closeErr := managerMap.Close(cleanup); closeErr != nil {
-			err = ConcatErrors(err, fmt.Errorf("couldn't gracefully close map %s: %w", managerMap.Name, closeErr))
+			err = concatErrors(err, fmt.Errorf("couldn't gracefully close map %s: %w", managerMap.Name, closeErr))
 		}
 	}
 
@@ -795,8 +795,8 @@ func (m *Manager) NewMap(spec ebpf.MapSpec, options MapOptions) (*ebpf.Map, erro
 		return nil, err
 	}
 
-	// Init map
-	if err := managerMap.Init(m); err != nil {
+	// init map
+	if err := managerMap.init(m); err != nil {
 		// Clean up
 		_ = managerMap.Close(CleanInternal)
 		return nil, err
@@ -847,7 +847,7 @@ func (m *Manager) NewPerfRing(spec ebpf.MapSpec, options MapOptions, perfMapOpti
 	}
 
 	// Setup perf buffer reader
-	if err := perfMap.Init(m); err != nil {
+	if err := perfMap.init(m); err != nil {
 		return nil, err
 	}
 
@@ -903,7 +903,7 @@ func (m *Manager) NewRingBuffer(spec ebpf.MapSpec, options MapOptions, ringBuffe
 	}
 
 	// Setup ring buffer reader
-	if err := ringBuffer.Init(m); err != nil {
+	if err := ringBuffer.init(m); err != nil {
 		return nil, err
 	}
 
@@ -964,8 +964,8 @@ func (m *Manager) AddHook(UID string, newProbe *Probe) error {
 	newProbe.program = clonedProg
 	newProbe.programSpec = progSpec
 
-	// Init program
-	if err = newProbe.Init(m); err != nil {
+	// init program
+	if err = newProbe.init(m); err != nil {
 		// clean up
 		_ = newProbe.Stop()
 		return fmt.Errorf("failed to initialize new probe: %w", err)
@@ -1087,7 +1087,7 @@ func (m *Manager) CloneProgram(UID string, newProbe *Probe, constantsEditors []C
 	clonedSpec := oldProgramSpec.Copy()
 	newProbe.programSpec = clonedSpec
 
-	// Edit constants
+	// newEditor constants
 	for _, editor := range constantsEditors {
 		if err := m.editConstant(newProbe.programSpec, editor); err != nil {
 			return fmt.Errorf("couldn't edit constant %s: %w", editor.Name, err)
@@ -1104,8 +1104,8 @@ func (m *Manager) CloneProgram(UID string, newProbe *Probe, constantsEditors []C
 		return fmt.Errorf("couldn't rewrite maps in %v: %w", newProbe.ProbeIdentificationPair, err)
 	}
 
-	// Init
-	if err := newProbe.InitWithOptions(m, true, true); err != nil {
+	// init
+	if err := newProbe.initWithOptions(m, true, true); err != nil {
 		// clean up
 		_ = newProbe.Stop()
 		return fmt.Errorf("failed to initialize new probe %v: %w", newProbe.ProbeIdentificationPair, err)
@@ -1434,7 +1434,7 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 		if !probe.IsRunning() {
 			// ignore all errors, they are already collected per probe and will be surfaced by the
 			// activation validators if needed.
-			_ = probe.Init(m)
+			_ = probe.init(m)
 			_ = probe.Attach()
 		}
 	}
@@ -1464,7 +1464,7 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 	return nil
 }
 
-// editConstants - Edit the programs in the CollectionSpec with the provided constant editors. Tries with the BTF global
+// editConstants - newEditor the programs in the CollectionSpec with the provided constant editors. Tries with the BTF global
 // variable first, and fall back to the asm method if BTF is not available.
 func (m *Manager) editConstants() error {
 	// Start with the BTF based solution
@@ -1489,7 +1489,7 @@ func (m *Manager) editConstants() error {
 			continue
 		}
 
-		// Edit the constant of the provided programs
+		// newEditor the constant of the provided programs
 		for _, id := range constantEditor.ProbeIdentificationPairs {
 			programs, found, err := m.GetProgramSpec(id)
 			if err != nil {
@@ -1500,7 +1500,7 @@ func (m *Manager) editConstants() error {
 			}
 			prog := programs[0]
 
-			// Edit program
+			// newEditor program
 			if err := m.editConstant(prog, constantEditor); err != nil {
 				return fmt.Errorf("couldn't edit %s in %v: %w", constantEditor.Name, id, err)
 			}
@@ -1542,15 +1542,15 @@ func (m *Manager) editMapSpecs() error {
 	return nil
 }
 
-// editConstant - Edit the provided program with the provided constant using the asm method.
+// editConstant - newEditor the provided program with the provided constant using the asm method.
 func (m *Manager) editConstant(prog *ebpf.ProgramSpec, editor ConstantEditor) error {
-	edit := Edit(&prog.Instructions)
+	edit := newEditor(&prog.Instructions)
 	data, ok := (editor.Value).(uint64)
 	if !ok {
 		return fmt.Errorf("with the asm method, the constant value has to be of type uint64")
 	}
 	if err := edit.RewriteConstant(editor.Name, data); err != nil {
-		if IsUnreferencedSymbol(err) && editor.FailOnMissing {
+		if isUnreferencedSymbol(err) && editor.FailOnMissing {
 			return err
 		}
 	}
@@ -1653,28 +1653,28 @@ func (m *Manager) loadCollection() error {
 		return fmt.Errorf("couldn't load eBPF programs: %w", err)
 	}
 
-	// match loaded BPF objects
+	// match loaded bpf objects
 	if err = m.matchBPFObjects(); err != nil {
-		return fmt.Errorf("couldn't match BPF objects: %w", err)
+		return fmt.Errorf("couldn't match bpf objects: %w", err)
 	}
 
 	// Initialize Maps
 	for _, managerMap := range m.Maps {
-		if err := managerMap.Init(m); err != nil {
+		if err := managerMap.init(m); err != nil {
 			return err
 		}
 	}
 
 	// Initialize PerfMaps
 	for _, perfMap := range m.PerfMaps {
-		if err := perfMap.Init(m); err != nil {
+		if err := perfMap.init(m); err != nil {
 			return err
 		}
 	}
 
 	// Initialize ring buffers
 	for _, ringBuffer := range m.RingBuffers {
-		if err := ringBuffer.Init(m); err != nil {
+		if err := ringBuffer.init(m); err != nil {
 			return err
 		}
 	}
@@ -1682,7 +1682,7 @@ func (m *Manager) loadCollection() error {
 	// Initialize Probes
 	for _, probe := range m.Probes {
 		// Find program
-		if err := probe.Init(m); err != nil {
+		if err := probe.init(m); err != nil {
 			return err
 		}
 	}
@@ -1897,7 +1897,7 @@ func (m *Manager) CleanupNetworkNamespace(nsID uint32) error {
 		probe.Enabled = false
 
 		// stop the probe
-		err = ConcatErrors(err, probe.Stop())
+		err = concatErrors(err, probe.Stop())
 
 		// append probe to delete (biggest indexes first)
 		toDelete = append([]int{i}, toDelete...)
@@ -1987,7 +1987,7 @@ func (m *Manager) cleanupTracefs() error {
 }
 
 func cleanupKprobeEvents(pattern *regexp.Regexp, pidMask map[int]procMask) error {
-	kprobeEvents, err := ReadKprobeEvents()
+	kprobeEvents, err := readKprobeEvents()
 	if err != nil {
 		return fmt.Errorf("couldn't read kprobe_events: %w", err)
 	}
@@ -2028,7 +2028,7 @@ func cleanupKprobeEvents(pattern *regexp.Regexp, pidMask map[int]procMask) error
 }
 
 func cleanupUprobeEvents(pattern *regexp.Regexp, pidMask map[int]procMask) error {
-	uprobeEvents, err := ReadUprobeEvents()
+	uprobeEvents, err := readUprobeEvents()
 	if err != nil {
 		return fmt.Errorf("couldn't read uprobe_events: %w", err)
 	}

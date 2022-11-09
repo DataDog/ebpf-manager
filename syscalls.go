@@ -15,7 +15,7 @@ import (
 // perfEventOpenPMU - Kernel API with e12f03d ("perf/core: Implement the 'perf_kprobe' PMU") allows
 // creating [k,u]probe with perf_event_open, which makes it easier to clean up
 // the [k,u]probe. This function tries to create pfd with the perf_kprobe PMU.
-func perfEventOpenPMU(name string, offset, pid int, eventType string, retProbe bool, referenceCounterOffset uint64) (*FD, error) {
+func perfEventOpenPMU(name string, offset, pid int, eventType string, retProbe bool, referenceCounterOffset uint64) (*fd, error) {
 	var err error
 	var attr unix.PerfEventAttr
 
@@ -79,10 +79,10 @@ func perfEventOpenPMU(name string, offset, pid int, eventType string, retProbe b
 	// Ensure the string pointer is not collected before PerfEventOpen returns.
 	runtime.KeepAlive(unsafe.Pointer(namePtr))
 
-	return NewFD(uint32(efd)), nil
+	return newFD(uint32(efd)), nil
 }
 
-func perfEventOpenTracingEvent(probeID int, pid int) (*FD, error) {
+func perfEventOpenTracingEvent(probeID int, pid int) (*fd, error) {
 	if pid <= 0 {
 		pid = -1
 	}
@@ -97,15 +97,15 @@ func perfEventOpenTracingEvent(probeID int, pid int) (*FD, error) {
 	return perfEventOpenRaw(&attr, pid, 0, -1, unix.PERF_FLAG_FD_CLOEXEC)
 }
 
-func perfEventOpenRaw(attr *unix.PerfEventAttr, pid int, cpu int, groupFd int, flags int) (*FD, error) {
+func perfEventOpenRaw(attr *unix.PerfEventAttr, pid int, cpu int, groupFd int, flags int) (*fd, error) {
 	efd, err := unix.PerfEventOpen(attr, pid, cpu, groupFd, flags)
 	if efd < 0 {
 		return nil, fmt.Errorf("perf_event_open error: %v", err)
 	}
-	return NewFD(uint32(efd)), nil
+	return newFD(uint32(efd)), nil
 }
 
-func ioctlPerfEventEnable(perfEventOpenFD *FD, progFD int) error {
+func ioctlPerfEventEnable(perfEventOpenFD *fd, progFD int) error {
 	if _, _, err := unix.Syscall(unix.SYS_IOCTL, uintptr(perfEventOpenFD.raw), unix.PERF_EVENT_IOC_SET_BPF, uintptr(progFD)); err != 0 {
 		return fmt.Errorf("error attaching bpf program to perf event: %w", err)
 	}
@@ -128,8 +128,8 @@ const (
 	_RawTracepointOpen = 17
 )
 
-// BPF - wraps SYS_BPF
-func BPF(cmd int, attr unsafe.Pointer, size uintptr) (uintptr, error) {
+// bpf - wraps SYS_BPF
+func bpf(cmd int, attr unsafe.Pointer, size uintptr) (uintptr, error) {
 	r1, _, errNo := unix.Syscall(unix.SYS_BPF, uintptr(cmd), uintptr(attr), size)
 	runtime.KeepAlive(attr)
 
@@ -147,7 +147,7 @@ func bpfProgAttach(progFd int, targetFd int, attachType ebpf.AttachType) (int, e
 		attachBpfFD: uint32(progFd),
 		attachType:  uint32(attachType),
 	}
-	ptr, err := BPF(_ProgAttach, unsafe.Pointer(&attr), unsafe.Sizeof(attr))
+	ptr, err := bpf(_ProgAttach, unsafe.Pointer(&attr), unsafe.Sizeof(attr))
 	if err != nil {
 		return -1, fmt.Errorf("can't attach program id %d to target fd %d: %w", progFd, targetFd, err)
 	}
@@ -160,7 +160,7 @@ func bpfProgDetach(progFd int, targetFd int, attachType ebpf.AttachType) (int, e
 		attachBpfFD: uint32(progFd),
 		attachType:  uint32(attachType),
 	}
-	ptr, err := BPF(_ProgDetach, unsafe.Pointer(&attr), unsafe.Sizeof(attr))
+	ptr, err := bpf(_ProgDetach, unsafe.Pointer(&attr), unsafe.Sizeof(attr))
 	if err != nil {
 		return -1, fmt.Errorf("can't detach program id %d to target fd %d: %w", progFd, targetFd, err)
 	}
@@ -181,7 +181,7 @@ type bpfRawTracepointOpenAttr struct {
 	_      [4]byte
 }
 
-func rawTracepointOpen(name string, progFD int) (*FD, error) {
+func rawTracepointOpen(name string, progFD int) (*fd, error) {
 	attr := bpfRawTracepointOpenAttr{
 		progFD: uint32(progFD),
 	}
@@ -194,9 +194,9 @@ func rawTracepointOpen(name string, progFD int) (*FD, error) {
 		attr.name = uint64(uintptr(unsafe.Pointer(namePtr)))
 	}
 
-	ptr, err := BPF(_RawTracepointOpen, unsafe.Pointer(&attr), unsafe.Sizeof(attr))
+	ptr, err := bpf(_RawTracepointOpen, unsafe.Pointer(&attr), unsafe.Sizeof(attr))
 	if err != nil {
 		return nil, fmt.Errorf("can't attach prog_fd %d to raw_tracepoint %s: %w", progFD, name, err)
 	}
-	return NewFD(uint32(ptr)), nil
+	return newFD(uint32(ptr)), nil
 }
