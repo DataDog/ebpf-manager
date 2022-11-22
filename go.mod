@@ -5,7 +5,7 @@ go 1.17
 require (
 	github.com/DataDog/gopsutil v1.2.1
 	github.com/avast/retry-go/v4 v4.1.0
-	github.com/cilium/ebpf v0.9.3
+	github.com/cilium/ebpf v0.9.4-0.20221122120714-67abdec251f6
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/sirupsen/logrus v1.8.1
 	github.com/vishvananda/netlink v1.1.1-0.20220316193741-b112db377d18
