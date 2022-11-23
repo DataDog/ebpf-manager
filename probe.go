@@ -138,8 +138,8 @@ type Probe struct {
 	manager                 *Manager
 	program                 *ebpf.Program
 	programSpec             *ebpf.ProgramSpec
-	perfEventFD             *fd
-	rawTracepointFD         *fd
+	perfEventFD             *FD
+	rawTracepointFD         *FD
 	state                   state
 	stateLock               sync.RWMutex
 	manualLoadNeeded        bool
@@ -306,8 +306,8 @@ type Probe struct {
 	// holding the manager, runtime.NumCPU might not return the real CPU count of the host.
 	PerfEventCPUCount int
 
-	// perfEventCPUFDs - (Perf event) holds the fd of the perf_event program per CPU
-	perfEventCPUFDs []*fd
+	// perfEventCPUFDs - (Perf event) holds the FD of the perf_event program per CPU
+	perfEventCPUFDs []*FD
 }
 
 // GetEBPFFuncName - Returns EBPFFuncName with the UID as a postfix if the Probe was copied
@@ -401,8 +401,8 @@ func (p *Probe) Benchmark(in []byte, repeat int, reset func()) (uint32, time.Dur
 	return p.program.Benchmark(in, repeat, reset)
 }
 
-// initWithOptions - Initializes a probe with options
-func (p *Probe) initWithOptions(manager *Manager, manualLoadNeeded bool, checkPin bool) error {
+// InitWithOptions - Initializes a probe with options
+func (p *Probe) InitWithOptions(manager *Manager, manualLoadNeeded bool, checkPin bool) error {
 	if !p.Enabled {
 		return nil
 	}
@@ -412,25 +412,26 @@ func (p *Probe) initWithOptions(manager *Manager, manualLoadNeeded bool, checkPi
 	defer p.stateLock.Unlock()
 	p.manualLoadNeeded = manualLoadNeeded
 	p.checkPin = checkPin
-	return p.internalInit()
+	return p.init()
 }
 
-// init - Initialize a probe
-func (p *Probe) init(manager *Manager) error {
+// Init - Initialize a probe
+func (p *Probe) Init(manager *Manager) error {
 	if !p.Enabled {
 		return nil
 	}
 	p.manager = manager
 	p.stateLock.Lock()
 	defer p.stateLock.Unlock()
-	return p.internalInit()
+	return p.init()
 }
 
 func (p *Probe) Program() *ebpf.Program {
 	return p.program
 }
 
-func (p *Probe) internalInit() error {
+// init - Internal initialization function
+func (p *Probe) init() error {
 	if p.state >= initialized {
 		return nil
 	}
@@ -715,7 +716,7 @@ func (p *Probe) detach() error {
 	var err error
 	// Remove pin if needed
 	if p.PinPath != "" {
-		err = concatErrors(err, os.Remove(p.PinPath))
+		err = ConcatErrors(err, os.Remove(p.PinPath))
 	}
 
 	// Shared with all probes: close the perf event file descriptor
@@ -729,21 +730,21 @@ func (p *Probe) detach() error {
 		// nothing to do
 		break
 	case ebpf.Kprobe:
-		err = concatErrors(err, p.detachKprobe())
+		err = ConcatErrors(err, p.detachKprobe())
 	case ebpf.CGroupDevice, ebpf.CGroupSKB, ebpf.CGroupSock, ebpf.CGroupSockAddr, ebpf.CGroupSockopt, ebpf.CGroupSysctl:
-		err = concatErrors(err, p.detachCgroup())
+		err = ConcatErrors(err, p.detachCgroup())
 	case ebpf.SocketFilter:
-		err = concatErrors(err, p.detachSocket())
+		err = ConcatErrors(err, p.detachSocket())
 	case ebpf.SchedCLS:
-		err = concatErrors(err, p.detachTCCLS())
+		err = ConcatErrors(err, p.detachTCCLS())
 	case ebpf.XDP:
-		err = concatErrors(err, p.detachXDP())
+		err = ConcatErrors(err, p.detachXDP())
 	case ebpf.LSM:
-		err = concatErrors(err, p.detachLSM())
+		err = ConcatErrors(err, p.detachLSM())
 	case ebpf.Tracing:
-		err = concatErrors(err, p.detachTracing())
+		err = ConcatErrors(err, p.detachTracing())
 	case ebpf.PerfEvent:
-		err = concatErrors(err, p.detachPerfEvent())
+		err = ConcatErrors(err, p.detachPerfEvent())
 	default:
 		// unsupported section, nothing to do either
 		break
@@ -768,12 +769,12 @@ func (p *Probe) stop(saveStopError bool) error {
 
 	// close the loaded program
 	if p.attachRetryAttempt >= p.getRetryAttemptCount() {
-		err = concatErrors(err, p.program.Close())
+		err = ConcatErrors(err, p.program.Close())
 	}
 
 	// update state of the probe
 	if saveStopError {
-		p.lastError = concatErrors(p.lastError, err)
+		p.lastError = ConcatErrors(p.lastError, err)
 	}
 
 	// Cleanup probe if stop was successful
@@ -843,10 +844,10 @@ func (p *Probe) attachWithKprobeEvents() error {
 		return fmt.Errorf("couldn't enable kprobe %s: %w", p.ProbeIdentificationPair, err)
 	}
 
-	// create perf event fd
+	// create perf event FD
 	p.perfEventFD, err = perfEventOpenTracingEvent(kprobeID, -1)
 	if err != nil {
-		return fmt.Errorf("couldn't open perf event fd for %s: %w", p.ProbeIdentificationPair, err)
+		return fmt.Errorf("couldn't open perf event FD for %s: %w", p.ProbeIdentificationPair, err)
 	}
 	p.attachedWithDebugFS = true
 
@@ -970,7 +971,7 @@ func (p *Probe) attachUprobe() error {
 		}
 
 		// Retrieve dynamic symbol offset
-		offsets, err := findSymbolOffsets(p.BinaryPath, pattern)
+		offsets, err := FindSymbolOffsets(p.BinaryPath, pattern)
 		if err != nil {
 			return fmt.Errorf("couldn't find symbol matching %s in %s: %w", pattern.String(), p.BinaryPath, err)
 		}
@@ -1084,7 +1085,7 @@ func (p *Probe) getTCFilterParentHandle() uint32 {
 func (p *Probe) buildTCFilter() (netlink.BpfFilter, error) {
 	if p.tcFilter.FilterAttrs.LinkIndex == 0 {
 		var filterName string
-		filterName, err := generateTCFilterName(p.UID, p.EBPFSection, p.attachPID)
+		filterName, err := GenerateTCFilterName(p.UID, p.EBPFSection, p.attachPID)
 		if err != nil {
 			return p.tcFilter, fmt.Errorf("couldn't create TC filter for %v: %w", p.ProbeIdentificationPair, err)
 		}
@@ -1323,7 +1324,7 @@ func (p *Probe) cleanupTCFilters(ntl *NetlinkSocket) error {
 		}
 
 		// remove this filter
-		deleteErr = concatErrors(deleteErr, ntl.Sock.FilterDel(elem))
+		deleteErr = ConcatErrors(deleteErr, ntl.Sock.FilterDel(elem))
 	}
 	return deleteErr
 }
@@ -1442,9 +1443,9 @@ func (p *Probe) attachPerfEvent() error {
 func (p *Probe) detachPerfEvent() error {
 	var err error
 	for _, fd := range p.perfEventCPUFDs {
-		err = concatErrors(err, fd.Close())
+		err = ConcatErrors(err, fd.Close())
 	}
-	p.perfEventCPUFDs = []*fd{}
+	p.perfEventCPUFDs = []*FD{}
 	return err
 }
 

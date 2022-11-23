@@ -6,19 +6,19 @@ import (
 	"github.com/cilium/ebpf/asm"
 )
 
-// editor modifies eBPF instructions.
-type editor struct {
+// Editor modifies eBPF instructions.
+type Editor struct {
 	instructions     *asm.Instructions
 	ReferenceOffsets map[string][]int
 }
 
-// newEditor creates a new editor.
+// Edit creates a new Editor.
 //
 // The editor retains a reference to insns and modifies its
 // contents.
-func newEditor(insns *asm.Instructions) *editor {
+func Edit(insns *asm.Instructions) *Editor {
 	refs := insns.ReferenceOffsets()
-	return &editor{insns, refs}
+	return &Editor{insns, refs}
 }
 
 // RewriteConstant rewrites all loads of a symbol to a constant value.
@@ -43,9 +43,9 @@ func newEditor(insns *asm.Instructions) *editor {
 //   - Failing to rewrite a symbol will not result in an error,
 //     0 will be loaded instead (subject to change)
 //
-// Use isUnreferencedSymbol if you want to rewrite potentially
+// Use IsUnreferencedSymbol if you want to rewrite potentially
 // unused symbols.
-func (ed *editor) RewriteConstant(symbol string, value uint64) error {
+func (ed *Editor) RewriteConstant(symbol string, value uint64) error {
 	indices := ed.ReferenceOffsets[symbol]
 	if len(indices) == 0 {
 		return &unreferencedSymbolError{symbol}
@@ -71,9 +71,9 @@ func (use *unreferencedSymbolError) Error() string {
 	return fmt.Sprintf("unreferenced symbol %s", use.symbol)
 }
 
-// isUnreferencedSymbol returns true if err was caused by
+// IsUnreferencedSymbol returns true if err was caused by
 // an unreferenced symbol.
-func isUnreferencedSymbol(err error) bool {
+func IsUnreferencedSymbol(err error) bool {
 	_, ok := err.(*unreferencedSymbolError)
 	return ok
 }

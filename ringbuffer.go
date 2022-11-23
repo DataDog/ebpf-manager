@@ -45,8 +45,8 @@ func loadNewRingBuffer(spec ebpf.MapSpec, options MapOptions, ringBufferOptions 
 	return &ringBuffer, nil
 }
 
-// init - Initialize a ring buffer
-func (rb *RingBuffer) init(manager *Manager) error {
+// Init - Initialize a ring buffer
+func (rb *RingBuffer) Init(manager *Manager) error {
 	rb.manager = manager
 
 	if rb.DataHandler == nil {
@@ -59,7 +59,7 @@ func (rb *RingBuffer) init(manager *Manager) error {
 	}
 
 	// Initialize the underlying map structure
-	if err := rb.Map.init(manager); err != nil {
+	if err := rb.Map.Init(manager); err != nil {
 		return err
 	}
 	return nil
