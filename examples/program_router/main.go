@@ -19,7 +19,6 @@ var m = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "classifier/one",
 				EBPFFuncName: "one",
 			},
 			IfName:           "lo", // change this to the interface index connected to the internet

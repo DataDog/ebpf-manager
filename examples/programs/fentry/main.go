@@ -21,7 +21,6 @@ var m = &manager.Manager{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
 				UID:          "MyVFSMkdir",
-				EBPFSection:  "fentry/vfs_mkdir",
 				EBPFFuncName: "vfs_mkdir_enter",
 			},
 		},
@@ -31,7 +30,6 @@ var m = &manager.Manager{
 				// m.CloneProgram for example), or if multiple programs with the exact same section are attaching
 				// at the exact same hook point (using m.AddHook for example, or simply because another manager
 				// on the system is planning on hooking there).
-				EBPFSection:  "fexit/do_mkdirat",
 				EBPFFuncName: "do_mkdirat_exit",
 			},
 			SyscallFuncName: "mkdirat",

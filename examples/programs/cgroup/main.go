@@ -16,7 +16,6 @@ var m = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "cgroup_skb/egress",
 				EBPFFuncName: "egress",
 			},
 			CGroupPath: "/sys/fs/cgroup/unified",

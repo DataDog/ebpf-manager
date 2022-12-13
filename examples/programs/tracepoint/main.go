@@ -16,13 +16,11 @@ var m = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "tracepoint/syscalls/sys_enter_mkdirat",
 				EBPFFuncName: "sys_enter_mkdirat",
 			},
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "tracepoint/my_tracepoint",
 				EBPFFuncName: "my_tracepoint",
 			},
 			TracepointCategory: "sched",

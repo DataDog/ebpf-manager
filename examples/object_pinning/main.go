@@ -17,28 +17,24 @@ var m = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kprobe/mkdirat",
 				EBPFFuncName: "kprobe_mkdirat",
 			},
 			SyscallFuncName: "mkdirat",
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kretprobe/mkdirat",
 				EBPFFuncName: "kretprobe_mkdirat",
 			},
 			SyscallFuncName: "mkdirat",
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kprobe/mkdir",
 				EBPFFuncName: "kprobe_mkdir",
 			},
 			SyscallFuncName: "mkdir",
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kretprobe/mkdir",
 				EBPFFuncName: "kretprobe_mkdir",
 			},
 			SyscallFuncName: "mkdir",

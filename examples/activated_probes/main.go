@@ -20,26 +20,22 @@ var m1 = &manager.Manager{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
 				UID:          "MyVFSMkdir1",
-				EBPFSection:  "kprobe/vfs_mkdir",
 				EBPFFuncName: "kprobe_vfs_mkdir",
 			},
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kprobe/utimes_common",
 				EBPFFuncName: "kprobe_utimes_common",
 			},
 			MatchFuncName: "utimes",
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kprobe/vfs_opennnnnn",
 				EBPFFuncName: "kprobe_vfs_opennnnnn",
 			},
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kprobe/exclude",
 				EBPFFuncName: "kprobe_exclude",
 			},
 		},
@@ -51,7 +47,6 @@ var options1 = manager.Options{
 		&manager.ProbeSelector{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
 				UID:          "MyVFSMkdir1",
-				EBPFSection:  "kprobe/vfs_mkdir",
 				EBPFFuncName: "kprobe_vfs_mkdir",
 			},
 		},
@@ -60,13 +55,11 @@ var options1 = manager.Options{
 				&manager.ProbeSelector{
 					ProbeIdentificationPair: manager.ProbeIdentificationPair{
 						UID:          "MyVFSMkdir1",
-						EBPFSection:  "kprobe/vfs_mkdir",
 						EBPFFuncName: "kprobe_vfs_mkdir",
 					},
 				},
 				&manager.ProbeSelector{
 					ProbeIdentificationPair: manager.ProbeIdentificationPair{
-						EBPFSection:  "kprobe/utimes_common",
 						EBPFFuncName: "kprobe_utimes_common",
 					},
 				},
@@ -76,19 +69,16 @@ var options1 = manager.Options{
 			Selectors: []manager.ProbesSelector{
 				&manager.ProbeSelector{
 					ProbeIdentificationPair: manager.ProbeIdentificationPair{
-						EBPFSection:  "kprobe/utimes_common",
 						EBPFFuncName: "kprobe_utimes_common",
 					},
 				},
 				&manager.ProbeSelector{
 					ProbeIdentificationPair: manager.ProbeIdentificationPair{
-						EBPFSection:  "kprobe/vfs_opennnnnn",
 						EBPFFuncName: "kprobe_vfs_opennnnnn",
 					},
 				},
 				&manager.ProbeSelector{
 					ProbeIdentificationPair: manager.ProbeIdentificationPair{
-						EBPFSection:  "kprobe/exclude",
 						EBPFFuncName: "kprobe_exclude",
 					},
 				},
@@ -98,13 +88,11 @@ var options1 = manager.Options{
 			Selectors: []manager.ProbesSelector{
 				&manager.ProbeSelector{
 					ProbeIdentificationPair: manager.ProbeIdentificationPair{
-						EBPFSection:  "kprobe/vfs_opennnnnn",
 						EBPFFuncName: "kprobe_vfs_opennnnnn",
 					},
 				},
 				&manager.ProbeSelector{
 					ProbeIdentificationPair: manager.ProbeIdentificationPair{
-						EBPFSection:  "kprobe/exclude",
 						EBPFFuncName: "kprobe_exclude",
 					},
 				},
@@ -120,26 +108,22 @@ var m2 = &manager.Manager{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
 				UID:          "MyVFSMkdir2",
-				EBPFSection:  "kprobe/vfs_mkdir",
 				EBPFFuncName: "kprobe_vfs_mkdir",
 			},
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kprobe/utimes_common",
 				EBPFFuncName: "kprobe_utimes_common",
 			},
 			MatchFuncName: "utimes_common",
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kprobe/vfs_opennnnnn",
 				EBPFFuncName: "kprobe_vfs_opennnnnn",
 			},
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kprobe/exclude",
 				EBPFFuncName: "kprobe_exclude",
 			},
 		},
@@ -151,7 +135,6 @@ var options2 = manager.Options{
 		&manager.ProbeSelector{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
 				UID:          "MyVFSMkdir2",
-				EBPFSection:  "kprobe/vfs_mkdir",
 				EBPFFuncName: "kprobe_vfs_mkdir",
 			},
 		},
@@ -159,7 +142,6 @@ var options2 = manager.Options{
 			Selectors: []manager.ProbesSelector{
 				&manager.ProbeSelector{
 					ProbeIdentificationPair: manager.ProbeIdentificationPair{
-						EBPFSection:  "kprobe/vfs_opennnnnn",
 						EBPFFuncName: "kprobe_vfs_opennnnnn",
 					},
 				},
@@ -169,13 +151,11 @@ var options2 = manager.Options{
 			Selectors: []manager.ProbesSelector{
 				&manager.ProbeSelector{
 					ProbeIdentificationPair: manager.ProbeIdentificationPair{
-						EBPFSection:  "kprobe/vfs_opennnnnn",
 						EBPFFuncName: "kprobe_vfs_opennnnnn",
 					},
 				},
 				&manager.ProbeSelector{
 					ProbeIdentificationPair: manager.ProbeIdentificationPair{
-						EBPFSection:  "kprobe/exclude",
 						EBPFFuncName: "kprobe_exclude",
 					},
 				},
@@ -192,26 +172,22 @@ var m3 = &manager.Manager{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
 				UID:          "MyVFSMkdir2",
-				EBPFSection:  "kprobe/vfs_mkdir",
 				EBPFFuncName: "kprobe_vfs_mkdir",
 			},
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kprobe/utimes_common",
 				EBPFFuncName: "kprobe_utimes_common",
 			},
 			MatchFuncName: "utimes_common",
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kprobe/vfs_opennnnnn",
 				EBPFFuncName: "kprobe_vfs_opennnnnn",
 			},
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kprobe/exclude",
 				EBPFFuncName: "kprobe_exclude",
 			},
 		},
@@ -225,12 +201,12 @@ func main() {
 	}
 
 	oldID := manager.ProbeIdentificationPair{
-		EBPFSection:  "kprobe/exclude",
 		EBPFFuncName: "kprobe_exclude",
+		UID:          "",
 	}
 	newID := manager.ProbeIdentificationPair{
-		EBPFSection:  "kprobe/exclude2",
 		EBPFFuncName: "kprobe_exclude",
+		UID:          "new",
 	}
 	if err := m1.RenameProbeIdentificationPair(oldID, newID); err != nil {
 		logrus.Fatal(err)
@@ -289,7 +265,7 @@ func main() {
 		logrus.Fatal(err)
 	}
 
-	mkdirID := manager.ProbeIdentificationPair{UID: "MyVFSMkdir2", EBPFSection: "kprobe/vfs_mkdir", EBPFFuncName: "kprobe_vfs_mkdir"}
+	mkdirID := manager.ProbeIdentificationPair{UID: "MyVFSMkdir2", EBPFFuncName: "kprobe_vfs_mkdir"}
 	if err := m3.UpdateActivatedProbes([]manager.ProbesSelector{
 		&manager.ProbeSelector{
 			ProbeIdentificationPair: mkdirID,
@@ -298,14 +274,14 @@ func main() {
 		logrus.Fatal(err)
 	}
 
-	vfsOpenID := manager.ProbeIdentificationPair{EBPFSection: "kprobe/vfs_opennnnnn", EBPFFuncName: "kprobe_vfs_opennnnnn"}
+	vfsOpenID := manager.ProbeIdentificationPair{EBPFFuncName: "kprobe_vfs_opennnnnn"}
 	vfsOpenProbe, ok := m3.GetProbe(vfsOpenID)
 	if !ok {
-		logrus.Fatal("Failed to find kprobe/vfs_opennnnnn")
+		logrus.Fatal("Failed to find kprobe_vfs_opennnnnn")
 	}
 
 	if vfsOpenProbe.Enabled {
-		logrus.Errorf("kprobe/vfs_opennnnnn should not be enabled")
+		logrus.Errorf("kprobe_vfs_opennnnnn should not be enabled")
 	}
 }
 

@@ -17,7 +17,6 @@ var m = &manager.Manager{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
 				UID:          "MyFirstHook",
-				EBPFSection:  "kprobe/vfs_mkdir",
 				EBPFFuncName: "kprobe_vfs_mkdir",
 			},
 			KeepProgramSpec: true,
@@ -25,7 +24,6 @@ var m = &manager.Manager{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
 				UID:          "",
-				EBPFSection:  "kretprobe/mkdir",
 				EBPFFuncName: "kretprobe_mkdir",
 			},
 			SyscallFuncName: "mkdir",
@@ -56,7 +54,7 @@ var editors = []manager.ConstantEditor{
 		Value:         uint64(100),
 		FailOnMissing: true,
 		ProbeIdentificationPairs: []manager.ProbeIdentificationPair{
-			{UID: "MyFirstHook", EBPFSection: "kprobe/vfs_mkdir", EBPFFuncName: "kprobe_vfs_mkdir"},
+			{UID: "MyFirstHook", EBPFFuncName: "kprobe_vfs_mkdir"},
 		},
 	},
 	{
@@ -64,7 +62,7 @@ var editors = []manager.ConstantEditor{
 		Value:         uint64(555),
 		FailOnMissing: true,
 		ProbeIdentificationPairs: []manager.ProbeIdentificationPair{
-			{UID: "", EBPFSection: "kprobe/vfs_mkdir", EBPFFuncName: "kprobe_vfs_mkdir"},
+			{UID: "", EBPFFuncName: "kprobe_vfs_mkdir"},
 		},
 	},
 	{
