@@ -28,7 +28,7 @@ var testDataKey = uint32(1)
 var testData = []TestData{
 	{2, 4},
 	{10, 20},
-	{42, 128},
+	{64, 128},
 	{42, 84},
 }
 
