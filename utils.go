@@ -495,6 +495,7 @@ func (fd *fd) Close() error {
 	value := int(fd.raw)
 	fd.raw = -1
 
+	runtime.SetFinalizer(fd, nil)
 	return unix.Close(value)
 }
 
