@@ -75,6 +75,9 @@ func runtTest(testMap *ebpf.Map, testProg *ebpf.Program) {
 		if err != nil {
 			logrus.Fatal(err)
 		}
+		if data.Input == 42 && data.Output == 128 {
+			logrus.Printf("(failure expected on next test)")
+		}
 		if outLen == 0 {
 			logrus.Printf("%v - PASS", data)
 		} else {
@@ -93,6 +96,9 @@ func runtBenchmark(testMap *ebpf.Map, testProg *ebpf.Program) {
 		outLen, duration, err := testProg.Benchmark(make([]byte, 14), 1000, nil)
 		if err != nil {
 			logrus.Fatal(err)
+		}
+		if data.Input == 42 && data.Output == 128 {
+			logrus.Printf("(failure expected on next benchmark)")
 		}
 		if outLen == 0 {
 			logrus.Printf("%v - PASS (duration: %v)", data, duration)
