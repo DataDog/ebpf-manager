@@ -230,7 +230,7 @@ type Probe struct {
 	// automatically computed for the symbol name provided in the uprobe section ( SEC("uprobe/[symbol_name]") ).
 	BinaryPath string
 
-	// CGrouPath - (cgroup family programs) All CGroup programs are attached to a CGroup (v2). This field provides the
+	// CGroupPath - (cgroup family programs) All CGroup programs are attached to a CGroup (v2). This field provides the
 	// path to the CGroup to which the probe should be attached. The attach type is determined by the section.
 	CGroupPath string
 
