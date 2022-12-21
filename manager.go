@@ -1529,6 +1529,9 @@ func (m *Manager) editMapSpecs() error {
 		if !exists {
 			return fmt.Errorf("failed to edit maps/%s: couldn't find map: %w", name, ErrUnknownSection)
 		}
+		if mapEditor.EditorFlag == 0 {
+			return fmt.Errorf("failed to edit maps/%s: %w", name, ErrMissingEditorFlags)
+		}
 		if EditType&mapEditor.EditorFlag == EditType {
 			spec.Type = mapEditor.Type
 		}
