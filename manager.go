@@ -185,6 +185,12 @@ type Options struct {
 	// RLimit - The maps & programs provided to the manager might exceed the maximum allowed memory lock.
 	// (RLIMIT_MEMLOCK) If a limit is provided here it will be applied when the manager is initialized.
 	RLimit *unix.Rlimit
+
+	// KeepKernelBTF - Defines if the kernel types defined in VerifierOptions.Programs.KernelTypes should be cleaned up
+	// once the manager is done using them. By default, the manager will clean them up to save up space. DISCLAIMER: if
+	// your program uses "manager.CloneProgram", you might want to enable "KeepKernelBTF". As a workaround, you can also
+	// try to strip as much as possible the content of "KernelTypes" to reduce the memory overhead.
+	KeepKernelBTF bool
 }
 
 // NetlinkSocket - (TC classifier programs and XDP) Netlink socket cache entry holding the netlink socket and the
@@ -648,9 +654,10 @@ func (m *Manager) Start() error {
 		return nil
 	}
 
-	// release kernel BTF. It should no longer be needed
-	// FIXME: this will break CloneProgram
-	m.options.VerifierOptions.Programs.KernelTypes = nil
+	if !m.options.KeepKernelBTF {
+		// release kernel BTF. It should no longer be needed
+		m.options.VerifierOptions.Programs.KernelTypes = nil
+	}
 
 	// clean up tracefs
 	if err := m.cleanupTracefs(); err != nil {
