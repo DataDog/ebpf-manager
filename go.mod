@@ -1,6 +1,6 @@
 module github.com/DataDog/ebpf-manager
 
-go 1.17
+go 1.18
 
 require (
 	github.com/DataDog/gopsutil v1.2.1

@@ -468,9 +468,11 @@ type fd struct {
 
 // newFD - returns a new file descriptor
 func newFD(value uint32) *fd {
-	fd := &fd{int64(value)}
-	runtime.SetFinalizer(fd, (*fd).Close)
-	return fd
+	f := &fd{int64(value)}
+	runtime.SetFinalizer(f, func(f *fd) {
+		_ = f.Close()
+	})
+	return f
 }
 
 func (fd *fd) String() string {
@@ -485,10 +487,6 @@ func (fd *fd) Value() (uint32, error) {
 	return uint32(fd.raw), nil
 }
 
-func (fd *fd) Forget() {
-	runtime.SetFinalizer(fd, nil)
-}
-
 func (fd *fd) Close() error {
 	if fd.raw < 0 {
 		return nil
@@ -497,7 +495,7 @@ func (fd *fd) Close() error {
 	value := int(fd.raw)
 	fd.raw = -1
 
-	fd.Forget()
+	runtime.SetFinalizer(fd, nil)
 	return unix.Close(value)
 }
 
