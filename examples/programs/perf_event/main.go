@@ -20,7 +20,6 @@ var m = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "perf_event/cpu_clock",
 				EBPFFuncName: "perf_event_cpu_clock",
 			},
 			SampleFrequency: 1,

@@ -21,14 +21,12 @@ var m = &manager.Manager{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
 				UID:          "MyVFSMkdir",
-				EBPFSection:  "kprobe/vfs_mkdir",
 				EBPFFuncName: "kprobe_vfs_mkdir",
 			},
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
 				UID:          "UtimesCommon",
-				EBPFSection:  "kretprobe/utimes_common",
 				EBPFFuncName: "kretprobe_utimes_common",
 			},
 			MatchFuncName:   "utimes",
@@ -40,7 +38,6 @@ var m = &manager.Manager{
 				// m.CloneProgram for example), or if multiple programs with the exact same section are attaching
 				// at the exact same hook point (using m.AddHook for example, or simply because another manager
 				// on the system is planning on hooking there).
-				EBPFSection:  "kretprobe/mkdirat",
 				EBPFFuncName: "kretprobe_mkdirat",
 			},
 			SyscallFuncName: "mkdirat",

@@ -22,7 +22,6 @@ var m = &manager.Manager{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
 				UID:          "MyUID",
-				EBPFSection:  "classifier/egress",
 				EBPFFuncName: "egress",
 			},
 			IfName:           "lo", // change this to the interface connected to the internet
@@ -30,7 +29,6 @@ var m = &manager.Manager{
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "classifier/ingress",
 				EBPFFuncName: "ingress",
 			},
 			IfName:           "lo", // change this to the interface connected to the internet

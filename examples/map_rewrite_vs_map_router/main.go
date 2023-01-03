@@ -19,7 +19,6 @@ var m1 = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kretprobe/vfs_mkdir",
 				EBPFFuncName: "kretprobe_vfs_mkdir",
 			},
 		},
@@ -30,7 +29,6 @@ var m2 = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kprobe/vfs_mkdir",
 				EBPFFuncName: "kprobe_vfs_mkdir",
 			},
 		},

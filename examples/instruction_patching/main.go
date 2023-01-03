@@ -21,7 +21,6 @@ var m1 = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kprobe/security_socket_create",
 				EBPFFuncName: "kprobe__security_socket_create",
 			},
 		},

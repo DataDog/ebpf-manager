@@ -16,7 +16,6 @@ var m = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "uprobe/readline",
 				EBPFFuncName: "readline",
 			},
 			BinaryPath: "/usr/bin/bash",

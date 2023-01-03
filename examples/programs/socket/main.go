@@ -16,7 +16,6 @@ var m = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "socket/sock_filter",
 				EBPFFuncName: "sock_filter",
 			},
 		},

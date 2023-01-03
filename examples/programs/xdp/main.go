@@ -16,7 +16,6 @@ var m = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "xdp/ingress",
 				EBPFFuncName: "ingress",
 			},
 			IfIndex:       2, // change this to the interface index connected to the internet

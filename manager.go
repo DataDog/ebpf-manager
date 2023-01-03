@@ -44,7 +44,7 @@ type ConstantEditor struct {
 // TailCallRoute - A tail call route defines how tail calls should be routed between eBPF programs.
 //
 // The provided eBPF program will be inserted in the provided eBPF program array, at the provided key. The eBPF program
-// can be provided by its section or by its *ebpf.Program representation.
+// can be provided by its function name or by its *ebpf.Program representation.
 type TailCallRoute struct {
 	// ProgArrayName - Name of the BPF_MAP_TYPE_PROG_ARRAY map as defined in its section SEC("maps/[ProgArray]")
 	ProgArrayName string
@@ -485,14 +485,14 @@ func (m *Manager) RenameProbeIdentificationPair(oldID ProbeIdentificationPair, n
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
 
-	// sanity check: make sure the newID doesn't already exists
+	// sanity check: make sure the newID doesn't already exist
 	for _, mProbe := range m.Probes {
 		if mProbe.Matches(newID) {
 			return ErrIdentificationPairInUse
 		}
 	}
 
-	if oldID.EBPFSection != newID.EBPFSection {
+	if oldID.EBPFFuncName != newID.EBPFFuncName {
 		// edit the excluded sections
 		for i, excludedFuncName := range m.options.ExcludedFunctions {
 			if excludedFuncName == oldID.EBPFFuncName {
@@ -938,7 +938,7 @@ func (m *Manager) AddHook(UID string, newProbe *Probe) error {
 		return ErrManagerNotInitialized
 	}
 
-	oldID := ProbeIdentificationPair{UID: UID, EBPFSection: newProbe.EBPFSection, EBPFFuncName: newProbe.EBPFFuncName}
+	oldID := ProbeIdentificationPair{UID: UID, EBPFFuncName: newProbe.EBPFFuncName}
 	// Look for the eBPF program
 	progs, found, err := m.getProgram(oldID)
 	if err != nil {
@@ -1012,7 +1012,7 @@ func (m *Manager) DetachHook(id ProbeIdentificationPair) error {
 	}
 
 	// Check how many instances of the program are left in the kernel
-	progs, _, err := m.getProgram(ProbeIdentificationPair{UID: "", EBPFSection: id.EBPFSection, EBPFFuncName: id.EBPFFuncName})
+	progs, _, err := m.getProgram(ProbeIdentificationPair{UID: "", EBPFFuncName: id.EBPFFuncName})
 	if err != nil {
 		return err
 	}
@@ -1054,7 +1054,7 @@ func (m *Manager) CloneProgram(UID string, newProbe *Probe, constantsEditors []C
 		return ErrManagerNotInitialized
 	}
 
-	oldID := ProbeIdentificationPair{UID: UID, EBPFSection: newProbe.EBPFSection, EBPFFuncName: newProbe.EBPFFuncName}
+	oldID := ProbeIdentificationPair{UID: UID, EBPFFuncName: newProbe.EBPFFuncName}
 	var oldProgramSpec *ebpf.ProgramSpec
 	// look for an existing probe
 	oldProbe, found := m.getProbe(oldID)

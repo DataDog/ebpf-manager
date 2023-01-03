@@ -13,7 +13,6 @@ func demoClone() error {
 	newProbe := manager.Probe{
 		ProbeIdentificationPair: manager.ProbeIdentificationPair{
 			UID:          "MySeconHook",
-			EBPFSection:  "kprobe/vfs_mkdir",
 			EBPFFuncName: "kprobe_vfs_mkdir",
 		},
 	}
@@ -43,7 +42,6 @@ func demoAddHook() error {
 	firstRmdir := manager.Probe{
 		ProbeIdentificationPair: manager.ProbeIdentificationPair{
 			UID:          "FirstRmdir",
-			EBPFSection:  "kprobe/vfs_rmdir",
 			EBPFFuncName: "kprobe_vfs_rmdir",
 		},
 	}
@@ -55,7 +53,6 @@ func demoAddHook() error {
 	secondRmdir := manager.Probe{
 		ProbeIdentificationPair: manager.ProbeIdentificationPair{
 			UID:          "SecondRmdir",
-			EBPFSection:  "kprobe/vfs_rmdir",
 			EBPFFuncName: "kprobe_vfs_rmdir",
 		},
 	}

@@ -48,7 +48,6 @@ func main() {
 	// Get xdp program used to trigger the tests
 	testProgs, found, err := m.GetProgram(
 		manager.ProbeIdentificationPair{
-			EBPFSection:  "xdp/my_func_test",
 			EBPFFuncName: "my_func_test",
 		},
 	)
@@ -68,7 +67,9 @@ func runtTest(testMap *ebpf.Map, testProg *ebpf.Program) {
 	logrus.Println("Running tests ...")
 	for _, data := range testData {
 		// insert data
-		testMap.Put(testDataKey, data)
+		if err := testMap.Put(testDataKey, data); err != nil {
+			logrus.Fatal(err)
+		}
 
 		// Trigger test - (the 14 bytes is for the minimum packet size required to test an XDP program)
 		outLen, _, err := testProg.Test(make([]byte, 14))
@@ -90,7 +91,9 @@ func runtBenchmark(testMap *ebpf.Map, testProg *ebpf.Program) {
 	logrus.Println("Running benchmark ...")
 	for _, data := range testData {
 		// insert data
-		testMap.Put(testDataKey, data)
+		if err := testMap.Put(testDataKey, data); err != nil {
+			logrus.Fatal(err)
+		}
 
 		// Trigger test
 		outLen, duration, err := testProg.Benchmark(make([]byte, 14), 1000, nil)

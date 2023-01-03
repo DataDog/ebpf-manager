@@ -79,11 +79,13 @@ type ProbeIdentificationPair struct {
 	EBPFFuncName string
 
 	// EBPFSection - Section in which EBPFFuncName lives.
+	//
+	// Deprecated: Only EBPFFuncName is necessary
 	EBPFSection string
 }
 
 func (pip ProbeIdentificationPair) String() string {
-	return fmt.Sprintf("{UID:%s EBPFSection:%s EBPFFuncName:%s}", pip.UID, pip.EBPFSection, pip.EBPFFuncName)
+	return fmt.Sprintf("{UID:%s EBPFFuncName:%s}", pip.UID, pip.EBPFFuncName)
 }
 
 // Matches - Returns true if the identification pair (probe uid, probe section, probe func name) matches.
@@ -93,35 +95,35 @@ func (pip ProbeIdentificationPair) Matches(id ProbeIdentificationPair) bool {
 
 // EBPFDefinitionMatches - Returns true if the eBPF definition matches.
 func (pip ProbeIdentificationPair) EBPFDefinitionMatches(id ProbeIdentificationPair) bool {
-	return pip.EBPFFuncName == id.EBPFFuncName && pip.EBPFSection == id.EBPFSection
+	return pip.EBPFFuncName == id.EBPFFuncName
 }
 
 // GetKprobeType - Identifies the probe type of the provided KProbe section
-func (pip ProbeIdentificationPair) GetKprobeType() string {
-	if len(pip.kprobeType) == 0 {
-		if strings.HasPrefix(pip.EBPFSection, "kretprobe/") {
-			pip.kprobeType = RetProbeType
-		} else if strings.HasPrefix(pip.EBPFSection, "kprobe/") {
-			pip.kprobeType = ProbeType
+func (p *Probe) GetKprobeType() string {
+	if len(p.kprobeType) == 0 {
+		if strings.HasPrefix(p.programSpec.SectionName, "kretprobe/") {
+			p.kprobeType = RetProbeType
+		} else if strings.HasPrefix(p.programSpec.SectionName, "kprobe/") {
+			p.kprobeType = ProbeType
 		} else {
-			pip.kprobeType = UnknownProbeType
+			p.kprobeType = UnknownProbeType
 		}
 	}
-	return pip.kprobeType
+	return p.kprobeType
 }
 
 // GetUprobeType - Identifies the probe type of the provided Uprobe section
-func (pip ProbeIdentificationPair) GetUprobeType() string {
-	if len(pip.kprobeType) == 0 {
-		if strings.HasPrefix(pip.EBPFSection, "uretprobe/") {
-			pip.kprobeType = RetProbeType
-		} else if strings.HasPrefix(pip.EBPFSection, "uprobe/") {
-			pip.kprobeType = ProbeType
+func (p *Probe) GetUprobeType() string {
+	if len(p.kprobeType) == 0 {
+		if strings.HasPrefix(p.programSpec.SectionName, "uretprobe/") {
+			p.kprobeType = RetProbeType
+		} else if strings.HasPrefix(p.programSpec.SectionName, "uprobe/") {
+			p.kprobeType = ProbeType
 		} else {
-			pip.kprobeType = UnknownProbeType
+			p.kprobeType = UnknownProbeType
 		}
 	}
-	return pip.kprobeType
+	return p.kprobeType
 }
 
 type KprobeAttachMethod uint32
@@ -324,7 +326,6 @@ func (p *Probe) Copy() *Probe {
 		ProbeIdentificationPair: ProbeIdentificationPair{
 			UID:          p.UID,
 			EBPFFuncName: p.EBPFFuncName,
-			EBPFSection:  p.EBPFSection,
 		},
 		SyscallFuncName:    p.SyscallFuncName,
 		CopyProgram:        p.CopyProgram,
@@ -382,7 +383,6 @@ func (p *Probe) RenameProbeIdentificationPair(newID ProbeIdentificationPair) err
 	if p.state >= running {
 		return fmt.Errorf("couldn't rename ProbeIdentificationPair of %s with %s: %w", p.ProbeIdentificationPair, newID, ErrProbeRunning)
 	}
-	p.EBPFSection = newID.EBPFSection
 	p.UID = newID.UID
 	return nil
 }
@@ -919,9 +919,9 @@ func (p *Probe) detachKprobe() error {
 func (p *Probe) attachTracepoint() error {
 	// Parse section
 	if len(p.TracepointCategory) == 0 || len(p.TracepointName) == 0 {
-		traceGroup := strings.SplitN(p.EBPFSection, "/", 3)
+		traceGroup := strings.SplitN(p.programSpec.SectionName, "/", 3)
 		if len(traceGroup) != 3 {
-			return fmt.Errorf("expected SEC(\"tracepoint/[category]/[name]\") got %s: %w", p.EBPFSection, ErrSectionFormat)
+			return fmt.Errorf("expected SEC(\"tracepoint/[category]/[name]\") got %s: %w", p.programSpec.SectionName, ErrSectionFormat)
 		}
 		p.TracepointCategory = traceGroup[1]
 		p.TracepointName = traceGroup[2]
@@ -1084,7 +1084,7 @@ func (p *Probe) getTCFilterParentHandle() uint32 {
 func (p *Probe) buildTCFilter() (netlink.BpfFilter, error) {
 	if p.tcFilter.FilterAttrs.LinkIndex == 0 {
 		var filterName string
-		filterName, err := generateTCFilterName(p.UID, p.EBPFSection, p.attachPID)
+		filterName, err := generateTCFilterName(p.UID, p.programSpec.SectionName, p.attachPID)
 		if err != nil {
 			return p.tcFilter, fmt.Errorf("couldn't create TC filter for %v: %w", p.ProbeIdentificationPair, err)
 		}
