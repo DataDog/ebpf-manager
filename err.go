@@ -25,4 +25,5 @@ var (
 	ErrMapNotRunning            = errors.New("the map is not running")
 	ErrNotSupported             = errors.New("not supported")
 	ErrNoNetworkDirection       = errors.New("a valid network direction is required to attach a TC classifier")
+	ErrMissingEditorFlags       = errors.New("missing editor flags in map editor")
 )
