@@ -565,12 +565,16 @@ func (p *Probe) internalInit() error {
 
 // ResolveLink - Resolves the Probe's network interface
 func (p *Probe) ResolveLink() (netlink.Link, error) {
+	return p.resolveLink(true)
+}
+
+func (p *Probe) resolveLink(lockingManager bool) (netlink.Link, error) {
 	if p.link != nil {
 		return p.link, nil
 	}
 
 	// get a netlink socket in the probe network namespace
-	ntl, err := p.getNetlinkSocket()
+	ntl, err := p.getNetlinkSocket(lockingManager)
 	if err != nil {
 		return nil, err
 	}
@@ -808,8 +812,11 @@ func (p *Probe) reset() {
 }
 
 // getNetlinkSocket returns a netlink socket in the probe network namespace
-func (p *Probe) getNetlinkSocket() (*NetlinkSocket, error) {
-	return p.manager.GetNetlinkSocket(p.IfIndexNetns, p.IfIndexNetnsID)
+func (p *Probe) getNetlinkSocket(locking bool) (*NetlinkSocket, error) {
+	if locking {
+		return p.manager.GetNetlinkSocket(p.IfIndexNetns, p.IfIndexNetnsID)
+	}
+	return p.manager.getNetlinkSocket(p.IfIndexNetns, p.IfIndexNetnsID)
 }
 
 // attachWithKprobeEvents attaches the kprobe using the kprobes_events ABI
@@ -1109,12 +1116,12 @@ func (p *Probe) buildTCFilter() (netlink.BpfFilter, error) {
 func (p *Probe) attachTCCLS() error {
 	var err error
 	// Resolve Probe's interface
-	if _, err = p.ResolveLink(); err != nil {
+	if _, err = p.resolveLink(false); err != nil {
 		return err
 	}
 
 	// Recover the netlink socket of the interface from the manager
-	ntl, err := p.getNetlinkSocket()
+	ntl, err := p.getNetlinkSocket(false)
 	if err != nil {
 		return err
 	}
@@ -1185,7 +1192,7 @@ func (p *Probe) IsTCFilterActive() bool {
 	}
 
 	// Recover the netlink socket of the interface from the manager
-	ntl, err := p.getNetlinkSocket()
+	ntl, err := p.getNetlinkSocket(true)
 	if err != nil {
 		return false
 	}
@@ -1223,7 +1230,7 @@ func (p *Probe) IsTCFilterActive() bool {
 // detachTCCLS - Detaches the probe from its TC classifier hook point
 func (p *Probe) detachTCCLS() error {
 	// Recover the netlink socket of the interface from the manager
-	ntl, err := p.getNetlinkSocket()
+	ntl, err := p.getNetlinkSocket(false)
 	if err != nil {
 		return err
 	}
@@ -1332,7 +1339,7 @@ func (p *Probe) cleanupTCFilters(ntl *NetlinkSocket) error {
 func (p *Probe) attachXDP() error {
 	var err error
 	// Resolve Probe's interface
-	if _, err = p.ResolveLink(); err != nil {
+	if _, err = p.resolveLink(false); err != nil {
 		return err
 	}
 
@@ -1348,7 +1355,7 @@ func (p *Probe) attachXDP() error {
 func (p *Probe) detachXDP() error {
 	var err error
 	// Resolve Probe's interface
-	if _, err = p.ResolveLink(); err != nil {
+	if _, err = p.resolveLink(false); err != nil {
 		return err
 	}
 
