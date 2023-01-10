@@ -1413,15 +1413,17 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 
 	currentProbes := make(map[ProbeIdentificationPair]*Probe)
 	for _, p := range m.Probes {
+		pip := ProbeIdentificationPair{UID: p.ProbeIdentificationPair.UID, EBPFFuncName: p.ProbeIdentificationPair.EBPFFuncName}
 		if p.Enabled {
-			currentProbes[p.ProbeIdentificationPair] = p
+			currentProbes[pip] = p
 		}
 	}
 
 	nextProbes := make(map[ProbeIdentificationPair]bool)
 	for _, selector := range selectors {
 		for _, id := range selector.GetProbesIdentificationPairList() {
-			nextProbes[id] = true
+			pip := ProbeIdentificationPair{UID: id.UID, EBPFFuncName: id.EBPFFuncName}
+			nextProbes[pip] = true
 		}
 	}
 
