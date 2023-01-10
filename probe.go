@@ -85,7 +85,7 @@ type ProbeIdentificationPair struct {
 }
 
 func (pip ProbeIdentificationPair) String() string {
-	return fmt.Sprintf("{UID:%s EBPFFuncName:%s}", pip.UID, pip.EBPFFuncName)
+	return fmt.Sprintf("{UID:%s EBPFFuncName:%s EBPFSection:%s}", pip.UID, pip.EBPFFuncName, pip.EBPFSection)
 }
 
 // Matches - Returns true if the identification pair (probe uid, probe section, probe func name) matches.
