@@ -67,7 +67,7 @@ func patchBPFTelemetry(m *manager.Manager) error {
 			if ins.Constant != BPFTelemetryPatchCall {
 				continue
 			}
-			*ins = asm.Mov.Imm(asm.R1, int32(0xff))
+			*ins = asm.Mov.Imm(asm.R1, int32(0xff)).WithMetadata(ins.Metadata)
 		}
 	}
 
