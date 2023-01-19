@@ -646,6 +646,5 @@ func Getpid() int {
 func cleanupProgramSpec(spec *ebpf.ProgramSpec) {
 	if spec != nil {
 		spec.Instructions = nil
-		spec.BTF = nil
 	}
 }
