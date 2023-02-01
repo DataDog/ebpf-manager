@@ -1409,7 +1409,6 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 		m.stateLock.Unlock()
 		return ErrManagerNotInitialized
 	}
-	defer m.stateLock.Unlock()
 
 	currentProbes := make(map[ProbeIdentificationPair]*Probe)
 	for _, p := range m.Probes {
@@ -1436,6 +1435,7 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 			var found bool
 			probe, found = m.getProbe(id)
 			if !found {
+				m.stateLock.Unlock()
 				return fmt.Errorf("couldn't find program %s: %w", id, ErrUnknownSectionOrFuncName)
 			}
 			probe.Enabled = true
@@ -1450,6 +1450,7 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 
 	for _, probe := range currentProbes {
 		if err := probe.Detach(); err != nil {
+			m.stateLock.Unlock()
 			return err
 		}
 		probe.Enabled = false
@@ -1457,8 +1458,11 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 
 	// update activated probes & check activation
 	m.options.ActivatedProbes = selectors
+
+	m.stateLock.Unlock()
+
 	var validationErrs error
-	for _, selector := range m.options.ActivatedProbes {
+	for _, selector := range selectors {
 		if err := selector.RunValidator(m); err != nil {
 			validationErrs = multierror.Append(validationErrs, err)
 		}

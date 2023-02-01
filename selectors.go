@@ -33,7 +33,7 @@ func (ps *ProbeSelector) GetProbesIdentificationPairList() []ProbeIdentification
 // RunValidator - Ensures that the probes that were successfully activated follow the selector goal.
 // For example, see OneOf.
 func (ps *ProbeSelector) RunValidator(manager *Manager) error {
-	p, ok := manager.getProbe(ps.ProbeIdentificationPair)
+	p, ok := manager.GetProbe(ps.ProbeIdentificationPair)
 	if !ok {
 		return fmt.Errorf("probe not found: %s", ps.ProbeIdentificationPair)
 	}
