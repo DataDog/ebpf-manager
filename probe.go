@@ -441,6 +441,11 @@ func (p *Probe) internalInit() error {
 		prog, err := ebpf.NewProgramWithOptions(p.programSpec, p.manager.options.VerifierOptions.Programs)
 		if err != nil {
 			p.lastError = err
+			var ve *ebpf.VerifierError
+			if errors.As(err, &ve) {
+				// include error twice to preserve context, and still allow unwrapping if desired
+				return fmt.Errorf("verifier error loading new probe %v: %w\n%+v", p.ProbeIdentificationPair, err, ve)
+			}
 			return fmt.Errorf("couldn't load new probe %v: %w", p.ProbeIdentificationPair, err)
 		}
 		p.program = prog
