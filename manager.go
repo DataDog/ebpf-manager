@@ -2022,6 +2022,10 @@ func cleanupUprobeEvents(pattern *regexp.Regexp, pidMask map[int]procMask) error
 	return cleanUpErrors
 }
 
+func (m *Manager) GetNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
+	return m.netlinkSocketCache.GetNetlinkSocket(nsHandle, nsID)
+}
+
 type NetlinkSocketCache struct {
 	sync.Mutex
 	cache map[uint32]*NetlinkSocket
