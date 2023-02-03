@@ -137,7 +137,7 @@ const (
 // Probe - Main eBPF probe wrapper. This structure is used to store the required data to attach a loaded eBPF
 // program to its hook point.
 type Probe struct {
-	manager                 *Manager
+	netlinkSocketCache      *NetlinkSocketCache
 	program                 *ebpf.Program
 	programSpec             *ebpf.ProgramSpec
 	perfEventFD             *fd
@@ -407,12 +407,11 @@ func (p *Probe) initWithOptions(manager *Manager, manualLoadNeeded bool, checkPi
 		return nil
 	}
 
-	p.manager = manager
 	p.stateLock.Lock()
 	defer p.stateLock.Unlock()
 	p.manualLoadNeeded = manualLoadNeeded
 	p.checkPin = checkPin
-	return p.internalInit()
+	return p.internalInit(manager)
 }
 
 // init - Initialize a probe
@@ -420,25 +419,25 @@ func (p *Probe) init(manager *Manager) error {
 	if !p.Enabled {
 		return nil
 	}
-	p.manager = manager
 	p.stateLock.Lock()
 	defer p.stateLock.Unlock()
-	return p.internalInit()
+	return p.internalInit(manager)
 }
 
 func (p *Probe) Program() *ebpf.Program {
 	return p.program
 }
 
-func (p *Probe) internalInit() error {
+func (p *Probe) internalInit(manager *Manager) error {
 	if p.state >= initialized {
 		return nil
 	}
 
+	p.netlinkSocketCache = manager.netlinkSocketCache
 	p.state = reset
 	// Load spec if necessary
 	if p.manualLoadNeeded {
-		prog, err := ebpf.NewProgramWithOptions(p.programSpec, p.manager.options.VerifierOptions.Programs)
+		prog, err := ebpf.NewProgramWithOptions(p.programSpec, manager.options.VerifierOptions.Programs)
 		if err != nil {
 			p.lastError = err
 			return fmt.Errorf("couldn't load new probe %v: %w", p.ProbeIdentificationPair, err)
@@ -448,14 +447,14 @@ func (p *Probe) internalInit() error {
 
 	// Retrieve eBPF program if one isn't already set
 	if p.program == nil {
-		if p.program, p.lastError = p.manager.getProbeProgram(p.GetEBPFFuncName()); p.lastError != nil {
+		if p.program, p.lastError = manager.getProbeProgram(p.GetEBPFFuncName()); p.lastError != nil {
 			return fmt.Errorf("couldn't find program %s: %w", p.GetEBPFFuncName(), ErrUnknownSectionOrFuncName)
 		}
 		p.checkPin = true
 	}
 
 	if p.programSpec == nil {
-		if p.programSpec, p.lastError = p.manager.getProbeProgramSpec(p.GetEBPFFuncName()); p.lastError != nil {
+		if p.programSpec, p.lastError = manager.getProbeProgramSpec(p.GetEBPFFuncName()); p.lastError != nil {
 			return fmt.Errorf("couldn't find program spec %s: %w", p.GetEBPFFuncName(), ErrUnknownSectionOrFuncName)
 		}
 	}
@@ -481,7 +480,7 @@ func (p *Probe) internalInit() error {
 	// Update syscall function name with the correct arch prefix
 	if p.SyscallFuncName != "" && len(p.HookFuncName) == 0 {
 		var err error
-		p.HookFuncName, err = GetSyscallFnNameWithSymFile(p.SyscallFuncName, p.manager.options.SymFile)
+		p.HookFuncName, err = GetSyscallFnNameWithSymFile(p.SyscallFuncName, manager.options.SymFile)
 		if err != nil {
 			p.lastError = err
 			return err
@@ -523,17 +522,17 @@ func (p *Probe) internalInit() error {
 
 	// Default max active value
 	if p.KProbeMaxActive == 0 {
-		p.KProbeMaxActive = p.manager.options.DefaultKProbeMaxActive
+		p.KProbeMaxActive = manager.options.DefaultKProbeMaxActive
 	}
 
 	// Default retry
 	if p.ProbeRetry == 0 {
-		p.ProbeRetry = p.manager.options.DefaultProbeRetry
+		p.ProbeRetry = manager.options.DefaultProbeRetry
 	}
 
 	// Default retry delay
 	if p.ProbeRetryDelay == 0 {
-		p.ProbeRetryDelay = p.manager.options.DefaultProbeRetryDelay
+		p.ProbeRetryDelay = manager.options.DefaultProbeRetryDelay
 	}
 
 	// fetch system-wide program ID, if the feature is available
@@ -550,8 +549,8 @@ func (p *Probe) internalInit() error {
 
 	// set default kprobe attach method
 	if p.KprobeAttachMethod == AttachKprobeMethodNotSet {
-		if p.manager != nil {
-			p.KprobeAttachMethod = p.manager.options.DefaultKprobeAttachMethod
+		if manager != nil {
+			p.KprobeAttachMethod = manager.options.DefaultKprobeAttachMethod
 		}
 		if p.KprobeAttachMethod == AttachKprobeMethodNotSet {
 			p.KprobeAttachMethod = AttachKprobeWithPerfEventOpen
@@ -574,7 +573,7 @@ func (p *Probe) resolveLink(lockingManager bool) (netlink.Link, error) {
 	}
 
 	// get a netlink socket in the probe network namespace
-	ntl, err := p.getNetlinkSocket(lockingManager)
+	ntl, err := p.getNetlinkSocket()
 	if err != nil {
 		return nil, err
 	}
@@ -793,7 +792,7 @@ func (p *Probe) stop(saveStopError bool) error {
 // reset - Cleans up the internal fields of the probe
 func (p *Probe) reset() {
 	p.kprobeType = ""
-	p.manager = nil
+	p.netlinkSocketCache = nil
 	p.program = nil
 	p.programSpec = nil
 	p.perfEventFD = nil
@@ -812,11 +811,8 @@ func (p *Probe) reset() {
 }
 
 // getNetlinkSocket returns a netlink socket in the probe network namespace
-func (p *Probe) getNetlinkSocket(locking bool) (*NetlinkSocket, error) {
-	if locking {
-		return p.manager.GetNetlinkSocket(p.IfIndexNetns, p.IfIndexNetnsID)
-	}
-	return p.manager.getNetlinkSocket(p.IfIndexNetns, p.IfIndexNetnsID)
+func (p *Probe) getNetlinkSocket() (*NetlinkSocket, error) {
+	return p.netlinkSocketCache.GetNetlinkSocket(p.IfIndexNetns, p.IfIndexNetnsID)
 }
 
 // attachWithKprobeEvents attaches the kprobe using the kprobes_events ABI
@@ -1121,7 +1117,7 @@ func (p *Probe) attachTCCLS() error {
 	}
 
 	// Recover the netlink socket of the interface from the manager
-	ntl, err := p.getNetlinkSocket(false)
+	ntl, err := p.getNetlinkSocket()
 	if err != nil {
 		return err
 	}
@@ -1192,7 +1188,7 @@ func (p *Probe) IsTCFilterActive() bool {
 	}
 
 	// Recover the netlink socket of the interface from the manager
-	ntl, err := p.getNetlinkSocket(true)
+	ntl, err := p.getNetlinkSocket()
 	if err != nil {
 		return false
 	}
@@ -1230,7 +1226,7 @@ func (p *Probe) IsTCFilterActive() bool {
 // detachTCCLS - Detaches the probe from its TC classifier hook point
 func (p *Probe) detachTCCLS() error {
 	// Recover the netlink socket of the interface from the manager
-	ntl, err := p.getNetlinkSocket(false)
+	ntl, err := p.getNetlinkSocket()
 	if err != nil {
 		return err
 	}
