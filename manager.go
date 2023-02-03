@@ -228,7 +228,7 @@ type Manager struct {
 	collectionSpec     *ebpf.CollectionSpec
 	collection         *ebpf.Collection
 	options            Options
-	netlinkSocketCache map[uint32]*NetlinkSocket
+	netlinkSocketCache *NetlinkSocketCache
 	state              state
 	stateLock          sync.RWMutex
 
@@ -532,7 +532,7 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 
 	m.wg = &sync.WaitGroup{}
 	m.options = options
-	m.netlinkSocketCache = make(map[uint32]*NetlinkSocket)
+	m.netlinkSocketCache = NewNetlinkSocketCache()
 	if m.options.DefaultPerfRingBufferSize == 0 {
 		m.options.DefaultPerfRingBufferSize = os.Getpagesize()
 	}
@@ -767,7 +767,7 @@ func (m *Manager) stop(cleanup MapCleanupType) error {
 	}
 
 	// Close all netlink sockets
-	m.cleanupNetlinkSockets()
+	m.netlinkSocketCache.cleanup()
 
 	// Clean up collection
 	// Note: we might end up closing the same programs or maps multiple times but the library gracefully handles those
@@ -1842,52 +1842,6 @@ func (m *Manager) sanityCheck() error {
 	return nil
 }
 
-// NewCachedNetlinkSocket - TC classifiers are attached by creating a qdisc on the requested interface. A netlink socket
-// is required to create a qdisc (or to attach an XDP program to an interface). Since this socket can be re-used for
-// multiple probes, instantiate the connection at the manager level and cache the netlink socket. The provided nsID
-// should be the ID of the network namespaced returned by a readlink on `/proc/[pid]/ns/net` for a [pid] that lives in
-// the network namespace pointed to by the nsHandle.
-func (m *Manager) NewCachedNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
-	m.stateLock.Lock()
-	defer m.stateLock.Unlock()
-	if m.state < initialized {
-		return nil, ErrManagerNotInitialized
-	}
-	return m.newCachedNetlinkSocket(nsHandle, nsID)
-}
-
-// newCachedNetlinkSocket - Internal function (see NewCachedNetlinkSocket)
-func (m *Manager) newCachedNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
-	cacheEntry, err := NewNetlinkSocket(nsHandle)
-	if err != nil {
-		return nil, fmt.Errorf("namespace %v: %w", nsID, err)
-	}
-
-	// Insert in manager cache
-	m.netlinkSocketCache[nsID] = cacheEntry
-	return cacheEntry, nil
-}
-
-// GetNetlinkSocket - Returns a netlink socket in the requested network namespace from cache or creates a new one.
-func (m *Manager) GetNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
-	m.stateLock.Lock()
-	defer m.stateLock.Unlock()
-	if m.state < initialized {
-		return nil, ErrManagerNotInitialized
-	}
-	return m.getNetlinkSocket(nsHandle, nsID)
-}
-
-// getNetlinkSocket - Internal function (see GetNetlinkSocket)
-func (m *Manager) getNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
-	sock, ok := m.netlinkSocketCache[nsID]
-	if ok {
-		return sock, nil
-	}
-
-	return m.newCachedNetlinkSocket(nsHandle, nsID)
-}
-
 // CleanupNetworkNamespace - Cleans up all references to the provided network namespace within the manager. This means
 // that any TC classifier or XDP probe in that network namespace will be stopped and all opened netlink socket in that
 // namespace will be closed.
@@ -1920,13 +1874,7 @@ func (m *Manager) CleanupNetworkNamespace(nsID uint32) error {
 	}
 
 	// delete all netlink sockets, along with netns handles
-	s, ok := m.netlinkSocketCache[nsID]
-	if ok {
-		delete(m.netlinkSocketCache, nsID)
-
-		// close the netlink socket
-		s.Sock.Close()
-	}
+	m.netlinkSocketCache.remove(nsID)
 
 	// delete probes
 	for _, i := range toDelete {
@@ -1934,16 +1882,6 @@ func (m *Manager) CleanupNetworkNamespace(nsID uint32) error {
 		m.Probes = append(m.Probes[:i], m.Probes[i+1:]...)
 	}
 	return err
-}
-
-// cleanupNetlinkSockets - Cleans up all opened netlink sockets in cache. This function is expected to be called when a
-// manager is stopped.
-func (m *Manager) cleanupNetlinkSockets() {
-	for key, s := range m.netlinkSocketCache {
-		delete(m.netlinkSocketCache, key)
-		// close the netlink socket
-		s.Sock.Close()
-	}
 }
 
 type procMask uint8
@@ -2082,4 +2020,66 @@ func cleanupUprobeEvents(pattern *regexp.Regexp, pidMask map[int]procMask) error
 		cleanUpErrors = multierror.Append(cleanUpErrors, unregisterUprobeEventWithEventName(match[3]))
 	}
 	return cleanUpErrors
+}
+
+func (m *Manager) GetNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
+	return m.netlinkSocketCache.GetNetlinkSocket(nsHandle, nsID)
+}
+
+type NetlinkSocketCache struct {
+	sync.Mutex
+	cache map[uint32]*NetlinkSocket
+}
+
+func NewNetlinkSocketCache() *NetlinkSocketCache {
+	return &NetlinkSocketCache{
+		cache: make(map[uint32]*NetlinkSocket),
+	}
+}
+
+// GetNetlinkSocket - Returns a netlink socket in the requested network namespace from cache or creates a new one.
+// TC classifiers are attached by creating a qdisc on the requested interface. A netlink socket
+// is required to create a qdisc (or to attach an XDP program to an interface). Since this socket can be re-used for
+// multiple probes, instantiate the connection at the manager level and cache the netlink socket. The provided nsID
+// should be the ID of the network namespaced returned by a readlink on `/proc/[pid]/ns/net` for a [pid] that lives in
+// the network namespace pointed to by the nsHandle.
+func (nsc *NetlinkSocketCache) GetNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
+	nsc.Lock()
+	defer nsc.Unlock()
+
+	sock, ok := nsc.cache[nsID]
+	if ok {
+		return sock, nil
+	}
+
+	cacheEntry, err := NewNetlinkSocket(nsHandle)
+	if err != nil {
+		return nil, fmt.Errorf("namespace %v: %w", nsID, err)
+	}
+
+	nsc.cache[nsID] = cacheEntry
+	return cacheEntry, nil
+}
+
+// cleanup - Cleans up all opened netlink sockets in cache. This function is expected to be called when a
+// manager is stopped.
+func (nsc *NetlinkSocketCache) cleanup() {
+	nsc.Lock()
+	defer nsc.Unlock()
+
+	for key, s := range nsc.cache {
+		delete(nsc.cache, key)
+		// close the netlink socket
+		s.Sock.Close()
+	}
+}
+
+func (nsc *NetlinkSocketCache) remove(nsID uint32) {
+	s, ok := nsc.cache[nsID]
+	if ok {
+		delete(nsc.cache, nsID)
+
+		// close the netlink socket
+		s.Sock.Close()
+	}
 }
