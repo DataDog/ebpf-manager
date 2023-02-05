@@ -228,7 +228,7 @@ type Manager struct {
 	collectionSpec     *ebpf.CollectionSpec
 	collection         *ebpf.Collection
 	options            Options
-	netlinkSocketCache *NetlinkSocketCache
+	netlinkSocketCache *netlinkSocketCache
 	state              state
 	stateLock          sync.RWMutex
 
@@ -532,7 +532,7 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 
 	m.wg = &sync.WaitGroup{}
 	m.options = options
-	m.netlinkSocketCache = NewNetlinkSocketCache()
+	m.netlinkSocketCache = newNetlinkSocketCache()
 	if m.options.DefaultPerfRingBufferSize == 0 {
 		m.options.DefaultPerfRingBufferSize = os.Getpagesize()
 	}
@@ -2026,24 +2026,24 @@ func (m *Manager) GetNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket
 	return m.netlinkSocketCache.GetNetlinkSocket(nsHandle, nsID)
 }
 
-type NetlinkSocketCache struct {
+type netlinkSocketCache struct {
 	sync.Mutex
 	cache map[uint32]*NetlinkSocket
 }
 
-func NewNetlinkSocketCache() *NetlinkSocketCache {
-	return &NetlinkSocketCache{
+func newNetlinkSocketCache() *netlinkSocketCache {
+	return &netlinkSocketCache{
 		cache: make(map[uint32]*NetlinkSocket),
 	}
 }
 
-// GetNetlinkSocket - Returns a netlink socket in the requested network namespace from cache or creates a new one.
+// getNetlinkSocket - Returns a netlink socket in the requested network namespace from cache or creates a new one.
 // TC classifiers are attached by creating a qdisc on the requested interface. A netlink socket
 // is required to create a qdisc (or to attach an XDP program to an interface). Since this socket can be re-used for
 // multiple probes, instantiate the connection at the manager level and cache the netlink socket. The provided nsID
 // should be the ID of the network namespaced returned by a readlink on `/proc/[pid]/ns/net` for a [pid] that lives in
 // the network namespace pointed to by the nsHandle.
-func (nsc *NetlinkSocketCache) GetNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
+func (nsc *netlinkSocketCache) getNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
 	nsc.Lock()
 	defer nsc.Unlock()
 
@@ -2063,7 +2063,7 @@ func (nsc *NetlinkSocketCache) GetNetlinkSocket(nsHandle uint64, nsID uint32) (*
 
 // cleanup - Cleans up all opened netlink sockets in cache. This function is expected to be called when a
 // manager is stopped.
-func (nsc *NetlinkSocketCache) cleanup() {
+func (nsc *netlinkSocketCache) cleanup() {
 	nsc.Lock()
 	defer nsc.Unlock()
 
@@ -2074,7 +2074,7 @@ func (nsc *NetlinkSocketCache) cleanup() {
 	}
 }
 
-func (nsc *NetlinkSocketCache) remove(nsID uint32) {
+func (nsc *netlinkSocketCache) remove(nsID uint32) {
 	s, ok := nsc.cache[nsID]
 	if ok {
 		delete(nsc.cache, nsID)
