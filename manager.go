@@ -2023,7 +2023,7 @@ func cleanupUprobeEvents(pattern *regexp.Regexp, pidMask map[int]procMask) error
 }
 
 func (m *Manager) GetNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {
-	return m.netlinkSocketCache.GetNetlinkSocket(nsHandle, nsID)
+	return m.netlinkSocketCache.getNetlinkSocket(nsHandle, nsID)
 }
 
 type netlinkSocketCache struct {
