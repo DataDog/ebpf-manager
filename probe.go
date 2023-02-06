@@ -137,7 +137,7 @@ const (
 // Probe - Main eBPF probe wrapper. This structure is used to store the required data to attach a loaded eBPF
 // program to its hook point.
 type Probe struct {
-	netlinkSocketCache      *NetlinkSocketCache
+	netlinkSocketCache      *netlinkSocketCache
 	program                 *ebpf.Program
 	programSpec             *ebpf.ProgramSpec
 	perfEventFD             *fd
@@ -817,7 +817,7 @@ func (p *Probe) reset() {
 
 // getNetlinkSocket returns a netlink socket in the probe network namespace
 func (p *Probe) getNetlinkSocket() (*NetlinkSocket, error) {
-	return p.netlinkSocketCache.GetNetlinkSocket(p.IfIndexNetns, p.IfIndexNetnsID)
+	return p.netlinkSocketCache.getNetlinkSocket(p.IfIndexNetns, p.IfIndexNetnsID)
 }
 
 // attachWithKprobeEvents attaches the kprobe using the kprobes_events ABI
