@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -1666,6 +1667,11 @@ func (m *Manager) loadCollection() error {
 	// Load collection
 	m.collection, err = ebpf.NewCollectionWithOptions(m.collectionSpec, m.options.VerifierOptions)
 	if err != nil {
+		var ve *ebpf.VerifierError
+		if errors.As(err, &ve) {
+			// include error twice to preserve context, and still allow unwrapping if desired
+			return fmt.Errorf("verifier error loading eBPF programs: %w\n%+v", err, ve)
+		}
 		return fmt.Errorf("couldn't load eBPF programs: %w", err)
 	}
 
