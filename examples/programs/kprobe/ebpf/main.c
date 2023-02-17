@@ -1,4 +1,6 @@
-#include "../../../include/all.h"
+#include "all.h"
+#include <uapi/linux/bpf.h>
+#include <linux/user_namespace.h>
 
 struct bpf_map_def SEC("maps/cache") cache = {
     .type = BPF_MAP_TYPE_HASH,

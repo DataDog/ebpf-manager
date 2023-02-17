@@ -9,10 +9,10 @@ import (
 	manager "github.com/DataDog/ebpf-manager"
 )
 
-//go:embed ebpf/bin/probe1.o
+//go:embed ebpf/bin/prog1.o
 var Probe1 []byte
 
-//go:embed ebpf/bin/probe2.o
+//go:embed ebpf/bin/prog2.o
 var Probe2 []byte
 
 var m = &manager.Manager{

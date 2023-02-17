@@ -1,4 +1,4 @@
-#include "../../include/all.h"
+#include "all.h"
 
 SEC("kprobe/vfs_mkdir")
 int kprobe_vfs_mkdir(void *ctx)

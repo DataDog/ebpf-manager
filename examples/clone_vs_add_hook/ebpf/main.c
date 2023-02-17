@@ -1,4 +1,5 @@
-#include "../../include/all.h"
+#include "all.h"
+#include <uapi/linux/bpf.h>
 
 #define LOAD_CONSTANT(param, var) asm("%0 = " param " ll" : "=r"(var))
 
@@ -13,8 +14,6 @@ struct bpf_map_def SEC("maps/my_constants") my_constants = {
     .key_size = 0,
     .value_size = 0,
     .max_entries = 0,
-    .pinning = PIN_NONE,
-    .namespace = "",
 };
 
 SEC("kprobe/vfs_mkdir")

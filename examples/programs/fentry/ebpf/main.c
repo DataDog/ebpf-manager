@@ -1,4 +1,7 @@
-#include "../../../include/all.h"
+#include "all.h"
+#include <linux/user_namespace.h>
+#include <linux/dcache.h>
+#include <linux/fs.h>
 
 SEC("fentry/vfs_mkdir")
 int BPF_PROG(vfs_mkdir_enter, struct user_namespace *mnt_userns, struct inode *dir,

@@ -1,4 +1,5 @@
-#include "../../include/all.h"
+#include "all.h"
+#include <uapi/linux/bpf.h>
 
 __attribute__((always_inline)) static int my_func(u32 input)
 {

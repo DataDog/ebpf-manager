@@ -1,4 +1,6 @@
-#include "../../../include/all.h"
+#include "all.h"
+#include <uapi/linux/bpf.h>
+#include <uapi/linux/errno.h>
 
 struct bpf_map_def SEC("maps/cache") cache = {
     .type = BPF_MAP_TYPE_ARRAY,
@@ -8,7 +10,7 @@ struct bpf_map_def SEC("maps/cache") cache = {
 };
 
 SEC("lsm/inode_getattr")
-int BPF_PROG(lsm_security_inode_getattr, struct path *pp, struct kstat *stat, __u32 request_mask, unsigned int query_flags) {
+int BPF_PROG(lsm_security_inode_getattr, struct path *pp) {
     char p[128] = {};
     int ret = bpf_d_path(pp, &p[0], 128);
     bpf_printk("ret:%d path:%s\n", ret, p);

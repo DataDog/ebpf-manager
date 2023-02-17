@@ -1,4 +1,4 @@
-#include "../../../include/all.h"
+#include "all.h"
 
 SEC("perf_event/cpu_clock")
 int perf_event_cpu_clock(struct bpf_perf_event_data *ctx)

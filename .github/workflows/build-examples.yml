@@ -47,5 +47,4 @@ jobs:
       - name: Build example
         working-directory: examples/${{ matrix.example_path }}
         run: |
-          make build-ebpf
-          make build
+          make
