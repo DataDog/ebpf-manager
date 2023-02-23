@@ -357,6 +357,13 @@ func (p *Probe) Copy() *Probe {
 	}
 }
 
+// CopyProbeIdentificationPair is a thread safe function allowing to copy the probe identification pair
+func (p *Probe) CopyProbeIdentificationPair() ProbeIdentificationPair {
+	p.stateLock.RLock()
+	defer p.stateLock.RUnlock()
+	return p.ProbeIdentificationPair
+}
+
 // GetLastError - Returns the last error that the probe encountered
 func (p *Probe) GetLastError() error {
 	return p.lastError
