@@ -1,4 +1,4 @@
-#include "../../../include/all.h"
+#include "all.h"
 
 SEC("socket/sock_filter")
 int sock_filter(void *ctx)

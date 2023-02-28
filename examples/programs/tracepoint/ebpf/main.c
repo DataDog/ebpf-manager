@@ -1,4 +1,4 @@
-#include "../../../include/all.h"
+#include "all.h"
 
 SEC("tracepoint/syscalls/sys_enter_mkdirat")
 int sys_enter_mkdirat(void *ctx)

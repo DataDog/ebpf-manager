@@ -1,4 +1,4 @@
-#include "../../../include/all.h"
+#include "all.h"
 
 SEC("cgroup_skb/egress")
 int egress(struct __sk_buff *skb)

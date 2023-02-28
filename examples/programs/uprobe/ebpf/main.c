@@ -1,4 +1,4 @@
-#include "../../../include/all.h"
+#include "all.h"
 
 SEC("uprobe/readline")
 int readline(void *ctx)

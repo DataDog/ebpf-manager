@@ -1,4 +1,5 @@
-#include "../../include/all.h"
+#include "all.h"
+#include <uapi/linux/bpf.h>
 
 // shared_cache - This map will be shared with other Manager
 struct bpf_map_def SEC("maps/shared_cache1") shared_cache1 = {

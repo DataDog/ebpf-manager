@@ -1,4 +1,5 @@
-#include "../../include/all.h"
+#include "all.h"
+#include <uapi/linux/bpf.h>
 
 struct bpf_map_def SEC("maps/map1") map1 = {
     .type = BPF_MAP_TYPE_HASH,

@@ -1,0 +1,22 @@
+sources := $(wildcard ebpf/*.c)
+objects := $(subst ebpf,ebpf/bin,$(subst .c,.o,$(sources)))
+
+.PHONY: clean run %.run
+
+bin/main: main.go
+
+main.go: $(objects)
+	go build -o bin/main .
+
+run: bin/main main.run
+
+clean:
+	-$(RM) bin/main
+	-$(RM) $(objects)
+
+%.run: bin/main
+	sudo ./bin/main
+
+ebpf/bin/%.o: ebpf/%.c
+	mkdir -p ebpf/bin
+	$(CLANG_CMD) $<	-c -o - | $(LLC_CMD) -o $@

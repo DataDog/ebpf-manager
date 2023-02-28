@@ -1,0 +1,40 @@
+this-makefile := $(lastword $(MAKEFILE_LIST))
+abs_thisdir := $(realpath $(dir $(this-makefile)))
+
+UNAME_RELEASE = $(shell uname -r)
+objtree := /lib/modules/$(UNAME_RELEASE)/build
+
+USERINCLUDE := \
+	-isystem$(objtree)/arch/$(SRCARCH)/include/uapi \
+	-isystem$(objtree)/arch/$(SRCARCH)/include/generated/uapi \
+	-isystem$(objtree)/include/uapi \
+	-isystem$(objtree)/include/generated/uapi
+
+LINUXINCLUDE := \
+	-isystem$(objtree)/arch/$(SRCARCH)/include \
+	-isystem$(objtree)/arch/$(SRCARCH)/include/generated \
+	-isystem$(objtree)/include \
+	$(USERINCLUDE)
+
+LLC ?= llc
+CLANG ?= clang
+
+CLANG_FLAGS := \
+	-D__KERNEL__ \
+	-D__BPF_TRACING__ \
+	-DCONFIG_64BIT \
+	-D__TARGET_ARCH_$(SRCARCH) \
+	-Wno-unused-value \
+	-Wno-pointer-sign \
+	-Wno-compare-distinct-pointer-types \
+	-Wunused \
+	-Wall \
+	-Werror
+
+CLANG_CMD := $(CLANG) $(CLANG_FLAGS) \
+	$(LINUXINCLUDE) \
+	-I$(abs_thisdir)/include \
+	-include asm_goto_workaround.h \
+	-O2 -emit-llvm
+
+LLC_CMD := $(LLC) -march=bpf -filetype=obj

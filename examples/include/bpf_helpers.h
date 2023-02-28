@@ -2,332 +2,261 @@
 #ifndef __BPF_HELPERS__
 #define __BPF_HELPERS__
 
-#define __uint(name, val) int (*name)[val]
-#define __type(name, val) val *name
+/*
+ * Note that bpf programs need to include either
+ * vmlinux.h (auto-generated from BTF) or linux/types.h
+ * in advance since bpf_helper_defs.h uses such types
+ * as __u64.
+ */
+#include "bpf_helper_defs.h"
 
-/* helper macro to print out debug messages */
-#define bpf_printk(fmt, ...)				\
+#define __uint(name, val) int (*name)[val]
+#define __type(name, val) typeof(val) *name
+#define __array(name, val) typeof(val) *name[]
+
+/*
+ * Helper macro to place programs, maps, license in
+ * different sections in elf_bpf file. Section names
+ * are interpreted by libbpf depending on the context (BPF programs, BPF maps,
+ * extern variables, etc).
+ * To allow use of SEC() with externs (e.g., for extern .maps declarations),
+ * make sure __attribute__((unused)) doesn't trigger compilation warning.
+ */
+#define SEC(name) \
+	_Pragma("GCC diagnostic push")					    \
+	_Pragma("GCC diagnostic ignored \"-Wignored-attributes\"")	    \
+	__attribute__((section(name), used))				    \
+	_Pragma("GCC diagnostic pop")					    \
+
+/* Avoid 'linux/stddef.h' definition of '__always_inline'. */
+#undef __always_inline
+#define __always_inline inline __attribute__((always_inline))
+
+#ifndef __noinline
+#define __noinline __attribute__((noinline))
+#endif
+#ifndef __weak
+#define __weak __attribute__((weak))
+#endif
+
+/*
+ * Use __hidden attribute to mark a non-static BPF subprogram effectively
+ * static for BPF verifier's verification algorithm purposes, allowing more
+ * extensive and permissive BPF verification process, taking into account
+ * subprogram's caller context.
+ */
+#define __hidden __attribute__((visibility("hidden")))
+
+/* When utilizing vmlinux.h with BPF CO-RE, user BPF programs can't include
+ * any system-level headers (such as stddef.h, linux/version.h, etc), and
+ * commonly-used macros like NULL and KERNEL_VERSION aren't available through
+ * vmlinux.h. This just adds unnecessary hurdles and forces users to re-define
+ * them on their own. So as a convenience, provide such definitions here.
+ */
+#ifndef NULL
+#define NULL ((void *)0)
+#endif
+
+#ifndef KERNEL_VERSION
+#define KERNEL_VERSION(a, b, c) (((a) << 16) + ((b) << 8) + ((c) > 255 ? 255 : (c)))
+#endif
+
+/*
+ * Helper macros to manipulate data structures
+ */
+#ifndef offsetof
+#define offsetof(TYPE, MEMBER)	((unsigned long)&((TYPE *)0)->MEMBER)
+#endif
+#ifndef container_of
+#define container_of(ptr, type, member)				\
+	({							\
+		void *__mptr = (void *)(ptr);			\
+		((type *)(__mptr - offsetof(type, member)));	\
+	})
+#endif
+
+/*
+ * Helper macro to throw a compilation error if __bpf_unreachable() gets
+ * built into the resulting code. This works given BPF back end does not
+ * implement __builtin_trap(). This is useful to assert that certain paths
+ * of the program code are never used and hence eliminated by the compiler.
+ *
+ * For example, consider a switch statement that covers known cases used by
+ * the program. __bpf_unreachable() can then reside in the default case. If
+ * the program gets extended such that a case is not covered in the switch
+ * statement, then it will throw a build error due to the default case not
+ * being compiled out.
+ */
+#ifndef __bpf_unreachable
+# define __bpf_unreachable()	__builtin_trap()
+#endif
+
+/*
+ * Helper function to perform a tail call with a constant/immediate map slot.
+ */
+#if __clang_major__ >= 8 && defined(__bpf__)
+static __always_inline void
+bpf_tail_call_static(void *ctx, const void *map, const __u32 slot)
+{
+	if (!__builtin_constant_p(slot))
+		__bpf_unreachable();
+
+	/*
+	 * Provide a hard guarantee that LLVM won't optimize setting r2 (map
+	 * pointer) and r3 (constant map index) from _different paths_ ending
+	 * up at the _same_ call insn as otherwise we won't be able to use the
+	 * jmpq/nopl retpoline-free patching by the x86-64 JIT in the kernel
+	 * given they mismatch. See also d2e4c1e6c294 ("bpf: Constant map key
+	 * tracking for prog array pokes") for details on verifier tracking.
+	 *
+	 * Note on clobber list: we need to stay in-line with BPF calling
+	 * convention, so even if we don't end up using r0, r4, r5, we need
+	 * to mark them as clobber so that LLVM doesn't end up using them
+	 * before / after the call.
+	 */
+	asm volatile("r1 = %[ctx]\n\t"
+		     "r2 = %[map]\n\t"
+		     "r3 = %[slot]\n\t"
+		     "call 12"
+		     :: [ctx]"r"(ctx), [map]"r"(map), [slot]"i"(slot)
+		     : "r0", "r1", "r2", "r3", "r4", "r5");
+}
+#endif
+
+/*
+ * Helper structure used by eBPF C program
+ * to describe BPF map attributes to libbpf loader
+ */
+struct bpf_map_def {
+	unsigned int type;
+	unsigned int key_size;
+	unsigned int value_size;
+	unsigned int max_entries;
+	unsigned int map_flags;
+};
+
+enum libbpf_pin_type {
+	LIBBPF_PIN_NONE,
+	/* PIN_BY_NAME: pin maps by name (in /sys/fs/bpf by default) */
+	LIBBPF_PIN_BY_NAME,
+};
+
+enum libbpf_tristate {
+	TRI_NO = 0,
+	TRI_YES = 1,
+	TRI_MODULE = 2,
+};
+
+#define __kconfig __attribute__((section(".kconfig")))
+#define __ksym __attribute__((section(".ksyms")))
+
+#ifndef ___bpf_concat
+#define ___bpf_concat(a, b) a ## b
+#endif
+#ifndef ___bpf_apply
+#define ___bpf_apply(fn, n) ___bpf_concat(fn, n)
+#endif
+#ifndef ___bpf_nth
+#define ___bpf_nth(_, _1, _2, _3, _4, _5, _6, _7, _8, _9, _a, _b, _c, N, ...) N
+#endif
+#ifndef ___bpf_narg
+#define ___bpf_narg(...) \
+	___bpf_nth(_, ##__VA_ARGS__, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
+#endif
+
+#define ___bpf_fill0(arr, p, x) do {} while (0)
+#define ___bpf_fill1(arr, p, x) arr[p] = x
+#define ___bpf_fill2(arr, p, x, args...) arr[p] = x; ___bpf_fill1(arr, p + 1, args)
+#define ___bpf_fill3(arr, p, x, args...) arr[p] = x; ___bpf_fill2(arr, p + 1, args)
+#define ___bpf_fill4(arr, p, x, args...) arr[p] = x; ___bpf_fill3(arr, p + 1, args)
+#define ___bpf_fill5(arr, p, x, args...) arr[p] = x; ___bpf_fill4(arr, p + 1, args)
+#define ___bpf_fill6(arr, p, x, args...) arr[p] = x; ___bpf_fill5(arr, p + 1, args)
+#define ___bpf_fill7(arr, p, x, args...) arr[p] = x; ___bpf_fill6(arr, p + 1, args)
+#define ___bpf_fill8(arr, p, x, args...) arr[p] = x; ___bpf_fill7(arr, p + 1, args)
+#define ___bpf_fill9(arr, p, x, args...) arr[p] = x; ___bpf_fill8(arr, p + 1, args)
+#define ___bpf_fill10(arr, p, x, args...) arr[p] = x; ___bpf_fill9(arr, p + 1, args)
+#define ___bpf_fill11(arr, p, x, args...) arr[p] = x; ___bpf_fill10(arr, p + 1, args)
+#define ___bpf_fill12(arr, p, x, args...) arr[p] = x; ___bpf_fill11(arr, p + 1, args)
+#define ___bpf_fill(arr, args...) \
+	___bpf_apply(___bpf_fill, ___bpf_narg(args))(arr, 0, args)
+
+/*
+ * BPF_SEQ_PRINTF to wrap bpf_seq_printf to-be-printed values
+ * in a structure.
+ */
+#define BPF_SEQ_PRINTF(seq, fmt, args...)			\
+({								\
+	static const char ___fmt[] = fmt;			\
+	unsigned long long ___param[___bpf_narg(args)];		\
+								\
+	_Pragma("GCC diagnostic push")				\
+	_Pragma("GCC diagnostic ignored \"-Wint-conversion\"")	\
+	___bpf_fill(___param, args);				\
+	_Pragma("GCC diagnostic pop")				\
+								\
+	bpf_seq_printf(seq, ___fmt, sizeof(___fmt),		\
+		       ___param, sizeof(___param));		\
+})
+
+/*
+ * BPF_SNPRINTF wraps the bpf_snprintf helper with variadic arguments instead of
+ * an array of u64.
+ */
+#define BPF_SNPRINTF(out, out_size, fmt, args...)		\
+({								\
+	static const char ___fmt[] = fmt;			\
+	unsigned long long ___param[___bpf_narg(args)];		\
+								\
+	_Pragma("GCC diagnostic push")				\
+	_Pragma("GCC diagnostic ignored \"-Wint-conversion\"")	\
+	___bpf_fill(___param, args);				\
+	_Pragma("GCC diagnostic pop")				\
+								\
+	bpf_snprintf(out, out_size, ___fmt,			\
+		     ___param, sizeof(___param));		\
+})
+
+#ifdef BPF_NO_GLOBAL_DATA
+#define BPF_PRINTK_FMT_MOD
+#else
+#define BPF_PRINTK_FMT_MOD static const
+#endif
+
+#define __bpf_printk(fmt, ...)				\
 ({							\
-	char ____fmt[] = fmt;				\
+	BPF_PRINTK_FMT_MOD char ____fmt[] = fmt;	\
 	bpf_trace_printk(____fmt, sizeof(____fmt),	\
 			 ##__VA_ARGS__);		\
 })
 
-#ifdef __clang__
-
-/* helper macro to place programs, maps, license in
- * different sections in elf_bpf file. Section names
- * are interpreted by elf_bpf loader
- */
-#define SEC(NAME) __attribute__((section(NAME), used))
-
-/* helper functions called from eBPF programs written in C */
-static void *(*bpf_map_lookup_elem)(void *map, const void *key) =
-	(void *) BPF_FUNC_map_lookup_elem;
-static int (*bpf_map_update_elem)(void *map, const void *key, const void *value,
-				  unsigned long long flags) =
-	(void *) BPF_FUNC_map_update_elem;
-static int (*bpf_map_delete_elem)(void *map, const void *key) =
-	(void *) BPF_FUNC_map_delete_elem;
-static int (*bpf_map_push_elem)(void *map, const void *value,
-				unsigned long long flags) =
-	(void *) BPF_FUNC_map_push_elem;
-static int (*bpf_map_pop_elem)(void *map, void *value) =
-	(void *) BPF_FUNC_map_pop_elem;
-static int (*bpf_map_peek_elem)(void *map, void *value) =
-	(void *) BPF_FUNC_map_peek_elem;
-static int (*bpf_probe_read)(void *dst, int size, const void *unsafe_ptr) =
-	(void *) BPF_FUNC_probe_read;
-static unsigned long long (*bpf_ktime_get_ns)(void) =
-	(void *) BPF_FUNC_ktime_get_ns;
-static int (*bpf_trace_printk)(const char *fmt, int fmt_size, ...) =
-	(void *) BPF_FUNC_trace_printk;
-static void (*bpf_tail_call)(void *ctx, void *map, int index) =
-	(void *) BPF_FUNC_tail_call;
-static unsigned long long (*bpf_get_smp_processor_id)(void) =
-	(void *) BPF_FUNC_get_smp_processor_id;
-static unsigned long long (*bpf_get_current_pid_tgid)(void) =
-	(void *) BPF_FUNC_get_current_pid_tgid;
-static unsigned long long (*bpf_get_current_uid_gid)(void) =
-	(void *) BPF_FUNC_get_current_uid_gid;
-static int (*bpf_get_current_comm)(void *buf, int buf_size) =
-	(void *) BPF_FUNC_get_current_comm;
-static unsigned long long (*bpf_perf_event_read)(void *map,
-						 unsigned long long flags) =
-	(void *) BPF_FUNC_perf_event_read;
-static int (*bpf_clone_redirect)(void *ctx, int ifindex, int flags) =
-	(void *) BPF_FUNC_clone_redirect;
-static int (*bpf_redirect)(int ifindex, int flags) =
-	(void *) BPF_FUNC_redirect;
-static int (*bpf_redirect_map)(void *map, int key, int flags) =
-	(void *) BPF_FUNC_redirect_map;
-static int (*bpf_perf_event_output)(void *ctx, void *map,
-				    unsigned long long flags, void *data,
-				    int size) =
-	(void *) BPF_FUNC_perf_event_output;
-static int (*bpf_get_stackid)(void *ctx, void *map, int flags) =
-	(void *) BPF_FUNC_get_stackid;
-static int (*bpf_probe_write_user)(void *dst, const void *src, int size) =
-	(void *) BPF_FUNC_probe_write_user;
-static int (*bpf_current_task_under_cgroup)(void *map, int index) =
-	(void *) BPF_FUNC_current_task_under_cgroup;
-static int (*bpf_skb_get_tunnel_key)(void *ctx, void *key, int size, int flags) =
-	(void *) BPF_FUNC_skb_get_tunnel_key;
-static int (*bpf_skb_set_tunnel_key)(void *ctx, void *key, int size, int flags) =
-	(void *) BPF_FUNC_skb_set_tunnel_key;
-static int (*bpf_skb_get_tunnel_opt)(void *ctx, void *md, int size) =
-	(void *) BPF_FUNC_skb_get_tunnel_opt;
-static int (*bpf_skb_set_tunnel_opt)(void *ctx, void *md, int size) =
-	(void *) BPF_FUNC_skb_set_tunnel_opt;
-static unsigned long long (*bpf_get_prandom_u32)(void) =
-	(void *) BPF_FUNC_get_prandom_u32;
-static int (*bpf_xdp_adjust_head)(void *ctx, int offset) =
-	(void *) BPF_FUNC_xdp_adjust_head;
-static int (*bpf_xdp_adjust_meta)(void *ctx, int offset) =
-	(void *) BPF_FUNC_xdp_adjust_meta;
-static int (*bpf_get_socket_cookie)(void *ctx) =
-	(void *) BPF_FUNC_get_socket_cookie;
-static int (*bpf_setsockopt)(void *ctx, int level, int optname, void *optval,
-			     int optlen) =
-	(void *) BPF_FUNC_setsockopt;
-static int (*bpf_getsockopt)(void *ctx, int level, int optname, void *optval,
-			     int optlen) =
-	(void *) BPF_FUNC_getsockopt;
-static int (*bpf_sock_ops_cb_flags_set)(void *ctx, int flags) =
-	(void *) BPF_FUNC_sock_ops_cb_flags_set;
-static int (*bpf_sk_redirect_map)(void *ctx, void *map, int key, int flags) =
-	(void *) BPF_FUNC_sk_redirect_map;
-static int (*bpf_sk_redirect_hash)(void *ctx, void *map, void *key, int flags) =
-	(void *) BPF_FUNC_sk_redirect_hash;
-static int (*bpf_sock_map_update)(void *map, void *key, void *value,
-				  unsigned long long flags) =
-	(void *) BPF_FUNC_sock_map_update;
-static int (*bpf_sock_hash_update)(void *map, void *key, void *value,
-				   unsigned long long flags) =
-	(void *) BPF_FUNC_sock_hash_update;
-static int (*bpf_perf_event_read_value)(void *map, unsigned long long flags,
-					void *buf, unsigned int buf_size) =
-	(void *) BPF_FUNC_perf_event_read_value;
-static int (*bpf_perf_prog_read_value)(void *ctx, void *buf,
-				       unsigned int buf_size) =
-	(void *) BPF_FUNC_perf_prog_read_value;
-static int (*bpf_override_return)(void *ctx, unsigned long rc) =
-	(void *) BPF_FUNC_override_return;
-static int (*bpf_msg_redirect_map)(void *ctx, void *map, int key, int flags) =
-	(void *) BPF_FUNC_msg_redirect_map;
-static int (*bpf_msg_redirect_hash)(void *ctx,
-				    void *map, void *key, int flags) =
-	(void *) BPF_FUNC_msg_redirect_hash;
-static int (*bpf_msg_apply_bytes)(void *ctx, int len) =
-	(void *) BPF_FUNC_msg_apply_bytes;
-static int (*bpf_msg_cork_bytes)(void *ctx, int len) =
-	(void *) BPF_FUNC_msg_cork_bytes;
-static int (*bpf_msg_pull_data)(void *ctx, int start, int end, int flags) =
-	(void *) BPF_FUNC_msg_pull_data;
-static int (*bpf_msg_push_data)(void *ctx, int start, int end, int flags) =
-	(void *) BPF_FUNC_msg_push_data;
-static int (*bpf_msg_pop_data)(void *ctx, int start, int cut, int flags) =
-	(void *) BPF_FUNC_msg_pop_data;
-static int (*bpf_bind)(void *ctx, void *addr, int addr_len) =
-	(void *) BPF_FUNC_bind;
-static int (*bpf_xdp_adjust_tail)(void *ctx, int offset) =
-	(void *) BPF_FUNC_xdp_adjust_tail;
-static int (*bpf_skb_get_xfrm_state)(void *ctx, int index, void *state,
-				     int size, int flags) =
-	(void *) BPF_FUNC_skb_get_xfrm_state;
-static int (*bpf_sk_select_reuseport)(void *ctx, void *map, void *key, __u32 flags) =
-	(void *) BPF_FUNC_sk_select_reuseport;
-static int (*bpf_get_stack)(void *ctx, void *buf, int size, int flags) =
-	(void *) BPF_FUNC_get_stack;
-static int (*bpf_fib_lookup)(void *ctx, struct bpf_fib_lookup *params,
-			     int plen, __u32 flags) =
-	(void *) BPF_FUNC_fib_lookup;
-static int (*bpf_lwt_push_encap)(void *ctx, unsigned int type, void *hdr,
-				 unsigned int len) =
-	(void *) BPF_FUNC_lwt_push_encap;
-static int (*bpf_lwt_seg6_store_bytes)(void *ctx, unsigned int offset,
-				       void *from, unsigned int len) =
-	(void *) BPF_FUNC_lwt_seg6_store_bytes;
-static int (*bpf_lwt_seg6_action)(void *ctx, unsigned int action, void *param,
-				  unsigned int param_len) =
-	(void *) BPF_FUNC_lwt_seg6_action;
-static int (*bpf_lwt_seg6_adjust_srh)(void *ctx, unsigned int offset,
-				      unsigned int len) =
-	(void *) BPF_FUNC_lwt_seg6_adjust_srh;
-static int (*bpf_rc_repeat)(void *ctx) =
-	(void *) BPF_FUNC_rc_repeat;
-static int (*bpf_rc_keydown)(void *ctx, unsigned int protocol,
-			     unsigned long long scancode, unsigned int toggle) =
-	(void *) BPF_FUNC_rc_keydown;
-static unsigned long long (*bpf_get_current_cgroup_id)(void) =
-	(void *) BPF_FUNC_get_current_cgroup_id;
-static void *(*bpf_get_local_storage)(void *map, unsigned long long flags) =
-	(void *) BPF_FUNC_get_local_storage;
-static unsigned long long (*bpf_skb_cgroup_id)(void *ctx) =
-	(void *) BPF_FUNC_skb_cgroup_id;
-static unsigned long long (*bpf_skb_ancestor_cgroup_id)(void *ctx, int level) =
-	(void *) BPF_FUNC_skb_ancestor_cgroup_id;
-static struct bpf_sock *(*bpf_sk_lookup_tcp)(void *ctx,
-					     struct bpf_sock_tuple *tuple,
-					     int size, unsigned long long netns_id,
-					     unsigned long long flags) =
-	(void *) BPF_FUNC_sk_lookup_tcp;
-static struct bpf_sock *(*bpf_skc_lookup_tcp)(void *ctx,
-					     struct bpf_sock_tuple *tuple,
-					     int size, unsigned long long netns_id,
-					     unsigned long long flags) =
-	(void *) BPF_FUNC_skc_lookup_tcp;
-static struct bpf_sock *(*bpf_sk_lookup_udp)(void *ctx,
-					     struct bpf_sock_tuple *tuple,
-					     int size, unsigned long long netns_id,
-					     unsigned long long flags) =
-	(void *) BPF_FUNC_sk_lookup_udp;
-static int (*bpf_sk_release)(struct bpf_sock *sk) =
-	(void *) BPF_FUNC_sk_release;
-static int (*bpf_skb_vlan_push)(void *ctx, __be16 vlan_proto, __u16 vlan_tci) =
-	(void *) BPF_FUNC_skb_vlan_push;
-static int (*bpf_skb_vlan_pop)(void *ctx) =
-	(void *) BPF_FUNC_skb_vlan_pop;
-static int (*bpf_rc_pointer_rel)(void *ctx, int rel_x, int rel_y) =
-	(void *) BPF_FUNC_rc_pointer_rel;
-static void (*bpf_spin_lock)(struct bpf_spin_lock *lock) =
-	(void *) BPF_FUNC_spin_lock;
-static void (*bpf_spin_unlock)(struct bpf_spin_lock *lock) =
-	(void *) BPF_FUNC_spin_unlock;
-static struct bpf_sock *(*bpf_sk_fullsock)(struct bpf_sock *sk) =
-	(void *) BPF_FUNC_sk_fullsock;
-static struct bpf_tcp_sock *(*bpf_tcp_sock)(struct bpf_sock *sk) =
-	(void *) BPF_FUNC_tcp_sock;
-static struct bpf_sock *(*bpf_get_listener_sock)(struct bpf_sock *sk) =
-	(void *) BPF_FUNC_get_listener_sock;
-static int (*bpf_skb_ecn_set_ce)(void *ctx) =
-	(void *) BPF_FUNC_skb_ecn_set_ce;
-static int (*bpf_tcp_check_syncookie)(struct bpf_sock *sk,
-	    void *ip, int ip_len, void *tcp, int tcp_len) =
-	(void *) BPF_FUNC_tcp_check_syncookie;
-static int (*bpf_sysctl_get_name)(void *ctx, char *buf,
-				  unsigned long long buf_len,
-				  unsigned long long flags) =
-	(void *) BPF_FUNC_sysctl_get_name;
-static int (*bpf_sysctl_get_current_value)(void *ctx, char *buf,
-					   unsigned long long buf_len) =
-	(void *) BPF_FUNC_sysctl_get_current_value;
-static int (*bpf_sysctl_get_new_value)(void *ctx, char *buf,
-				       unsigned long long buf_len) =
-	(void *) BPF_FUNC_sysctl_get_new_value;
-static int (*bpf_sysctl_set_new_value)(void *ctx, const char *buf,
-				       unsigned long long buf_len) =
-	(void *) BPF_FUNC_sysctl_set_new_value;
-static int (*bpf_strtol)(const char *buf, unsigned long long buf_len,
-			 unsigned long long flags, long *res) =
-	(void *) BPF_FUNC_strtol;
-static int (*bpf_strtoul)(const char *buf, unsigned long long buf_len,
-			  unsigned long long flags, unsigned long *res) =
-	(void *) BPF_FUNC_strtoul;
-static void *(*bpf_sk_storage_get)(void *map, struct bpf_sock *sk,
-				   void *value, __u64 flags) =
-	(void *) BPF_FUNC_sk_storage_get;
-static int (*bpf_sk_storage_delete)(void *map, struct bpf_sock *sk) =
-	(void *)BPF_FUNC_sk_storage_delete;
-static int (*bpf_send_signal)(unsigned sig) = (void *)BPF_FUNC_send_signal;
-static long long (*bpf_tcp_gen_syncookie)(struct bpf_sock *sk, void *ip,
-					  int ip_len, void *tcp, int tcp_len) =
-	(void *) BPF_FUNC_tcp_gen_syncookie;
-
-/* llvm builtin functions that eBPF C program may use to
- * emit BPF_LD_ABS and BPF_LD_IND instructions
- */
-struct sk_buff;
-unsigned long long load_byte(void *skb,
-			     unsigned long long off) asm("llvm.bpf.load.byte");
-unsigned long long load_half(void *skb,
-			     unsigned long long off) asm("llvm.bpf.load.half");
-unsigned long long load_word(void *skb,
-			     unsigned long long off) asm("llvm.bpf.load.word");
-
-#else
-
-#include <bpf-helpers.h>
-
-#endif
-
-#define BPF_ANNOTATE_KV_PAIR(name, type_key, type_val)		\
-	struct ____btf_map_##name {				\
-		type_key key;					\
-		type_val value;					\
-	};							\
-	struct ____btf_map_##name				\
-	__attribute__ ((section(".maps." #name), used))		\
-		____btf_map_##name = { }
-
-static int (*bpf_skb_load_bytes)(void *ctx, int off, void *to, int len) =
-	(void *) BPF_FUNC_skb_load_bytes;
-static int (*bpf_skb_load_bytes_relative)(void *ctx, int off, void *to, int len, __u32 start_header) =
-	(void *) BPF_FUNC_skb_load_bytes_relative;
-static int (*bpf_skb_store_bytes)(void *ctx, int off, void *from, int len, int flags) =
-	(void *) BPF_FUNC_skb_store_bytes;
-static int (*bpf_l3_csum_replace)(void *ctx, int off, int from, int to, int flags) =
-	(void *) BPF_FUNC_l3_csum_replace;
-static int (*bpf_l4_csum_replace)(void *ctx, int off, int from, int to, int flags) =
-	(void *) BPF_FUNC_l4_csum_replace;
-static int (*bpf_csum_diff)(void *from, int from_size, void *to, int to_size, int seed) =
-	(void *) BPF_FUNC_csum_diff;
-static int (*bpf_skb_under_cgroup)(void *ctx, void *map, int index) =
-	(void *) BPF_FUNC_skb_under_cgroup;
-static int (*bpf_skb_change_head)(void *, int len, int flags) =
-	(void *) BPF_FUNC_skb_change_head;
-static int (*bpf_skb_pull_data)(void *, int len) =
-	(void *) BPF_FUNC_skb_pull_data;
-static unsigned int (*bpf_get_cgroup_classid)(void *ctx) =
-	(void *) BPF_FUNC_get_cgroup_classid;
-static unsigned int (*bpf_get_route_realm)(void *ctx) =
-	(void *) BPF_FUNC_get_route_realm;
-static int (*bpf_skb_change_proto)(void *ctx, __be16 proto, __u64 flags) =
-	(void *) BPF_FUNC_skb_change_proto;
-static int (*bpf_skb_change_type)(void *ctx, __u32 type) =
-	(void *) BPF_FUNC_skb_change_type;
-static unsigned int (*bpf_get_hash_recalc)(void *ctx) =
-	(void *) BPF_FUNC_get_hash_recalc;
-static unsigned long long (*bpf_get_current_task)(void) =
-	(void *) BPF_FUNC_get_current_task;
-static int (*bpf_skb_change_tail)(void *ctx, __u32 len, __u64 flags) =
-	(void *) BPF_FUNC_skb_change_tail;
-static long long (*bpf_csum_update)(void *ctx, __u32 csum) =
-	(void *) BPF_FUNC_csum_update;
-static void (*bpf_set_hash_invalid)(void *ctx) =
-	(void *) BPF_FUNC_set_hash_invalid;
-static int (*bpf_get_numa_node_id)(void) =
-	(void *) BPF_FUNC_get_numa_node_id;
-static int (*bpf_probe_read_str)(void *ctx, __u32 size,
-				 const void *unsafe_ptr) =
-	(void *) BPF_FUNC_probe_read_str;
-static unsigned int (*bpf_get_socket_uid)(void *ctx) =
-	(void *) BPF_FUNC_get_socket_uid;
-static unsigned int (*bpf_set_hash)(void *ctx, __u32 hash) =
-	(void *) BPF_FUNC_set_hash;
-static int (*bpf_skb_adjust_room)(void *ctx, __s32 len_diff, __u32 mode,
-				  unsigned long long flags) =
-	(void *) BPF_FUNC_skb_adjust_room;
-static long (*bpf_d_path)(struct path *path, char *buf, u32 sz) = (void *) BPF_FUNC_d_path;
-
 /*
- * BPF_CORE_READ abstracts away bpf_probe_read() call and captures offset
- * relocation for source address using __builtin_preserve_access_index()
- * built-in, provided by Clang.
- *
- * __builtin_preserve_access_index() takes as an argument an expression of
- * taking an address of a field within struct/union. It makes compiler emit
- * a relocation, which records BTF type ID describing root struct/union and an
- * accessor string which describes exact embedded field that was used to take
- * an address. See detailed description of this relocation format and
- * semantics in comments to struct bpf_offset_reloc in libbpf_internal.h.
- *
- * This relocation allows libbpf to adjust BPF instruction to use correct
- * actual field offset, based on target kernel BTF type that matches original
- * (local) BTF, used to record relocation.
+ * __bpf_vprintk wraps the bpf_trace_vprintk helper with variadic arguments
+ * instead of an array of u64.
  */
-#define BPF_CORE_READ(dst, src)						\
-	bpf_probe_read((dst), sizeof(*(src)),				\
-		       __builtin_preserve_access_index(src))
+#define __bpf_vprintk(fmt, args...)				\
+({								\
+	static const char ___fmt[] = fmt;			\
+	unsigned long long ___param[___bpf_narg(args)];		\
+								\
+	_Pragma("GCC diagnostic push")				\
+	_Pragma("GCC diagnostic ignored \"-Wint-conversion\"")	\
+	___bpf_fill(___param, args);				\
+	_Pragma("GCC diagnostic pop")				\
+								\
+	bpf_trace_vprintk(___fmt, sizeof(___fmt),		\
+			  ___param, sizeof(___param));		\
+})
+
+/* Use __bpf_printk when bpf_printk call has 3 or fewer fmt args
+ * Otherwise use __bpf_vprintk
+ */
+#define ___bpf_pick_printk(...) \
+	___bpf_nth(_, ##__VA_ARGS__, __bpf_vprintk, __bpf_vprintk, __bpf_vprintk,	\
+		   __bpf_vprintk, __bpf_vprintk, __bpf_vprintk, __bpf_vprintk,		\
+		   __bpf_vprintk, __bpf_vprintk, __bpf_printk /*3*/, __bpf_printk /*2*/,\
+		   __bpf_printk /*1*/, __bpf_printk /*0*/)
+
+/* Helper macro to print out debug messages */
+#define bpf_printk(fmt, args...) ___bpf_pick_printk(args)(fmt, ##args)
 
 #endif

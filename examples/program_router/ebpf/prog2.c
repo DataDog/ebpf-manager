@@ -1,5 +1,4 @@
-#include "../../include/all.h"
-
+#include "all.h"
 #include <uapi/linux/pkt_cls.h>
 
 SEC("classifier/three")
