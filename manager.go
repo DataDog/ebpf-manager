@@ -725,6 +725,42 @@ func (m *Manager) Start() error {
 	return nil
 }
 
+func (m *Manager) Pause() error {
+	m.stateLock.RLock()
+	defer m.stateLock.RUnlock()
+	if m.state == paused {
+		return nil
+	}
+	if m.state <= initialized {
+		return ErrManagerNotStarted
+	}
+	for _, probe := range m.Probes {
+		if err := probe.Pause(); err != nil {
+			return err
+		}
+	}
+	m.state = paused
+	return nil
+}
+
+func (m *Manager) Resume() error {
+	m.stateLock.RLock()
+	defer m.stateLock.RUnlock()
+	if m.state == running {
+		return nil
+	}
+	if m.state <= initialized {
+		return ErrManagerNotStarted
+	}
+	for _, probe := range m.Probes {
+		if err := probe.Resume(); err != nil {
+			return err
+		}
+	}
+	m.state = running
+	return nil
+}
+
 // Stop - Detach all eBPF programs and stop perf ring readers. The cleanup parameter defines which maps should be closed.
 // See MapCleanupType for mode.
 func (m *Manager) Stop(cleanup MapCleanupType) error {
