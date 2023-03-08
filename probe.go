@@ -625,6 +625,14 @@ func (p *Probe) Attach() error {
 	}, retry.Attempts(p.getRetryAttemptCount()), retry.Delay(p.ProbeRetryDelay), retry.LastErrorOnly(true))
 }
 
+func (p *Probe) Pause() error {
+	return p.pause()
+}
+
+func (p *Probe) Resume() error {
+	return p.resume()
+}
+
 // attach - Thread unsafe version of attach
 func (p *Probe) attach() error {
 	p.stateLock.Lock()
@@ -691,6 +699,60 @@ func (p *Probe) cleanupProgramSpec() {
 		return
 	}
 	cleanupProgramSpec(p.programSpec)
+}
+
+func (p *Probe) pause() error {
+	p.stateLock.Lock()
+	defer p.stateLock.Unlock()
+	if p.state <= paused || !p.Enabled {
+		return nil
+	}
+
+	var err error
+	switch p.programSpec.Type {
+	case ebpf.Kprobe:
+		err = p.pauseKprobe()
+	case ebpf.SocketFilter:
+		err = p.detachSocket()
+	case ebpf.TracePoint:
+		err = p.pauseTracepoint()
+	default:
+		return fmt.Errorf("pause not supported for program type %s", p.programSpec.Type)
+	}
+	if err != nil {
+		p.lastError = err
+		return fmt.Errorf("error pausing probe %s: %w", p.ProbeIdentificationPair, err)
+	}
+
+	p.state = paused
+	return nil
+}
+
+func (p *Probe) resume() error {
+	p.stateLock.Lock()
+	defer p.stateLock.Unlock()
+	if p.state != paused || !p.Enabled {
+		return nil
+	}
+
+	var err error
+	switch p.programSpec.Type {
+	case ebpf.Kprobe:
+		err = p.resumeKprobe()
+	case ebpf.SocketFilter:
+		err = p.attachSocket()
+	case ebpf.TracePoint:
+		err = p.resumeTracepoint()
+	default:
+		return fmt.Errorf("resume not supported for program type %s", p.programSpec.Type)
+	}
+	if err != nil {
+		p.lastError = err
+		return fmt.Errorf("error resuming probe %s: %w", p.ProbeIdentificationPair, err)
+	}
+
+	p.state = running
+	return nil
 }
 
 // Detach - Detaches the probe from its hook point depending on the program type and the provided parameters. This
@@ -904,7 +966,10 @@ func (p *Probe) attachKprobe() error {
 	}
 
 	// enable perf event
-	if err = ioctlPerfEventEnable(p.perfEventFD, p.program.FD()); err != nil {
+	if err = ioctlPerfEventSetBPF(p.perfEventFD, p.program.FD()); err != nil {
+		return fmt.Errorf("couldn't set perf event bpf %s: %w", p.ProbeIdentificationPair, err)
+	}
+	if err = ioctlPerfEventEnable(p.perfEventFD); err != nil {
 		return fmt.Errorf("couldn't enable perf event %s: %w", p.ProbeIdentificationPair, err)
 	}
 	return nil
@@ -925,6 +990,14 @@ func (p *Probe) detachKprobe() error {
 
 	// Write kprobe_events line to remove hook point
 	return unregisterKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, p.attachPID)
+}
+
+func (p *Probe) pauseKprobe() error {
+	return ioctlPerfEventDisable(p.perfEventFD)
+}
+
+func (p *Probe) resumeKprobe() error {
+	return ioctlPerfEventEnable(p.perfEventFD)
 }
 
 // attachTracepoint - Attaches the probe to its tracepoint
@@ -950,10 +1023,21 @@ func (p *Probe) attachTracepoint() error {
 	if err != nil {
 		return fmt.Errorf("couldn't enable tracepoint %s: %w", p.ProbeIdentificationPair, err)
 	}
-	if ioctlPerfEventEnable(p.perfEventFD, p.program.FD()) != nil {
+	if err = ioctlPerfEventSetBPF(p.perfEventFD, p.program.FD()); err != nil {
+		return fmt.Errorf("couldn't set perf event bpf %s: %w", p.ProbeIdentificationPair, err)
+	}
+	if err = ioctlPerfEventEnable(p.perfEventFD); err != nil {
 		return fmt.Errorf("couldn't enable perf event %s: %w", p.ProbeIdentificationPair, err)
 	}
 	return nil
+}
+
+func (p *Probe) pauseTracepoint() error {
+	return ioctlPerfEventDisable(p.perfEventFD)
+}
+
+func (p *Probe) resumeTracepoint() error {
+	return ioctlPerfEventEnable(p.perfEventFD)
 }
 
 // attachUprobe - Attaches the probe to its Uprobe
@@ -1009,7 +1093,10 @@ func (p *Probe) attachUprobe() error {
 	}
 
 	// enable perf event
-	if err = ioctlPerfEventEnable(p.perfEventFD, p.program.FD()); err != nil {
+	if err = ioctlPerfEventSetBPF(p.perfEventFD, p.program.FD()); err != nil {
+		return fmt.Errorf("couldn't set perf event bpf %s: %w", p.ProbeIdentificationPair, err)
+	}
+	if err = ioctlPerfEventEnable(p.perfEventFD); err != nil {
 		return fmt.Errorf("couldn't enable perf event %s: %w", p.ProbeIdentificationPair, err)
 	}
 	return nil
@@ -1443,7 +1530,10 @@ func (p *Probe) attachPerfEvent() error {
 		}
 		p.perfEventCPUFDs = append(p.perfEventCPUFDs, fd)
 
-		if err = ioctlPerfEventEnable(fd, p.program.FD()); err != nil {
+		if err = ioctlPerfEventSetBPF(p.perfEventFD, p.program.FD()); err != nil {
+			return fmt.Errorf("couldn't set perf event bpf %s: %w", p.ProbeIdentificationPair, err)
+		}
+		if err = ioctlPerfEventEnable(fd); err != nil {
 			return fmt.Errorf("couldn't enable perf event %s for pid %d and CPU %d: %w", p.ProbeIdentificationPair, pid, cpu, err)
 		}
 	}
