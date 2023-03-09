@@ -5,7 +5,6 @@ import (
 	"debug/elf"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,6 +17,8 @@ import (
 
 	"github.com/cilium/ebpf"
 	"golang.org/x/sys/unix"
+
+	"github.com/DataDog/ebpf-manager/tracefs"
 )
 
 type state uint
@@ -61,10 +62,7 @@ func FindFilterFunction(funcName string) (string, error) {
 
 	// Cache available filter functions if necessary
 	if len(availableFilterFunctions) == 0 {
-		funcs, err := os.ReadFile("/sys/kernel/tracing/available_filter_functions")
-		if err == fs.ErrNotExist {
-			funcs, err = os.ReadFile("/sys/kernel/debug/tracing/available_filter_functions")
-		}
+		funcs, err := tracefs.ReadFile("available_filter_functions")
 		if err != nil {
 			return "", err
 		}
@@ -226,10 +224,7 @@ func getKernelGeneratedEventName(probeType, funcName string) string {
 
 // readKprobeEvents - Returns the content of kprobe_events
 func readKprobeEvents() (string, error) {
-	kprobeEvents, err := os.ReadFile("/sys/kernel/tracing/kprobe_events")
-	if err == fs.ErrNotExist {
-		kprobeEvents, err = os.ReadFile("/sys/kernel/debug/tracing/kprobe_events")
-	}
+	kprobeEvents, err := tracefs.ReadFile("kprobe_events")
 	if err != nil {
 		return "", err
 	}
@@ -246,12 +241,7 @@ func registerKprobeEvent(probeType, funcName, UID, maxActiveStr string, kprobeAt
 	}
 
 	// Write line to kprobe_events
-	tracefsPath := "/sys/kernel/tracing"
-	f, err := os.OpenFile(filepath.Join(tracefsPath, "kprobe_events"), os.O_APPEND|os.O_WRONLY, 0666)
-	if err == fs.ErrNotExist {
-		tracefsPath = "/sys/kernel/debug/tracing"
-		f, err = os.OpenFile(filepath.Join(tracefsPath, "kprobe_events"), os.O_APPEND|os.O_WRONLY, 0666)
-	}
+	f, err := tracefs.OpenFile("kprobe_events", os.O_APPEND|os.O_WRONLY, 0666)
 	if err != nil {
 		return -1, fmt.Errorf("cannot open kprobe_events: %w", err)
 	}
@@ -262,8 +252,8 @@ func registerKprobeEvent(probeType, funcName, UID, maxActiveStr string, kprobeAt
 	}
 
 	// Retrieve kprobe ID
-	kprobeIDFile := fmt.Sprintf(filepath.Join(tracefsPath, "events/kprobes/%s/id"), eventName)
-	kprobeIDBytes, err := os.ReadFile(kprobeIDFile)
+	kprobeIDFile := fmt.Sprintf("events/kprobes/%s/id", eventName)
+	kprobeIDBytes, err := tracefs.ReadFile(kprobeIDFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return -1, ErrKprobeIDNotExist
@@ -290,10 +280,7 @@ func unregisterKprobeEvent(probeType, funcName, UID string, kprobeAttachPID int)
 
 func unregisterKprobeEventWithEventName(eventName string) error {
 	// Write line to kprobe_events
-	f, err := os.OpenFile("/sys/kernel/tracing/kprobe_events", os.O_APPEND|os.O_WRONLY, 0)
-	if err == fs.ErrNotExist {
-		f, err = os.OpenFile("/sys/kernel/debug/tracing/kprobe_events", os.O_APPEND|os.O_WRONLY, 0)
-	}
+	f, err := tracefs.OpenFile("kprobe_events", os.O_APPEND|os.O_WRONLY, 0)
 	if err != nil {
 		return fmt.Errorf("cannot open kprobe_events: %w", err)
 	}
@@ -315,10 +302,7 @@ func unregisterKprobeEventWithEventName(eventName string) error {
 
 // readUprobeEvents - Returns the content of uprobe_events
 func readUprobeEvents() (string, error) {
-	uprobeEvents, err := os.ReadFile("/sys/kernel/tracing/uprobe_events")
-	if err == fs.ErrNotExist {
-		uprobeEvents, err = os.ReadFile("/sys/kernel/debug/tracing/uprobe_events")
-	}
+	uprobeEvents, err := tracefs.ReadFile("uprobe_events")
 	if err != nil {
 		return "", err
 	}
@@ -336,12 +320,7 @@ func registerUprobeEvent(probeType string, funcName, path, UID string, uprobeAtt
 
 	// Write line to uprobe_events, only eventName is tested to max MAX_EVENT_NAME_LEN (linux/kernel/trace/trace.h)
 
-	tracefsPath := "/sys/kernel/tracing"
-	f, err := os.OpenFile(filepath.Join(tracefsPath, "uprobe_events"), os.O_APPEND|os.O_WRONLY, 0666)
-	if err == fs.ErrNotExist {
-		tracefsPath = "/sys/kernel/debug/tracing"
-		f, err = os.OpenFile(filepath.Join(tracefsPath, "uprobe_events"), os.O_APPEND|os.O_WRONLY, 0666)
-	}
+	f, err := tracefs.OpenFile("uprobe_events", os.O_APPEND|os.O_WRONLY, 0666)
 	if err != nil {
 		return -1, fmt.Errorf("cannot open uprobe_events: %w", err)
 	}
@@ -354,8 +333,8 @@ func registerUprobeEvent(probeType string, funcName, path, UID string, uprobeAtt
 	}
 
 	// Retrieve Uprobe ID
-	uprobeIDFile := fmt.Sprintf("%s/events/uprobes/%s/id", tracefsPath, eventName)
-	uprobeIDBytes, err := os.ReadFile(uprobeIDFile)
+	uprobeIDFile := fmt.Sprintf("events/uprobes/%s/id", eventName)
+	uprobeIDBytes, err := tracefs.ReadFile(uprobeIDFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return -1, ErrUprobeIDNotExist
@@ -382,10 +361,7 @@ func unregisterUprobeEvent(probeType string, funcName string, UID string, uprobe
 
 func unregisterUprobeEventWithEventName(eventName string) error {
 	// Write uprobe_events line
-	f, err := os.OpenFile("/sys/kernel/tracing/uprobe_events", os.O_APPEND|os.O_WRONLY, 0)
-	if err == fs.ErrNotExist {
-		f, err = os.OpenFile("/sys/kernel/debug/tracing/uprobe_events", os.O_APPEND|os.O_WRONLY, 0)
-	}
+	f, err := tracefs.OpenFile("uprobe_events", os.O_APPEND|os.O_WRONLY, 0)
 	if err != nil {
 		return fmt.Errorf("cannot open uprobe_events: %w", err)
 	}
@@ -469,12 +445,8 @@ func findSymbolOffsets(path string, pattern *regexp.Regexp) ([]elf.Symbol, error
 
 // GetTracepointID - Returns a tracepoint ID from its category and name
 func GetTracepointID(category, name string) (int, error) {
-	tracepointIDFile := fmt.Sprintf("/sys/kernel/tracing/events/%s/%s/id", category, name)
-	tracepointIDBytes, err := os.ReadFile(tracepointIDFile)
-	if err == fs.ErrNotExist {
-		tracepointIDFile = fmt.Sprintf("/sys/kernel/debug/tracing/events/%s/%s/id", category, name)
-		tracepointIDBytes, err = os.ReadFile(tracepointIDFile)
-	}
+	tracepointIDFile := fmt.Sprintf("events/%s/%s/id", category, name)
+	tracepointIDBytes, err := tracefs.ReadFile(tracepointIDFile)
 	if err != nil {
 		return -1, fmt.Errorf("cannot read tracepoint id %q: %w", tracepointIDFile, err)
 	}
