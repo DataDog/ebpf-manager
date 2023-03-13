@@ -37,16 +37,16 @@ func getRoot() (string, error) {
 		}
 		var debugError error
 		if debugError = unix.Statfs(debugFSRoot, &statfs); debugError == nil {
-			if statfs.Type == unix.TRACEFS_MAGIC {
+			if statfs.Type == unix.TRACEFS_MAGIC || statfs.Type == unix.DEBUGFS_MAGIC {
 				tracingRoot.path = debugFSRoot
 				return
 			}
-			debugError = fmt.Errorf("%s is not mounted with tracefs filesystem type", debugFSRoot)
+			debugError = fmt.Errorf("%s is not mounted with tracefs or debugfs filesystem type", debugFSRoot)
 		}
 
 		bestError := fmt.Errorf("tracefs: %s", traceError)
 		// only fallback to debugfs error if tracefs doesn't exist at all and debugfs does
-		if errors.Is(traceError, syscall.ENOTDIR) && !errors.Is(debugError, syscall.ENOTDIR) {
+		if errors.Is(traceError, syscall.ENOENT) && !errors.Is(debugError, syscall.ENOENT) {
 			bestError = fmt.Errorf("debugfs: %s", debugError)
 		}
 		tracingRoot.err = fmt.Errorf("tracefs or debugfs is not available: %s", bestError)
