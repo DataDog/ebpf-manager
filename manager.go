@@ -726,8 +726,8 @@ func (m *Manager) Start() error {
 }
 
 func (m *Manager) Pause() error {
-	m.stateLock.RLock()
-	defer m.stateLock.RUnlock()
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
 	if m.state == paused {
 		return nil
 	}
@@ -744,8 +744,8 @@ func (m *Manager) Pause() error {
 }
 
 func (m *Manager) Resume() error {
-	m.stateLock.RLock()
-	defer m.stateLock.RUnlock()
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
 	if m.state == running {
 		return nil
 	}
@@ -764,8 +764,8 @@ func (m *Manager) Resume() error {
 // Stop - Detach all eBPF programs and stop perf ring readers. The cleanup parameter defines which maps should be closed.
 // See MapCleanupType for mode.
 func (m *Manager) Stop(cleanup MapCleanupType) error {
-	m.stateLock.RLock()
-	defer m.stateLock.RUnlock()
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
 	if m.state < initialized {
 		return ErrManagerNotInitialized
 	}
