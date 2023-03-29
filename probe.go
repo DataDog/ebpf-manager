@@ -362,14 +362,14 @@ func (p *Probe) GetLastError() error {
 	return p.lastError
 }
 
-// IsRunning - Returns true if the probe was successfully initialized, started and is currently running.
+// IsRunning - Returns true if the probe was successfully initialized, started and is currently running or paused.
 func (p *Probe) IsRunning() bool {
 	p.stateLock.RLock()
 	defer p.stateLock.RUnlock()
-	return p.state == running
+	return p.state == running || p.state == paused
 }
 
-// IsInitialized - Returns true if the probe was successfully initialized, started and is currently running.
+// IsInitialized - Returns true if the probe was successfully initialized.
 func (p *Probe) IsInitialized() bool {
 	p.stateLock.RLock()
 	defer p.stateLock.RUnlock()
@@ -380,7 +380,7 @@ func (p *Probe) IsInitialized() bool {
 func (p *Probe) RenameProbeIdentificationPair(newID ProbeIdentificationPair) error {
 	p.stateLock.Lock()
 	defer p.stateLock.Unlock()
-	if p.state >= running {
+	if p.state >= paused {
 		return fmt.Errorf("couldn't rename ProbeIdentificationPair of %s with %s: %w", p.ProbeIdentificationPair, newID, ErrProbeRunning)
 	}
 	p.UID = newID.UID
@@ -637,7 +637,7 @@ func (p *Probe) Resume() error {
 func (p *Probe) attach() error {
 	p.stateLock.Lock()
 	defer p.stateLock.Unlock()
-	if p.state >= running || !p.Enabled {
+	if p.state >= paused || !p.Enabled {
 		return nil
 	}
 	if p.state < initialized {
@@ -760,7 +760,7 @@ func (p *Probe) resume() error {
 func (p *Probe) Detach() error {
 	p.stateLock.Lock()
 	defer p.stateLock.Unlock()
-	if p.state < running || !p.Enabled {
+	if p.state < paused || !p.Enabled {
 		return nil
 	}
 
@@ -829,7 +829,7 @@ func (p *Probe) detach() error {
 func (p *Probe) Stop() error {
 	p.stateLock.Lock()
 	defer p.stateLock.Unlock()
-	if p.state < running || !p.Enabled {
+	if p.state < paused || !p.Enabled {
 		p.reset()
 		return nil
 	}
@@ -1276,7 +1276,7 @@ func (p *Probe) attachTCCLS() error {
 func (p *Probe) IsTCFilterActive() bool {
 	p.stateLock.Lock()
 	defer p.stateLock.Unlock()
-	if p.state != running || !p.Enabled {
+	if p.state < paused || !p.Enabled {
 		return false
 	}
 	if p.programSpec.Type != ebpf.SchedCLS {
