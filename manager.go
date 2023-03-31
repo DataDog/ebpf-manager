@@ -336,6 +336,16 @@ func (m *Manager) GetMap(name string) (*ebpf.Map, bool, error) {
 	return m.getMap(name)
 }
 
+// GetMaps - Return the list of eBPF maps in the manager
+func (m *Manager) GetMaps() (map[string]*ebpf.Map, error) {
+	m.stateLock.RLock()
+	defer m.stateLock.RUnlock()
+	if m.collection == nil || m.state < initialized {
+		return nil, ErrManagerNotInitialized
+	}
+	return m.collection.Maps, nil
+}
+
 // getMapSpec - Thread unsafe version of GetMapSpec
 func (m *Manager) getMapSpec(name string) (*ebpf.MapSpec, bool, error) {
 	eBPFMap, ok := m.collectionSpec.Maps[name]
