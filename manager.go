@@ -13,6 +13,7 @@ import (
 
 	"github.com/DataDog/gopsutil/process"
 	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/btf"
 	"github.com/hashicorp/go-multierror"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
@@ -96,6 +97,7 @@ const (
 	EditType       MapSpecEditorFlag = 1 << 1
 	EditMaxEntries MapSpecEditorFlag = 1 << 2
 	EditFlags      MapSpecEditorFlag = 1 << 3
+	EditKeyValue   MapSpecEditorFlag = 1 << 4
 )
 
 // MapSpecEditor - A MapSpec editor defines how specific parameters of specific maps should be updated at runtime
@@ -109,6 +111,14 @@ type MapSpecEditor struct {
 	MaxEntries uint32
 	// Flags - Flags provided to the kernel during the loading process.
 	Flags uint32
+	// KeySize - Defines the key size of the map
+	KeySize uint32
+	// Key - Defines the BTF type of the keys of the map
+	Key btf.Type
+	// ValueSize - Defines the value size of the map
+	ValueSize uint32
+	// Value - Defines the BTF type of the values of the map
+	Value btf.Type
 	// EditorFlag - Use this flag to specify what fields should be updated. See MapSpecEditorFlag.
 	EditorFlag MapSpecEditorFlag
 }
@@ -1590,6 +1600,12 @@ func (m *Manager) editMapSpecs() error {
 		}
 		if EditFlags&mapEditor.EditorFlag == EditFlags {
 			spec.Flags = mapEditor.Flags
+		}
+		if EditKeyValue&mapEditor.EditorFlag == EditKeyValue {
+			spec.Key = mapEditor.Key
+			spec.KeySize = mapEditor.KeySize
+			spec.Value = mapEditor.Value
+			spec.ValueSize = mapEditor.ValueSize
 		}
 	}
 	return nil
