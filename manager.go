@@ -1592,6 +1592,15 @@ func (m *Manager) editMapSpecs() error {
 			spec.Flags = mapEditor.Flags
 		}
 	}
+
+	events, ok, _ := m.GetMapSpec("events")
+	if ok {
+		fmt.Printf("%+v %+v %+v\n", events, events.Key, events.Value)
+	}
+	events2, ok, _ := m.GetMapSpec("events_ringbuf")
+	if ok {
+		fmt.Printf("%+v %+v %+v\n", events2, events2.Key, events2.Value)
+	}
 	return nil
 }
 
