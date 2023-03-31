@@ -156,6 +156,10 @@ type Options struct {
 	// in their sections SEC("maps/[name]").
 	MapEditors map[string]*ebpf.Map
 
+	// MapEditorsIgnoreMissingMaps - If MapEditorsIgnoreMissingMaps is set to true, the map edition process will return an
+	// error if a map was missing in at least one program
+	MapEditorsIgnoreMissingMaps bool
+
 	// MapRouter - External map routing. See MapRoute for more.
 	MapRouter []MapRoute
 
@@ -1651,10 +1655,17 @@ func (m *Manager) rewriteMaps(program *ebpf.ProgramSpec, eBPFMaps map[string]*eb
 // editMaps - RewriteMaps replaces all references to specific maps.
 func (m *Manager) editMaps(maps map[string]*ebpf.Map) error {
 	// Rewrite maps
-	// ignore deprecated usage
-	//nolint:staticcheck
-	if err := m.collectionSpec.RewriteMaps(maps); err != nil {
-		return err
+	for name, toRewrite := range maps {
+		// ignore deprecated usage
+		//nolint:staticcheck
+		if err := m.collectionSpec.RewriteMaps(map[string]*ebpf.Map{name: toRewrite}); err != nil {
+			if m.options.MapEditorsIgnoreMissingMaps {
+				// make sure the map is removed from the collectionSpec
+				delete(m.collectionSpec.Maps, name)
+			} else {
+				return err
+			}
+		}
 	}
 
 	// The rewrite operation removed the original maps from the CollectionSpec and will therefore not appear in the
@@ -1685,7 +1696,7 @@ func (m *Manager) editMaps(maps map[string]*ebpf.Map) error {
 				found = true
 			}
 		}
-		if !found {
+		if !found && !m.options.MapEditorsIgnoreMissingMaps {
 			// Create a new entry
 			m.Maps = append(m.Maps, &Map{
 				array:       rwMap,
