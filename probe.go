@@ -625,12 +625,12 @@ func (p *Probe) Attach() error {
 	}, retry.Attempts(p.getRetryAttemptCount()), retry.Delay(p.ProbeRetryDelay), retry.LastErrorOnly(true))
 }
 
-func (p *Probe) Pause() error {
-	return p.pause()
+func (p *Probe) Disable() error {
+	return p.disable()
 }
 
-func (p *Probe) Resume() error {
-	return p.resume()
+func (p *Probe) Enable() error {
+	return p.enable()
 }
 
 // attach - Thread unsafe version of attach
@@ -701,7 +701,7 @@ func (p *Probe) cleanupProgramSpec() {
 	cleanupProgramSpec(p.programSpec)
 }
 
-func (p *Probe) pause() error {
+func (p *Probe) disable() error {
 	p.stateLock.Lock()
 	defer p.stateLock.Unlock()
 	if p.state <= paused || !p.Enabled {
@@ -728,7 +728,7 @@ func (p *Probe) pause() error {
 	return nil
 }
 
-func (p *Probe) resume() error {
+func (p *Probe) enable() error {
 	p.stateLock.Lock()
 	defer p.stateLock.Unlock()
 	if p.state != paused || !p.Enabled {

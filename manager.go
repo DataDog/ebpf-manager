@@ -759,7 +759,7 @@ func (m *Manager) Pause() error {
 		return ErrManagerNotStarted
 	}
 	for _, probe := range m.Probes {
-		if err := probe.Pause(); err != nil {
+		if err := probe.Disable(); err != nil {
 			return err
 		}
 	}
@@ -767,7 +767,7 @@ func (m *Manager) Pause() error {
 	return nil
 }
 
-func (m *Manager) Resume() error {
+func (m *Manager) Enable() error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
 	if m.state == running {
@@ -777,7 +777,7 @@ func (m *Manager) Resume() error {
 		return ErrManagerNotStarted
 	}
 	for _, probe := range m.Probes {
-		if err := probe.Resume(); err != nil {
+		if err := probe.Enable(); err != nil {
 			return err
 		}
 	}
