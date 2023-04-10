@@ -749,7 +749,7 @@ func (m *Manager) Start() error {
 	return nil
 }
 
-func (m *Manager) Pause() error {
+func (m *Manager) Disable() error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
 	if m.state == paused {
