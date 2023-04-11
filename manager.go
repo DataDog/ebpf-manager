@@ -347,7 +347,12 @@ func (m *Manager) GetMaps() (map[string]*ebpf.Map, error) {
 	if m.collection == nil || m.state < initialized {
 		return nil, ErrManagerNotInitialized
 	}
-	return m.collection.Maps, nil
+
+	output := make(map[string]*ebpf.Map, len(m.collection.Maps))
+	for section, m := range m.collection.Maps {
+		output[section] = m
+	}
+	return output, nil
 }
 
 // getMapSpec - Thread unsafe version of GetMapSpec
