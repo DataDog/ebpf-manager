@@ -27,6 +27,10 @@ type ProbeSelector struct {
 
 // GetProbesIdentificationPairList - Returns the list of probes that this selector activates
 func (ps *ProbeSelector) GetProbesIdentificationPairList() []ProbeIdentificationPair {
+	if ps == nil {
+		return nil
+	}
+
 	return []ProbeIdentificationPair{ps.ProbeIdentificationPair}
 }
 
