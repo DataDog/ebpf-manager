@@ -27,12 +27,20 @@ type ProbeSelector struct {
 
 // GetProbesIdentificationPairList - Returns the list of probes that this selector activates
 func (ps *ProbeSelector) GetProbesIdentificationPairList() []ProbeIdentificationPair {
+	if ps == nil {
+		return nil
+	}
+
 	return []ProbeIdentificationPair{ps.ProbeIdentificationPair}
 }
 
 // RunValidator - Ensures that the probes that were successfully activated follow the selector goal.
 // For example, see OneOf.
 func (ps *ProbeSelector) RunValidator(manager *Manager) error {
+	if ps == nil {
+		return nil
+	}
+
 	p, ok := manager.GetProbe(ps.ProbeIdentificationPair)
 	if !ok {
 		return fmt.Errorf("probe not found: %s", ps.ProbeIdentificationPair)
