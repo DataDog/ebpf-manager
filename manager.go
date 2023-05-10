@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
+	"golang.org/x/exp/slices"
 	"golang.org/x/sys/unix"
 )
 
@@ -590,6 +591,14 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	if err != nil {
 		m.stateLock.Unlock()
 		return err
+	}
+
+	for name, spec := range m.collectionSpec.Programs {
+		fmt.Printf("%s/%s attach to %s\n", name, spec.Name, spec.AttachTo)
+
+		if slices.Contains([]string{"fentry_get_envs_offset", "fentry_parse_args_envs_split", "fentry_parse_args_envs"}, spec.Name) {
+			spec.AttachType = ebpf.AttachNone
+		}
 	}
 
 	// Remove excluded sections
