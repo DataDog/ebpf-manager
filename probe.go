@@ -1014,11 +1014,17 @@ func (p *Probe) detachKprobe() error {
 }
 
 func (p *Probe) pauseKprobe() error {
-	return ioctlPerfEventDisable(p.perfEventFD)
+	if err := ioctlPerfEventDisable(p.perfEventFD); err != nil {
+		return fmt.Errorf("pause kprobe: %w", err)
+	}
+	return nil
 }
 
 func (p *Probe) resumeKprobe() error {
-	return ioctlPerfEventEnable(p.perfEventFD)
+	if err := ioctlPerfEventEnable(p.perfEventFD); err != nil {
+		return fmt.Errorf("resume kprobe: %w", err)
+	}
+	return nil
 }
 
 // attachTracepoint - Attaches the probe to its tracepoint
@@ -1054,11 +1060,17 @@ func (p *Probe) attachTracepoint() error {
 }
 
 func (p *Probe) pauseTracepoint() error {
-	return ioctlPerfEventDisable(p.perfEventFD)
+	if err := ioctlPerfEventDisable(p.perfEventFD); err != nil {
+		return fmt.Errorf("pause tracepoint: %w", err)
+	}
+	return nil
 }
 
 func (p *Probe) resumeTracepoint() error {
-	return ioctlPerfEventEnable(p.perfEventFD)
+	if err := ioctlPerfEventEnable(p.perfEventFD); err != nil {
+		return fmt.Errorf("resume tracepoint: %w", err)
+	}
+	return nil
 }
 
 // attachWithUprobeEvents attaches the uprobe using the uprobes_events ABI
