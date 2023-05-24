@@ -191,6 +191,9 @@ type Options struct {
 	// DefaultKprobeAttachMethod - Manager-level default value for the Kprobe attach method. Defaults to AttachKprobeWithPerfEventOpen if unset.
 	DefaultKprobeAttachMethod KprobeAttachMethod
 
+	// DefaultUprobeAttachMethod - Manager-level default value for the Uprobe attach method. Defaults to AttachWithPerfEventOpen if unset.
+	DefaultUprobeAttachMethod AttachMethod
+
 	// ProbeRetry - Defines the number of times that a probe will retry to attach / detach on error.
 	DefaultProbeRetry uint
 
