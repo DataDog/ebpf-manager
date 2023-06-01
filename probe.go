@@ -126,12 +126,20 @@ func (p *Probe) GetUprobeType() string {
 	return p.kprobeType
 }
 
-type KprobeAttachMethod uint32
+type AttachMethod uint32
 
 const (
-	AttachKprobeMethodNotSet KprobeAttachMethod = iota
-	AttachKprobeWithPerfEventOpen
-	AttachKprobeWithKprobeEvents
+	AttachMethodNotSet AttachMethod = iota
+	AttachWithPerfEventOpen
+	AttachWithProbeEvents
+)
+
+type KprobeAttachMethod = AttachMethod
+
+const (
+	AttachKprobeMethodNotSet      = AttachMethodNotSet
+	AttachKprobeWithPerfEventOpen = AttachWithPerfEventOpen
+	AttachKprobeWithKprobeEvents  = AttachWithProbeEvents
 )
 
 // Probe - Main eBPF probe wrapper. This structure is used to store the required data to attach a loaded eBPF
@@ -216,6 +224,9 @@ type Probe struct {
 
 	// KprobeAttachMethod - Method to use for attaching the kprobe. Either use perfEventOpen ABI or kprobe events
 	KprobeAttachMethod KprobeAttachMethod
+
+	// UprobeAttachMethod - Method to use for attaching the uprobe. Either use perfEventOpen ABI or uprobe events
+	UprobeAttachMethod AttachMethod
 
 	// UprobeOffset - If UprobeOffset is provided, the uprobe will be attached to it directly without looking for the
 	// symbol in the elf binary. If the file is a non-PIE executable, the provided address must be a virtual address,
@@ -559,6 +570,16 @@ func (p *Probe) internalInit(manager *Manager) error {
 		}
 		if p.KprobeAttachMethod == AttachKprobeMethodNotSet {
 			p.KprobeAttachMethod = AttachKprobeWithPerfEventOpen
+		}
+	}
+
+	// set default uprobe attach method
+	if p.UprobeAttachMethod == AttachMethodNotSet {
+		if manager != nil {
+			p.UprobeAttachMethod = manager.options.DefaultUprobeAttachMethod
+		}
+		if p.UprobeAttachMethod == AttachMethodNotSet {
+			p.UprobeAttachMethod = AttachWithPerfEventOpen
 		}
 	}
 
@@ -1040,6 +1061,24 @@ func (p *Probe) resumeTracepoint() error {
 	return ioctlPerfEventEnable(p.perfEventFD)
 }
 
+// attachWithUprobeEvents attaches the uprobe using the uprobes_events ABI
+func (p *Probe) attachWithUprobeEvents() error {
+	// fallback to debugfs
+	var uprobeID int
+	uprobeID, err := registerUprobeEvent(p.GetUprobeType(), p.HookFuncName, p.BinaryPath, p.UID, p.attachPID, p.UprobeOffset)
+	if err != nil {
+		return fmt.Errorf("couldn't enable uprobe %s: %w", p.ProbeIdentificationPair, err)
+	}
+
+	// Activate perf event
+	p.perfEventFD, err = perfEventOpenTracingEvent(uprobeID, p.PerfEventPID)
+	if err != nil {
+		return fmt.Errorf("couldn't open perf event fd for %s: %w", p.ProbeIdentificationPair, err)
+	}
+	p.attachedWithDebugFS = true
+	return nil
+}
+
 // attachUprobe - Attaches the probe to its Uprobe
 func (p *Probe) attachUprobe() error {
 	var err error
@@ -1074,22 +1113,21 @@ func (p *Probe) attachUprobe() error {
 		p.HookFuncName = offsets[0].Name
 	}
 
-	// Try to use the perf_event_open API first (e12f03d "perf/core: Implement the 'perf_kprobe' PMU")
-	p.perfEventFD, err = perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffset), p.PerfEventPID, "uprobe", p.GetUprobeType() == "r", 0)
-	if err != nil {
-		// fallback to debugfs
-		var uprobeID int
-		uprobeID, err = registerUprobeEvent(p.GetUprobeType(), p.HookFuncName, p.BinaryPath, p.UID, p.attachPID, p.UprobeOffset)
-		if err != nil {
-			return fmt.Errorf("couldn't enable uprobe %s: %w", p.ProbeIdentificationPair, err)
+	isURetProbe := p.GetUprobeType() == "r"
+	if p.UprobeAttachMethod == AttachWithPerfEventOpen {
+		if p.perfEventFD, err = perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffset), p.PerfEventPID, "uprobe", isURetProbe, 0); err != nil {
+			if err = p.attachWithUprobeEvents(); err != nil {
+				return err
+			}
 		}
-
-		// Activate perf event
-		p.perfEventFD, err = perfEventOpenTracingEvent(uprobeID, p.PerfEventPID)
-		if err != nil {
-			return fmt.Errorf("couldn't enable uprobe %s: %w", p.ProbeIdentificationPair, err)
+	} else if p.UprobeAttachMethod == AttachWithProbeEvents {
+		if err = p.attachWithUprobeEvents(); err != nil {
+			if p.perfEventFD, err = perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffset), p.PerfEventPID, "uprobe", isURetProbe, 0); err != nil {
+				return err
+			}
 		}
-		p.attachedWithDebugFS = true
+	} else {
+		return fmt.Errorf("Invalid uprobe attach method: %d\n", p.UprobeAttachMethod)
 	}
 
 	// enable perf event
