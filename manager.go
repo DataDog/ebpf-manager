@@ -138,6 +138,9 @@ type Options struct {
 	// deactivated.
 	ExcludedFunctions []string
 
+	// ExcludedMaps - A list of maps that should not be created.
+	ExcludedMaps []string
+
 	// ConstantsEditor - Post-compilation constant edition. See ConstantEditor for more.
 	ConstantEditors []ConstantEditor
 
@@ -595,9 +598,12 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 		return err
 	}
 
-	// Remove excluded sections
+	// Remove excluded programs
 	for _, excludedFuncName := range m.options.ExcludedFunctions {
 		delete(m.collectionSpec.Programs, excludedFuncName)
+	}
+	for _, excludeMapName := range m.options.ExcludedMaps {
+		delete(m.collectionSpec.Maps, excludeMapName)
 	}
 
 	// Match Maps and program specs
