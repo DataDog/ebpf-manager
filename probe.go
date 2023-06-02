@@ -1036,7 +1036,7 @@ func (p *Probe) attachTracepoint() error {
 	// Get the ID of the tracepoint to activate
 	tracepointID, err := GetTracepointID(p.TracepointCategory, p.TracepointName)
 	if err != nil {
-		return fmt.Errorf("couldn's activate tracepoint %s: %w", p.ProbeIdentificationPair, err)
+		return fmt.Errorf("couldn't activate tracepoint %s: %w", p.ProbeIdentificationPair, err)
 	}
 
 	// Hook the eBPF program to the tracepoint
