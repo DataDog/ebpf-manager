@@ -30,9 +30,9 @@ const (
 	CleanExternalPinned          MapCleanupType = 1 << 3
 	CleanExternalPinnedAndEdited MapCleanupType = 1 << 4
 	CleanExternalEdited          MapCleanupType = 1 << 5
-	CleanInternal                MapCleanupType = CleanInternalPinned | CleanInternalNotPinned
-	CleanExternal                MapCleanupType = CleanExternalPinned | CleanExternalPinnedAndEdited | CleanExternalEdited
-	CleanAll                     MapCleanupType = CleanInternal | CleanExternal
+	CleanInternal                               = CleanInternalPinned | CleanInternalNotPinned
+	CleanExternal                               = CleanExternalPinned | CleanExternalPinnedAndEdited | CleanExternalEdited
+	CleanAll                                    = CleanInternal | CleanExternal
 )
 
 // MapOptions - Generic Map options that are not shared with the MapSpec definition

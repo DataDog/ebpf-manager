@@ -179,7 +179,7 @@ func (be *BestEffort) GetProbesIdentificationPairList() []ProbeIdentificationPai
 
 // RunValidator - Ensures that the probes that were successfully activated follow the selector goal.
 // For example, see OneOf.
-func (be *BestEffort) RunValidator(manager *Manager) error {
+func (be *BestEffort) RunValidator(_ *Manager) error {
 	return nil
 }
 

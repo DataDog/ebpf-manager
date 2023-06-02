@@ -32,11 +32,11 @@ const (
 	XdpAttachModeNone XdpAttachMode = 0
 	// XdpAttachModeSkb is "generic", kernel mode, less performant comparing to native,
 	// but does not requires driver support.
-	XdpAttachModeSkb XdpAttachMode = (1 << 1)
+	XdpAttachModeSkb XdpAttachMode = 1 << 1
 	// XdpAttachModeDrv is native, driver mode (support from driver side required)
-	XdpAttachModeDrv XdpAttachMode = (1 << 2)
+	XdpAttachModeDrv XdpAttachMode = 1 << 2
 	// XdpAttachModeHw suitable for NICs with hardware XDP support
-	XdpAttachModeHw XdpAttachMode = (1 << 3)
+	XdpAttachModeHw XdpAttachMode = 1 << 3
 	// DefaultTCFilterPriority is the default TC filter priority if none were given
 	DefaultTCFilterPriority = 50
 )
@@ -63,7 +63,7 @@ const (
 	RetProbeType     = "r"
 )
 
-var (
+const (
 	BpfFlagActDirect = uint32(1) // see TCA_BPF_FLAG_ACT_DIRECT
 )
 
