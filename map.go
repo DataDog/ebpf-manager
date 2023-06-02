@@ -12,7 +12,7 @@ import (
 //
 // We call "external" a map that wasn't loaded by the current manager. Those maps can end up being used by the
 // current manager through 2 different ways: either because they were pinned or because they were edited into the
-// programs of the manager before they were loaded. However those maps might still be used by other managers out there,
+// programs of the manager before they were loaded. However, those maps might still be used by other managers out there,
 // even after the current one closes.
 //
 // A map can only be in one of the following categories
@@ -41,7 +41,7 @@ type MapOptions struct {
 	// already present in the kernel, then it will be loaded from this path.
 	PinPath string
 
-	// AlwaysCleanup - Overrides the clean up type given to the manager. See CleanupType for more.
+	// AlwaysCleanup - Overrides the cleanup type given to the manager. See CleanupType for more.
 	AlwaysCleanup bool
 }
 

@@ -163,7 +163,7 @@ func (ao *AllOf) EditProbeIdentificationPair(old ProbeIdentificationPair, new Pr
 	}
 }
 
-// BestEffort - This selector is used to load probes in best effort mode
+// BestEffort - This selector is used to load probes in the best effort mode
 type BestEffort struct {
 	Selectors []ProbesSelector
 }

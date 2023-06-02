@@ -8,11 +8,11 @@ import (
 
 func demoClone() error {
 	logrus.Println("CLONE DEMO")
-	// Clone kprobe/vfs_open program, edit its constant and load a new probe. This will essentially create a new program
-	// and you should see a new line in /sys/kernel/debug/tracing/kprobe_events.
+	// Clone kprobe/vfs_open program, edit its constant and load a new probe.
+	// This will essentially create a new program, and you should see a new line in /sys/kernel/debug/tracing/kprobe_events.
 	newProbe := manager.Probe{
 		ProbeIdentificationPair: manager.ProbeIdentificationPair{
-			UID:          "MySeconHook",
+			UID:          "MySecondHook",
 			EBPFFuncName: "kprobe_vfs_mkdir",
 		},
 	}

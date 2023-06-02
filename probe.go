@@ -25,9 +25,9 @@ import (
 type XdpAttachMode int
 
 const (
-	// XdpAttachModeNone stands for "best effort" - kernel automatically
-	// selects best mode (would try Drv first, then fallback to Generic).
-	// NOTE: Kernel will not fallback to Generic XDP if NIC driver failed
+	// XdpAttachModeNone stands for "best effort" - the kernel automatically
+	// selects the best mode (would try Drv first, then fallback to Generic).
+	// NOTE: Kernel will not fall back to Generic XDP if NIC driver failed
 	//       to install XDP program.
 	XdpAttachModeNone XdpAttachMode = 0
 	// XdpAttachModeSkb is "generic", kernel mode, less performant comparing to native,
@@ -287,7 +287,7 @@ type Probe struct {
 	// TCFilterPrio - (TC classifier) defines the priority of the classifier added to the clsact qdisc. Defaults to DefaultTCFilterPriority.
 	TCFilterPrio uint16
 
-	// TCCleanupQDisc - (TC classifier) defines if the manager should cleanup the clsact qdisc when a probe is unloaded
+	// TCCleanupQDisc - (TC classifier) defines if the manager should clean up the clsact qdisc when a probe is unloaded
 	TCCleanupQDisc bool
 
 	// TCFilterProtocol - (TC classifier) defines the protocol to match in order to trigger the classifier. Defaults to
@@ -1351,7 +1351,7 @@ func (p *Probe) IsTCFilterActive() bool {
 	}
 
 	// This TC filter is no longer active, the interface has been deleted or the filter was replaced by a third party.
-	// Regardless of the reason, we do not hold the current Handle on this filter, remove it so we make sure we won't
+	// Regardless of the reason, we do not hold the current Handle on this filter, remove it, so we make sure we won't
 	// delete something that we do not own.
 	p.tcFilter.Handle = 0
 	return false
