@@ -12,7 +12,7 @@ import (
 //
 // We call "external" a map that wasn't loaded by the current manager. Those maps can end up being used by the
 // current manager through 2 different ways: either because they were pinned or because they were edited into the
-// programs of the manager before they were loaded. However those maps might still be used by other managers out there,
+// programs of the manager before they were loaded. However, those maps might still be used by other managers out there,
 // even after the current one closes.
 //
 // A map can only be in one of the following categories
@@ -30,9 +30,9 @@ const (
 	CleanExternalPinned          MapCleanupType = 1 << 3
 	CleanExternalPinnedAndEdited MapCleanupType = 1 << 4
 	CleanExternalEdited          MapCleanupType = 1 << 5
-	CleanInternal                MapCleanupType = CleanInternalPinned | CleanInternalNotPinned
-	CleanExternal                MapCleanupType = CleanExternalPinned | CleanExternalPinnedAndEdited | CleanExternalEdited
-	CleanAll                     MapCleanupType = CleanInternal | CleanExternal
+	CleanInternal                               = CleanInternalPinned | CleanInternalNotPinned
+	CleanExternal                               = CleanExternalPinned | CleanExternalPinnedAndEdited | CleanExternalEdited
+	CleanAll                                    = CleanInternal | CleanExternal
 )
 
 // MapOptions - Generic Map options that are not shared with the MapSpec definition
@@ -41,7 +41,7 @@ type MapOptions struct {
 	// already present in the kernel, then it will be loaded from this path.
 	PinPath string
 
-	// AlwaysCleanup - Overrides the clean up type given to the manager. See CleanupType for more.
+	// AlwaysCleanup - Overrides the cleanup type given to the manager. See CleanupType for more.
 	AlwaysCleanup bool
 }
 

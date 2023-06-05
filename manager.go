@@ -86,7 +86,7 @@ type InnerOuterMapSpec struct {
 	// section SEC("maps/[OuterMapName]")
 	OuterMapName string
 
-	// InnerMapName - Name of the inner map of the provided outer map, as defined in its section section SEC("maps/[InnerMapName]")
+	// InnerMapName - Name of the inner map of the provided outer map, as defined in its section SEC("maps/[InnerMapName]")
 	InnerMapName string
 }
 
@@ -154,7 +154,7 @@ type Options struct {
 	// MapEditors - External map editor. The provided eBPF maps will overwrite the maps of the Manager if their names
 	// match.
 	// This is particularly useful to share maps across Managers (and therefore across isolated eBPF programs), without
-	// having to use the MapRouter indirection. However this technique only works before the eBPF programs are loaded,
+	// having to use the MapRouter indirection. However, this technique only works before the eBPF programs are loaded,
 	// and therefore before the Manager is started. The keys of the map are the names of the maps to edit, as defined
 	// in their sections SEC("maps/[name]").
 	MapEditors map[string]*ebpf.Map
@@ -267,7 +267,7 @@ type Manager struct {
 	RingBuffers []*RingBuffer
 
 	// DumpHandler - Callback function called when manager.DumpMaps() is called
-	// and dump the current state (human readable)
+	// and dump the current state (human-readable)
 	DumpHandler func(manager *Manager, mapName string, currentMap *ebpf.Map) string
 
 	// InstructionPatcher - Callback function called before loading probes, to
@@ -275,7 +275,7 @@ type Manager struct {
 	InstructionPatcher func(m *Manager) error
 }
 
-// DumpMaps - Return a string containing human readable info about eBPF maps
+// DumpMaps - Return a string containing human-readable info about eBPF maps
 // Dumps the set of maps provided, otherwise dumping all maps with a DumpHandler set.
 func (m *Manager) DumpMaps(maps ...string) (string, error) {
 	m.stateLock.RLock()
@@ -1118,10 +1118,10 @@ func (m *Manager) DetachHook(id ProbeIdentificationPair) error {
 
 // CloneProgram - Create a clone of a program, load it in the kernel and attach it to its hook point. Since the eBPF
 // program instructions are copied before the program is loaded, you can edit them with a ConstantEditor, or remap
-// the eBPF maps as you like. This is particularly useful to workaround the absence of Array of Maps and Hash of Maps:
+// the eBPF maps as you like. This is particularly useful to work around the absence of Array of Maps and Hash of Maps:
 // first create the new maps you need, then clone the program you're interested in and rewrite it with the new maps,
 // using a MapEditor. The original program is selected using the provided UID and the section provided in the new probe.
-// Note that the BTF based constant edition will note work with this method.
+// Note that the BTF based constant edition will not work with this method.
 func (m *Manager) CloneProgram(UID string, newProbe *Probe, constantsEditors []ConstantEditor, mapEditors map[string]*ebpf.Map) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()

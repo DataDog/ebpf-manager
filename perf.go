@@ -46,7 +46,7 @@ type PerfMap struct {
 	PerfMapOptions
 }
 
-// loadNewPerfMap - Creates a new perf map instance, loads it and setup the perf ring buffer reader
+// loadNewPerfMap - Creates a new perf map instance, loads it and sets up the perf ring buffer reader
 func loadNewPerfMap(spec ebpf.MapSpec, options MapOptions, perfOptions PerfMapOptions) (*PerfMap, error) {
 	// Create underlying map
 	innerMap, err := loadNewMap(spec, options)

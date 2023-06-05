@@ -14,9 +14,9 @@ func trigger() error {
 	cmd := exec.Command("/usr/bin/bash", "-i")
 	stdinPipe, _ := cmd.StdinPipe()
 	go func() {
-		io.WriteString(stdinPipe, "id")
+		_, _ = io.WriteString(stdinPipe, "id")
 		time.Sleep(100 * time.Millisecond)
-		stdinPipe.Close()
+		_ = stdinPipe.Close()
 	}()
 	b, err := cmd.Output()
 	if err != nil {

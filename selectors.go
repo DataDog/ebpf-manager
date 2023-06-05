@@ -163,7 +163,7 @@ func (ao *AllOf) EditProbeIdentificationPair(old ProbeIdentificationPair, new Pr
 	}
 }
 
-// BestEffort - This selector is used to load probes in best effort mode
+// BestEffort - This selector is used to load probes in the best effort mode
 type BestEffort struct {
 	Selectors []ProbesSelector
 }
@@ -179,7 +179,7 @@ func (be *BestEffort) GetProbesIdentificationPairList() []ProbeIdentificationPai
 
 // RunValidator - Ensures that the probes that were successfully activated follow the selector goal.
 // For example, see OneOf.
-func (be *BestEffort) RunValidator(manager *Manager) error {
+func (be *BestEffort) RunValidator(_ *Manager) error {
 	return nil
 }
 

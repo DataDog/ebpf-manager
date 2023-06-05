@@ -25,18 +25,18 @@ import (
 type XdpAttachMode int
 
 const (
-	// XdpAttachModeNone stands for "best effort" - kernel automatically
-	// selects best mode (would try Drv first, then fallback to Generic).
-	// NOTE: Kernel will not fallback to Generic XDP if NIC driver failed
+	// XdpAttachModeNone stands for "best effort" - the kernel automatically
+	// selects the best mode (would try Drv first, then fallback to Generic).
+	// NOTE: Kernel will not fall back to Generic XDP if NIC driver failed
 	//       to install XDP program.
 	XdpAttachModeNone XdpAttachMode = 0
 	// XdpAttachModeSkb is "generic", kernel mode, less performant comparing to native,
 	// but does not requires driver support.
-	XdpAttachModeSkb XdpAttachMode = (1 << 1)
+	XdpAttachModeSkb XdpAttachMode = 1 << 1
 	// XdpAttachModeDrv is native, driver mode (support from driver side required)
-	XdpAttachModeDrv XdpAttachMode = (1 << 2)
+	XdpAttachModeDrv XdpAttachMode = 1 << 2
 	// XdpAttachModeHw suitable for NICs with hardware XDP support
-	XdpAttachModeHw XdpAttachMode = (1 << 3)
+	XdpAttachModeHw XdpAttachMode = 1 << 3
 	// DefaultTCFilterPriority is the default TC filter priority if none were given
 	DefaultTCFilterPriority = 50
 )
@@ -63,7 +63,7 @@ const (
 	RetProbeType     = "r"
 )
 
-var (
+const (
 	BpfFlagActDirect = uint32(1) // see TCA_BPF_FLAG_ACT_DIRECT
 )
 
@@ -287,7 +287,7 @@ type Probe struct {
 	// TCFilterPrio - (TC classifier) defines the priority of the classifier added to the clsact qdisc. Defaults to DefaultTCFilterPriority.
 	TCFilterPrio uint16
 
-	// TCCleanupQDisc - (TC classifier) defines if the manager should cleanup the clsact qdisc when a probe is unloaded
+	// TCCleanupQDisc - (TC classifier) defines if the manager should clean up the clsact qdisc when a probe is unloaded
 	TCCleanupQDisc bool
 
 	// TCFilterProtocol - (TC classifier) defines the protocol to match in order to trigger the classifier. Defaults to
@@ -590,10 +590,10 @@ func (p *Probe) internalInit(manager *Manager) error {
 
 // ResolveLink - Resolves the Probe's network interface
 func (p *Probe) ResolveLink() (netlink.Link, error) {
-	return p.resolveLink(true)
+	return p.resolveLink()
 }
 
-func (p *Probe) resolveLink(lockingManager bool) (netlink.Link, error) {
+func (p *Probe) resolveLink() (netlink.Link, error) {
 	if p.link != nil {
 		return p.link, nil
 	}
@@ -1036,7 +1036,7 @@ func (p *Probe) attachTracepoint() error {
 	// Get the ID of the tracepoint to activate
 	tracepointID, err := GetTracepointID(p.TracepointCategory, p.TracepointName)
 	if err != nil {
-		return fmt.Errorf("couldn's activate tracepoint %s: %w", p.ProbeIdentificationPair, err)
+		return fmt.Errorf("couldn't activate tracepoint %s: %w", p.ProbeIdentificationPair, err)
 	}
 
 	// Hook the eBPF program to the tracepoint
@@ -1246,7 +1246,7 @@ func (p *Probe) buildTCFilter() (netlink.BpfFilter, error) {
 func (p *Probe) attachTCCLS() error {
 	var err error
 	// Resolve Probe's interface
-	if _, err = p.resolveLink(false); err != nil {
+	if _, err = p.resolveLink(); err != nil {
 		return err
 	}
 
@@ -1351,7 +1351,7 @@ func (p *Probe) IsTCFilterActive() bool {
 	}
 
 	// This TC filter is no longer active, the interface has been deleted or the filter was replaced by a third party.
-	// Regardless of the reason, we do not hold the current Handle on this filter, remove it so we make sure we won't
+	// Regardless of the reason, we do not hold the current Handle on this filter, remove it, so we make sure we won't
 	// delete something that we do not own.
 	p.tcFilter.Handle = 0
 	return false
@@ -1469,7 +1469,7 @@ func (p *Probe) cleanupTCFilters(ntl *NetlinkSocket) error {
 func (p *Probe) attachXDP() error {
 	var err error
 	// Resolve Probe's interface
-	if _, err = p.resolveLink(false); err != nil {
+	if _, err = p.resolveLink(); err != nil {
 		return err
 	}
 
@@ -1485,7 +1485,7 @@ func (p *Probe) attachXDP() error {
 func (p *Probe) detachXDP() error {
 	var err error
 	// Resolve Probe's interface
-	if _, err = p.resolveLink(false); err != nil {
+	if _, err = p.resolveLink(); err != nil {
 		return err
 	}
 
