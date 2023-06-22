@@ -714,7 +714,7 @@ func (m *Manager) Start() error {
 
 	// Start perf ring readers
 	for _, perfRing := range m.PerfMaps {
-		if skip, _ := m.options.SkipPerfMapReaderStartup[perfRing.Name]; skip {
+		if m.options.SkipPerfMapReaderStartup[perfRing.Name] {
 			continue
 		}
 		if err := perfRing.Start(); err != nil {
@@ -727,7 +727,7 @@ func (m *Manager) Start() error {
 
 	// Start ring buffer readers
 	for _, ringBuffer := range m.RingBuffers {
-		if skip, _ := m.options.SkipRingbufferReaderStartup[ringBuffer.Name]; skip {
+		if m.options.SkipRingbufferReaderStartup[ringBuffer.Name] {
 			continue
 		}
 		if err := ringBuffer.Start(); err != nil {
