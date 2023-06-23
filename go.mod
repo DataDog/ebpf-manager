@@ -10,6 +10,7 @@ require (
 	github.com/sirupsen/logrus v1.8.1
 	github.com/vishvananda/netlink v1.1.1-0.20220316193741-b112db377d18
 	github.com/vishvananda/netns v0.0.0-20200728191858-db3c7e526aae
+	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1
 	golang.org/x/sys v0.8.0
 )
 
@@ -19,5 +20,4 @@ require (
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
 	github.com/shirou/w32 v0.0.0-20160930032740-bb4de0191aa4 // indirect
-	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1 // indirect
 )
