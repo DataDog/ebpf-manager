@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
+	"golang.org/x/exp/maps"
 	"golang.org/x/sys/unix"
 )
 
@@ -460,6 +461,17 @@ func (m *Manager) GetProgram(id ProbeIdentificationPair) ([]*ebpf.Program, bool,
 		return nil, false, ErrManagerNotInitialized
 	}
 	return m.getProgram(id)
+}
+
+// GetPrograms - Return the list of eBPF programs in the manager
+func (m *Manager) GetPrograms() (map[string]*ebpf.Program, error) {
+	m.stateLock.RLock()
+	defer m.stateLock.RUnlock()
+	if m.collection == nil || m.state < initialized {
+		return nil, ErrManagerNotInitialized
+	}
+
+	return maps.Clone(m.collection.Programs), nil
 }
 
 // getProgramSpec - Thread unsafe version of GetProgramSpec
