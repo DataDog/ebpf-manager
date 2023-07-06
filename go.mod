@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/DataDog/gopsutil v1.2.1
 	github.com/avast/retry-go/v4 v4.1.0
-	github.com/cilium/ebpf v0.10.1-0.20230607155358-5bc4c7c1cbff
+	github.com/cilium/ebpf v0.11.0
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/sirupsen/logrus v1.8.1
 	github.com/vishvananda/netlink v1.1.1-0.20220316193741-b112db377d18
