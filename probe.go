@@ -373,6 +373,11 @@ func (p *Probe) GetLastError() error {
 	return p.lastError
 }
 
+// ID returns the system-wide unique ID for this program
+func (p *Probe) ID() uint32 {
+	return uint32(p.systemWideID)
+}
+
 // IsRunning - Returns true if the probe was successfully initialized, started and is currently running or paused.
 func (p *Probe) IsRunning() bool {
 	p.stateLock.RLock()
