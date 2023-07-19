@@ -480,7 +480,10 @@ func (m *Manager) getProgramSpec(id ProbeIdentificationPair) ([]*ebpf.ProgramSpe
 	if id.UID == "" {
 		for _, probe := range m.Probes {
 			if probe.EBPFDefinitionMatches(id) {
-				programs = append(programs, probe.programSpec)
+				// If Probe is excluded the program spec will be nil
+				if probe.programSpec != nil {
+					programs = append(programs, probe.programSpec)
+				}
 			}
 		}
 		if len(programs) > 0 {
@@ -491,7 +494,9 @@ func (m *Manager) getProgramSpec(id ProbeIdentificationPair) ([]*ebpf.ProgramSpe
 	}
 	for _, probe := range m.Probes {
 		if probe.Matches(id) {
-			return []*ebpf.ProgramSpec{probe.programSpec}, true, nil
+			if probe.programSpec != nil {
+				return []*ebpf.ProgramSpec{probe.programSpec}, true, nil
+			}
 		}
 	}
 	return programs, false, nil
@@ -1595,8 +1600,13 @@ func (m *Manager) editConstants() error {
 			if err != nil {
 				return err
 			}
-			if !found || len(programs) == 0 {
-				return fmt.Errorf("couldn't find programSpec %v: %w", id, ErrUnknownSectionOrFuncName)
+			if !found {
+				if !constantEditor.FailOnMissing {
+					continue
+				}
+				if len(programs) == 0 {
+					return fmt.Errorf("couldn't find programSpec %v: %w", id, ErrUnknownSectionOrFuncName)
+				}
 			}
 			prog := programs[0]
 
