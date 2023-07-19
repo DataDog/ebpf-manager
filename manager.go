@@ -1606,7 +1606,7 @@ func (m *Manager) editConstants() error {
 
 		// newEditor the constant of the provided programs
 		for _, id := range constantEditor.ProbeIdentificationPairs {
-			if probeIsExcluded(id, m.options.ExcludedFunctions) {
+			if probe, ok := m.GetProbe(id); ok && probeIsExcluded(probe, m.options.ExcludedFunctions) {
 				continue
 			}
 
