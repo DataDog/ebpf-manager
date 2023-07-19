@@ -480,7 +480,10 @@ func (m *Manager) getProgramSpec(id ProbeIdentificationPair) ([]*ebpf.ProgramSpe
 	if id.UID == "" {
 		for _, probe := range m.Probes {
 			if probe.EBPFDefinitionMatches(id) {
-				programs = append(programs, probe.programSpec)
+				// If Probe is excluded the program spec will be nil
+				if probe.programSpec != nil {
+					programs = append(programs, probe.programSpec)
+				}
 			}
 		}
 		if len(programs) > 0 {
@@ -491,7 +494,9 @@ func (m *Manager) getProgramSpec(id ProbeIdentificationPair) ([]*ebpf.ProgramSpe
 	}
 	for _, probe := range m.Probes {
 		if probe.Matches(id) {
-			return []*ebpf.ProgramSpec{probe.programSpec}, true, nil
+			if probe.programSpec != nil {
+				return []*ebpf.ProgramSpec{probe.programSpec}, true, nil
+			}
 		}
 	}
 	return programs, false, nil
@@ -1564,6 +1569,16 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 	return nil
 }
 
+func probeIsExcluded(probe *Probe, excludedFunctions []string) bool {
+	for _, functionName := range excludedFunctions {
+		if functionName == probe.EBPFFuncName {
+			return true
+		}
+	}
+
+	return false
+}
+
 // editConstants - newEditor the programs in the CollectionSpec with the provided constant editors. Tries with the BTF global
 // variable first, and fall back to the asm method if BTF is not available.
 func (m *Manager) editConstants() error {
@@ -1591,6 +1606,10 @@ func (m *Manager) editConstants() error {
 
 		// newEditor the constant of the provided programs
 		for _, id := range constantEditor.ProbeIdentificationPairs {
+			if probe, ok := m.GetProbe(id); ok && probeIsExcluded(probe, m.options.ExcludedFunctions) {
+				continue
+			}
+
 			programs, found, err := m.GetProgramSpec(id)
 			if err != nil {
 				return err
