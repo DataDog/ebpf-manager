@@ -1569,6 +1569,16 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 	return nil
 }
 
+func probeIsExcluded(probe *Probe, excludedFunctions []string) bool {
+	for _, functionName := range excludedFunctions {
+		if functionName == probe.EBPFFuncName {
+			return true
+		}
+	}
+
+	return false
+}
+
 // editConstants - newEditor the programs in the CollectionSpec with the provided constant editors. Tries with the BTF global
 // variable first, and fall back to the asm method if BTF is not available.
 func (m *Manager) editConstants() error {
@@ -1596,17 +1606,16 @@ func (m *Manager) editConstants() error {
 
 		// newEditor the constant of the provided programs
 		for _, id := range constantEditor.ProbeIdentificationPairs {
+			if probeIsExcluded(id, m.options.ExcludedFunctions) {
+				continue
+			}
+
 			programs, found, err := m.GetProgramSpec(id)
 			if err != nil {
 				return err
 			}
-			if !found {
-				if !constantEditor.FailOnMissing {
-					continue
-				}
-				if len(programs) == 0 {
-					return fmt.Errorf("couldn't find programSpec %v: %w", id, ErrUnknownSectionOrFuncName)
-				}
+			if !found || len(programs) == 0 {
+				return fmt.Errorf("couldn't find programSpec %v: %w", id, ErrUnknownSectionOrFuncName)
 			}
 			prog := programs[0]
 
