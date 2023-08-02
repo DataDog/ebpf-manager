@@ -2037,6 +2037,20 @@ func (m *Manager) getUIDSet() []string {
 	return uidSet
 }
 
+func (m *Manager) getTracefsRegex() (*regexp.Regexp, error) {
+	uidSet := m.getUIDSet()
+	escapedUIDs := make([]string, len(uidSet))
+	for i, uid := range uidSet {
+		escapedUIDs[i] = regexp.QuoteMeta(uid)
+	}
+	stringPattern := fmt.Sprintf(`(p|r)[0-9]*:(kprobes|uprobes)\/(.*(%s)*_([0-9]*)) .*`, strings.Join(escapedUIDs, "|"))
+	re, err := regexp.Compile(stringPattern)
+	if err != nil {
+		return nil, fmt.Errorf("event name pattern (%q) generation failed: %w", stringPattern, err)
+	}
+	return re, nil
+}
+
 // cleanupKprobeEvents - Cleans up kprobe_events and uprobe_events by removing entries of known UIDs, that are not used
 // anymore.
 //
@@ -2048,11 +2062,10 @@ func (m *Manager) getUIDSet() []string {
 // are not running anymore.
 func (m *Manager) cleanupTracefs() error {
 	// build the pattern to look for in kprobe_events and uprobe_events
-	pattern, err := regexp.Compile(fmt.Sprintf(`(p|r)[0-9]*:(kprobes|uprobes)\/(.*(%s)*_([0-9]*)) .*`, strings.Join(m.getUIDSet(), "|")))
+	pattern, err := m.getTracefsRegex()
 	if err != nil {
-		return fmt.Errorf("event name pattern generation failed: %w", err)
+		return err
 	}
-
 	// clean up kprobe_events
 	var cleanUpErrors *multierror.Error
 	pidMask := map[int]procMask{Getpid(): Running}
