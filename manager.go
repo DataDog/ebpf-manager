@@ -2048,9 +2048,11 @@ func (m *Manager) getUIDSet() []string {
 // are not running anymore.
 func (m *Manager) cleanupTracefs() error {
 	// build the pattern to look for in kprobe_events and uprobe_events
-	pattern, err := regexp.Compile(fmt.Sprintf(`(p|r)[0-9]*:(kprobes|uprobes)\/(.*(%s)*_([0-9]*)) .*`, strings.Join(m.getUIDSet(), "|")))
+
+	stringPattern := fmt.Sprintf(`(p|r)[0-9]*:(kprobes|uprobes)\/(.*(%s)*_([0-9]*)) .*`, strings.Join(m.getUIDSet(), "|"))
+	pattern, err := regexp.Compile(regexp.QuoteMeta(stringPattern))
 	if err != nil {
-		return fmt.Errorf("event name pattern generation failed: %w", err)
+		return fmt.Errorf("event name pattern (%q) generation failed: %w", stringPattern, err)
 	}
 
 	// clean up kprobe_events
