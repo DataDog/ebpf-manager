@@ -2,7 +2,6 @@ package manager
 
 import (
 	"errors"
-	"github.com/stretchr/testify/require"
 	"math"
 	"os"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/rlimit"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 )
 
