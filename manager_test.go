@@ -2,6 +2,7 @@ package manager
 
 import (
 	"errors"
+	"github.com/stretchr/testify/require"
 	"math"
 	"os"
 	"strings"
@@ -79,5 +80,72 @@ func TestExclude(t *testing.T) {
 	err = m.InitWithOptions(f, opts)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestManager_getTracefsRegex(t *testing.T) {
+	tests := []struct {
+		name          string
+		Probes        []*Probe
+		expectedRegex string
+	}{
+		{
+			name: "sanity",
+			Probes: []*Probe{
+				{
+					ProbeIdentificationPair: ProbeIdentificationPair{
+						UID: "HTTP",
+					},
+				},
+				{
+					ProbeIdentificationPair: ProbeIdentificationPair{
+						UID: "tcp",
+					},
+				},
+			},
+			expectedRegex: "(p|r)[0-9]*:(kprobes|uprobes)\\/(.*(HTTP|tcp)*_([0-9]*)) .*",
+		},
+		{
+			name: "duplications",
+			Probes: []*Probe{
+				{
+					ProbeIdentificationPair: ProbeIdentificationPair{
+						UID: "HTTP",
+					},
+				},
+				{
+					ProbeIdentificationPair: ProbeIdentificationPair{
+						UID: "HTTP",
+					},
+				},
+			},
+			expectedRegex: "(p|r)[0-9]*:(kprobes|uprobes)\\/(.*(HTTP)*_([0-9]*)) .*",
+		},
+		{
+			name: "special character",
+			Probes: []*Probe{
+				{
+					ProbeIdentificationPair: ProbeIdentificationPair{
+						UID: "+++++",
+					},
+				},
+				{
+					ProbeIdentificationPair: ProbeIdentificationPair{
+						UID: "+3.*.*",
+					},
+				},
+			},
+			expectedRegex: "(p|r)[0-9]*:(kprobes|uprobes)\\/(.*(\\+\\+\\+\\+\\+|\\+3\\.\\*\\.\\*)*_([0-9]*)) .*",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Manager{
+				Probes: tt.Probes,
+			}
+			res, err := m.getTracefsRegex()
+			require.NoError(t, err)
+			require.Equal(t, res.String(), tt.expectedRegex)
+		})
 	}
 }
