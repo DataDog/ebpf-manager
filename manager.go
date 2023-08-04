@@ -2008,6 +2008,15 @@ func (m *Manager) CleanupNetworkNamespace(nsID uint32) error {
 	return err
 }
 
+// RunWhileLocked allows to call a function with the state lock on the manager taken
+// since most public functions of manager take the lock as well they should not be called from there
+// the main use case is to operate on maps, while ensuring the manager will not close during the operation
+func (m *Manager) RunWhileLocked(callback func() error) error {
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
+	return callback()
+}
+
 type procMask uint8
 
 const (
