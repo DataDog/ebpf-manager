@@ -213,6 +213,9 @@ type Options struct {
 	// your program uses "manager.CloneProgram", you might want to enable "KeepKernelBTF". As a workaround, you can also
 	// try to strip as much as possible the content of "KernelTypes" to reduce the memory overhead.
 	KeepKernelBTF bool
+
+	// DontStartReaders - do not start automatically the readers
+	DontStartReaders bool
 }
 
 // NetlinkSocket - (TC classifier programs and XDP) Netlink socket cache entry holding the netlink socket and the
@@ -719,26 +722,6 @@ func (m *Manager) Start() error {
 		return fmt.Errorf("failed to cleanup tracefs: %w", err)
 	}
 
-	// Start perf ring readers
-	for _, perfRing := range m.PerfMaps {
-		if err := perfRing.Start(); err != nil {
-			// Clean up
-			_ = m.stop(CleanInternal)
-			m.stateLock.Unlock()
-			return err
-		}
-	}
-
-	// Start ring buffer readers
-	for _, ringBuffer := range m.RingBuffers {
-		if err := ringBuffer.Start(); err != nil {
-			// Clean up
-			_ = m.stop(CleanInternal)
-			m.stateLock.Unlock()
-			return err
-		}
-	}
-
 	// Attach eBPF programs
 	for _, probe := range m.Probes {
 		// ignore the error, they are already collected per probes and will be surfaced by the
@@ -775,6 +758,35 @@ func (m *Manager) Start() error {
 		_ = m.Stop(CleanInternal)
 		return err
 	}
+
+	if !m.options.DontStartReaders {
+		if err := m.StartReaders(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (m *Manager) StartReaders() error {
+	// Start perf ring readers
+	for _, perfRing := range m.PerfMaps {
+		if err := perfRing.Start(); err != nil {
+			// Clean up
+			_ = m.stop(CleanInternal)
+			return err
+		}
+	}
+
+	// Start ring buffer readers
+	for _, ringBuffer := range m.RingBuffers {
+		if err := ringBuffer.Start(); err != nil {
+			// Clean up
+			_ = m.stop(CleanInternal)
+			return err
+		}
+	}
+
 	return nil
 }
 
