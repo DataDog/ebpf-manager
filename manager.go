@@ -246,7 +246,6 @@ func NewNetlinkSocket(nsHandle uint64) (*NetlinkSocket, error) {
 
 // Manager - Helper structure that manages multiple eBPF programs and maps
 type Manager struct {
-	wg                 *sync.WaitGroup
 	collectionSpec     *ebpf.CollectionSpec
 	collection         *ebpf.Collection
 	options            Options
@@ -583,7 +582,6 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 		return ErrManagerRunning
 	}
 
-	m.wg = &sync.WaitGroup{}
 	m.options = options
 	m.netlinkSocketCache = newNetlinkSocketCache()
 	if m.options.DefaultPerfRingBufferSize == 0 {
@@ -827,7 +825,14 @@ func (m *Manager) Stop(cleanup MapCleanupType) error {
 	return m.stop(cleanup)
 }
 
-func (m *Manager) stop(cleanup MapCleanupType) error {
+// StopReaders stop the kernel events readers Perf or Ring buffer
+func (m *Manager) StopReaders(cleanup MapCleanupType) error {
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
+	return m.stopReaders(cleanup)
+}
+
+func (m *Manager) stopReaders(cleanup MapCleanupType) error {
 	var err error
 
 	// Stop perf ring readers
@@ -843,6 +848,12 @@ func (m *Manager) stop(cleanup MapCleanupType) error {
 			err = concatErrors(err, fmt.Errorf("ring buffer reader %s couldn't gracefully shut down: %w", ringBuffer.Name, stopErr))
 		}
 	}
+
+	return err
+}
+
+func (m *Manager) stop(cleanup MapCleanupType) error {
+	err := m.stopReaders(cleanup)
 
 	// Detach eBPF programs
 	for _, probe := range m.Probes {
@@ -867,8 +878,6 @@ func (m *Manager) stop(cleanup MapCleanupType) error {
 	// removed from the collection.
 	m.collection.Close()
 
-	// Wait for all go routines to stop
-	m.wg.Wait()
 	m.state = reset
 	return err
 }

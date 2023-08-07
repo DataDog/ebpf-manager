@@ -3,6 +3,7 @@ package manager
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/ringbuf"
@@ -23,6 +24,7 @@ type RingBufferOptions struct {
 type RingBuffer struct {
 	manager    *Manager
 	ringReader *ringbuf.Reader
+	wgReader   sync.WaitGroup
 
 	// Map - A PerfMap has the same features as a normal Map
 	Map
@@ -82,14 +84,16 @@ func (rb *RingBuffer) Start() error {
 		return err
 	}
 	// Start listening for data
+	rb.wgReader.Add(1)
+
 	go func() {
 		var record ringbuf.Record
 		var err error
-		rb.manager.wg.Add(1)
+
 		for {
 			if err = rb.ringReader.ReadInto(&record); err != nil {
 				if isRingBufferClosed(err) {
-					rb.manager.wg.Done()
+					rb.wgReader.Done()
 					return
 				}
 				if rb.ErrChan != nil {
@@ -109,12 +113,15 @@ func (rb *RingBuffer) Start() error {
 func (rb *RingBuffer) Stop(cleanup MapCleanupType) error {
 	rb.stateLock.Lock()
 	defer rb.stateLock.Unlock()
-	if rb.state < paused {
+	if rb.state <= stopped {
 		return nil
 	}
+	rb.state = stopped
 
-	// close perf reader
+	// close ring reader
 	err := rb.ringReader.Close()
+
+	rb.wgReader.Wait()
 
 	// close underlying map
 	if errTmp := rb.Map.close(cleanup); errTmp != nil {
@@ -124,6 +131,7 @@ func (rb *RingBuffer) Stop(cleanup MapCleanupType) error {
 			err = fmt.Errorf("%s: %w", err.Error(), errTmp)
 		}
 	}
+
 	return err
 }
 

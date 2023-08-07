@@ -3,6 +3,7 @@ package manager
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/perf"
@@ -40,6 +41,7 @@ type PerfMapOptions struct {
 type PerfMap struct {
 	manager    *Manager
 	perfReader *perf.Reader
+	wgReader   sync.WaitGroup
 
 	// Map - A PerfMap has the same features as a normal Map
 	Map
@@ -104,12 +106,14 @@ func (m *PerfMap) Start() error {
 	if m.perfReader, err = perf.NewReaderWithOptions(m.array, m.PerfRingBufferSize, opt); err != nil {
 		return err
 	}
+
+	m.wgReader.Add(1)
+
 	// Start listening for data
 	go func() {
 		record := &perf.Record{}
 		var err error
 
-		m.manager.wg.Add(1)
 		for {
 			if m.PerfMapOptions.RecordGetter != nil {
 				record = m.PerfMapOptions.RecordGetter()
@@ -119,7 +123,7 @@ func (m *PerfMap) Start() error {
 
 			if err = m.perfReader.ReadInto(record); err != nil {
 				if isPerfClosed(err) {
-					m.manager.wg.Done()
+					m.wgReader.Done()
 					return
 				}
 				if m.PerfErrChan != nil {
@@ -151,12 +155,15 @@ func (m *PerfMap) Start() error {
 func (m *PerfMap) Stop(cleanup MapCleanupType) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
-	if m.state < paused {
+	if m.state <= stopped {
 		return nil
 	}
+	m.state = stopped
 
 	// close perf reader
 	err := m.perfReader.Close()
+
+	m.wgReader.Wait()
 
 	// close underlying map
 	if errTmp := m.Map.close(cleanup); errTmp != nil {
@@ -166,6 +173,7 @@ func (m *PerfMap) Stop(cleanup MapCleanupType) error {
 			err = fmt.Errorf("%s: %w", err.Error(), errTmp)
 		}
 	}
+
 	return err
 }
 
