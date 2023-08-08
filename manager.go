@@ -125,8 +125,11 @@ type MapSpecEditor struct {
 	EditorFlag MapSpecEditorFlag
 }
 
+// FunctionExcluder - An interface for types that can be used for `AdditionalExcludedFunctionCollector`
 type FunctionExcluder interface {
+	// ShouldExcludeFunction - Returns true if the function should be excluded
 	ShouldExcludeFunction(name, attachPoint string) bool
+	// CleanCaches - Is called when the manager is done with the excluder (for memory reclaiming for example)
 	CleanCaches()
 }
 
@@ -145,6 +148,7 @@ type Options struct {
 	// deactivated.
 	ExcludedFunctions []string
 
+	// AdditionalExcludedFunctionCollector - A dynamic function excluder, allowing to exclude functions based on the attach point
 	AdditionalExcludedFunctionCollector FunctionExcluder
 
 	// ExcludedMaps - A list of maps that should not be created.
