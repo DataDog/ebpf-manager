@@ -125,6 +125,11 @@ type MapSpecEditor struct {
 	EditorFlag MapSpecEditorFlag
 }
 
+type FunctionExcluder interface {
+	ShouldExcludeFunction(name, attachPoint string) bool
+	CleanCaches()
+}
+
 // Options - Options of a Manager. These options define how a manager should be initialized.
 type Options struct {
 	// ActivatedProbes - List of the probes that should be activated, identified by their identification string.
@@ -139,6 +144,8 @@ type Options struct {
 	// list: since the excluded sections aren't loaded in the kernel, all the probes using those sections will be
 	// deactivated.
 	ExcludedFunctions []string
+
+	AdditionalExcludedFunctionCollector FunctionExcluder
 
 	// ExcludedMaps - A list of maps that should not be created.
 	ExcludedMaps []string
@@ -607,6 +614,15 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	if err != nil {
 		m.stateLock.Unlock()
 		return err
+	}
+
+	if m.options.AdditionalExcludedFunctionCollector != nil {
+		for key, prog := range m.collectionSpec.Programs {
+			if prog.AttachTo != "" && m.options.AdditionalExcludedFunctionCollector.ShouldExcludeFunction(key, prog.AttachTo) {
+				m.options.ExcludedFunctions = append(m.options.ExcludedFunctions, key)
+			}
+		}
+		m.options.AdditionalExcludedFunctionCollector.CleanCaches()
 	}
 
 	// Remove excluded programs
