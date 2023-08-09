@@ -128,7 +128,7 @@ type MapSpecEditor struct {
 // FunctionExcluder - An interface for types that can be used for `AdditionalExcludedFunctionCollector`
 type FunctionExcluder interface {
 	// ShouldExcludeFunction - Returns true if the function should be excluded
-	ShouldExcludeFunction(name, attachPoint string) bool
+	ShouldExcludeFunction(name string, prog *ebpf.ProgramSpec) bool
 	// CleanCaches - Is called when the manager is done with the excluder (for memory reclaiming for example)
 	CleanCaches()
 }
@@ -622,7 +622,7 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 
 	if m.options.AdditionalExcludedFunctionCollector != nil {
 		for key, prog := range m.collectionSpec.Programs {
-			if prog.AttachTo != "" && m.options.AdditionalExcludedFunctionCollector.ShouldExcludeFunction(key, prog.AttachTo) {
+			if prog.AttachTo != "" && m.options.AdditionalExcludedFunctionCollector.ShouldExcludeFunction(key, prog) {
 				m.options.ExcludedFunctions = append(m.options.ExcludedFunctions, key)
 			}
 		}
