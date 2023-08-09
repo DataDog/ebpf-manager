@@ -18,6 +18,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/exp/maps"
+	"golang.org/x/exp/slices"
 	"golang.org/x/sys/unix"
 )
 
@@ -479,10 +480,7 @@ func (m *Manager) getProgramSpec(id ProbeIdentificationPair) ([]*ebpf.ProgramSpe
 	if id.UID == "" {
 		for _, probe := range m.Probes {
 			if probe.EBPFDefinitionMatches(id) {
-				// If Probe is excluded the program spec will be nil
-				if probe.programSpec != nil {
-					programs = append(programs, probe.programSpec)
-				}
+				programs = append(programs, probe.programSpec)
 			}
 		}
 		if len(programs) > 0 {
@@ -493,9 +491,7 @@ func (m *Manager) getProgramSpec(id ProbeIdentificationPair) ([]*ebpf.ProgramSpe
 	}
 	for _, probe := range m.Probes {
 		if probe.Matches(id) {
-			if probe.programSpec != nil {
-				return []*ebpf.ProgramSpec{probe.programSpec}, true, nil
-			}
+			return []*ebpf.ProgramSpec{probe.programSpec}, true, nil
 		}
 	}
 	return programs, false, nil
@@ -617,8 +613,19 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	for _, excludedFuncName := range m.options.ExcludedFunctions {
 		delete(m.collectionSpec.Programs, excludedFuncName)
 	}
+	for i := range m.Probes {
+		if slices.Contains(m.options.ExcludedFunctions, m.Probes[i].EBPFFuncName) {
+			m.Probes = slices.Delete(m.Probes, i, i+1)
+		}
+	}
+	// Remove excluded maps
 	for _, excludeMapName := range m.options.ExcludedMaps {
 		delete(m.collectionSpec.Maps, excludeMapName)
+	}
+	for i := range m.Maps {
+		if slices.Contains(m.options.ExcludedMaps, m.Maps[i].Name) {
+			m.Maps = slices.Delete(m.Maps, i, i+1)
+		}
 	}
 
 	// Match Maps and program specs
@@ -1137,7 +1144,7 @@ func (m *Manager) DetachHook(id ProbeIdentificationPair) error {
 		}
 	}
 	if idToDelete >= 0 {
-		m.Probes = append(m.Probes[:idToDelete], m.Probes[idToDelete+1:]...)
+		m.Probes = slices.Delete(m.Probes, idToDelete, idToDelete+1)
 	}
 	return nil
 }
@@ -1336,17 +1343,7 @@ func (m *Manager) updateTailCallRoute(route TailCallRoute) error {
 func (m *Manager) getProbeProgramSpec(funcName string) (*ebpf.ProgramSpec, error) {
 	spec, ok := m.collectionSpec.Programs[funcName]
 	if !ok {
-		// Check if the probe function is in the list of excluded functions
-		var excluded bool
-		for _, excludedFuncName := range m.options.ExcludedFunctions {
-			if excludedFuncName == funcName {
-				excluded = true
-				break
-			}
-		}
-		if !excluded {
-			return nil, fmt.Errorf("couldn't find program spec for func %s: %w", funcName, ErrUnknownSectionOrFuncName)
-		}
+		return nil, fmt.Errorf("couldn't find program spec for func %s: %w", funcName, ErrUnknownSectionOrFuncName)
 	}
 	return spec, nil
 }
@@ -1354,17 +1351,7 @@ func (m *Manager) getProbeProgramSpec(funcName string) (*ebpf.ProgramSpec, error
 func (m *Manager) getProbeProgram(funcName string) (*ebpf.Program, error) {
 	p, ok := m.collection.Programs[funcName]
 	if !ok {
-		// Check if the probe function is in the list of excluded functions
-		var excluded bool
-		for _, excludedFuncName := range m.options.ExcludedFunctions {
-			if excludedFuncName == funcName {
-				excluded = true
-				break
-			}
-		}
-		if !excluded {
-			return nil, fmt.Errorf("couldn't find program %s: %w", funcName, ErrUnknownSectionOrFuncName)
-		}
+		return nil, fmt.Errorf("couldn't find program %s: %w", funcName, ErrUnknownSectionOrFuncName)
 	}
 	return p, nil
 }
@@ -1487,11 +1474,6 @@ func (m *Manager) activateProbes() {
 				}
 			}
 		}
-		for _, excludedFuncName := range m.options.ExcludedFunctions {
-			if mProbe.EBPFFuncName == excludedFuncName {
-				shouldActivate = false
-			}
-		}
 		mProbe.Enabled = shouldActivate
 
 		if shouldPopulateActivatedProbes {
@@ -1578,16 +1560,6 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 	return nil
 }
 
-func probeIsExcluded(probe *Probe, excludedFunctions []string) bool {
-	for _, functionName := range excludedFunctions {
-		if functionName == probe.EBPFFuncName {
-			return true
-		}
-	}
-
-	return false
-}
-
 // editConstants - newEditor the programs in the CollectionSpec with the provided constant editors. Tries with the BTF global
 // variable first, and fall back to the asm method if BTF is not available.
 func (m *Manager) editConstants() error {
@@ -1615,10 +1587,6 @@ func (m *Manager) editConstants() error {
 
 		// newEditor the constant of the provided programs
 		for _, id := range constantEditor.ProbeIdentificationPairs {
-			if probe, ok := m.GetProbe(id); ok && probeIsExcluded(probe, m.options.ExcludedFunctions) {
-				continue
-			}
-
 			programs, found, err := m.GetProgramSpec(id)
 			if err != nil {
 				return err

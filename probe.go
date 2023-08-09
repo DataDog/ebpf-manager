@@ -1573,7 +1573,7 @@ func (p *Probe) attachPerfEvent() error {
 		}
 		p.perfEventCPUFDs = append(p.perfEventCPUFDs, fd)
 
-		if err = ioctlPerfEventSetBPF(p.perfEventFD, p.program.FD()); err != nil {
+		if err = ioctlPerfEventSetBPF(fd, p.program.FD()); err != nil {
 			return fmt.Errorf("couldn't set perf event bpf %s: %w", p.ProbeIdentificationPair, err)
 		}
 		if err = ioctlPerfEventEnable(fd); err != nil {
