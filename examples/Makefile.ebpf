@@ -4,9 +4,9 @@ objects := $(subst ebpf,ebpf/bin,$(subst .c,.o,$(sources)))
 .PHONY: clean run %.run
 
 bin/main: main.go
+	go build -o bin/main .
 
 main.go: $(objects)
-	go build -o bin/main .
 
 run: bin/main main.run
 
