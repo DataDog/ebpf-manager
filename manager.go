@@ -613,18 +613,22 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	for _, excludedFuncName := range m.options.ExcludedFunctions {
 		delete(m.collectionSpec.Programs, excludedFuncName)
 	}
-	for i := range m.Probes {
+	for i := 0; i < len(m.Probes); {
 		if slices.Contains(m.options.ExcludedFunctions, m.Probes[i].EBPFFuncName) {
 			m.Probes = slices.Delete(m.Probes, i, i+1)
+		} else {
+			i++
 		}
 	}
 	// Remove excluded maps
 	for _, excludeMapName := range m.options.ExcludedMaps {
 		delete(m.collectionSpec.Maps, excludeMapName)
 	}
-	for i := range m.Maps {
+	for i := 0; i < len(m.Maps); {
 		if slices.Contains(m.options.ExcludedMaps, m.Maps[i].Name) {
 			m.Maps = slices.Delete(m.Maps, i, i+1)
+		} else {
+			i++
 		}
 	}
 
