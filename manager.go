@@ -1528,8 +1528,10 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 	nextProbes := make(map[ProbeIdentificationPair]bool)
 	for _, selector := range selectors {
 		for _, id := range selector.GetProbesIdentificationPairList() {
-			pip := ProbeIdentificationPair{UID: id.UID, EBPFFuncName: id.EBPFFuncName}
-			nextProbes[pip] = true
+			if !slices.Contains(m.options.ExcludedFunctions, id.EBPFFuncName) {
+				pip := ProbeIdentificationPair{UID: id.UID, EBPFFuncName: id.EBPFFuncName}
+				nextProbes[pip] = true
+			}
 		}
 	}
 
