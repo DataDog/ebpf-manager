@@ -622,7 +622,7 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 
 	if m.options.AdditionalExcludedFunctionCollector != nil {
 		for key, prog := range m.collectionSpec.Programs {
-			if prog.AttachTo != "" && m.options.AdditionalExcludedFunctionCollector.ShouldExcludeFunction(key, prog) {
+			if m.options.AdditionalExcludedFunctionCollector.ShouldExcludeFunction(key, prog) {
 				m.options.ExcludedFunctions = append(m.options.ExcludedFunctions, key)
 			}
 		}
