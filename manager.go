@@ -125,6 +125,14 @@ type MapSpecEditor struct {
 	EditorFlag MapSpecEditorFlag
 }
 
+// FunctionExcluder - An interface for types that can be used for `AdditionalExcludedFunctionCollector`
+type FunctionExcluder interface {
+	// ShouldExcludeFunction - Returns true if the function should be excluded
+	ShouldExcludeFunction(name string, prog *ebpf.ProgramSpec) bool
+	// CleanCaches - Is called when the manager is done with the excluder (for memory reclaiming for example)
+	CleanCaches()
+}
+
 // Options - Options of a Manager. These options define how a manager should be initialized.
 type Options struct {
 	// ActivatedProbes - List of the probes that should be activated, identified by their identification string.
@@ -139,6 +147,9 @@ type Options struct {
 	// list: since the excluded sections aren't loaded in the kernel, all the probes using those sections will be
 	// deactivated.
 	ExcludedFunctions []string
+
+	// AdditionalExcludedFunctionCollector - A dynamic function excluder, allowing to exclude functions based on the attach point
+	AdditionalExcludedFunctionCollector FunctionExcluder
 
 	// ExcludedMaps - A list of maps that should not be created.
 	ExcludedMaps []string
@@ -607,6 +618,15 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	if err != nil {
 		m.stateLock.Unlock()
 		return err
+	}
+
+	if m.options.AdditionalExcludedFunctionCollector != nil {
+		for key, prog := range m.collectionSpec.Programs {
+			if m.options.AdditionalExcludedFunctionCollector.ShouldExcludeFunction(key, prog) {
+				m.options.ExcludedFunctions = append(m.options.ExcludedFunctions, key)
+			}
+		}
+		m.options.AdditionalExcludedFunctionCollector.CleanCaches()
 	}
 
 	// Remove excluded programs
@@ -1508,8 +1528,10 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 	nextProbes := make(map[ProbeIdentificationPair]bool)
 	for _, selector := range selectors {
 		for _, id := range selector.GetProbesIdentificationPairList() {
-			pip := ProbeIdentificationPair{UID: id.UID, EBPFFuncName: id.EBPFFuncName}
-			nextProbes[pip] = true
+			if !slices.Contains(m.options.ExcludedFunctions, id.EBPFFuncName) {
+				pip := ProbeIdentificationPair{UID: id.UID, EBPFFuncName: id.EBPFFuncName}
+				nextProbes[pip] = true
+			}
 		}
 	}
 
