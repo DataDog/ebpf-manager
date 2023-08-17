@@ -640,6 +640,25 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 			i++
 		}
 	}
+	// Remove ConstantEditors that point to only excluded functions
+	for i := 0; i < len(m.options.ConstantEditors); {
+		ce := m.options.ConstantEditors[i]
+		isSpecific := len(ce.ProbeIdentificationPairs) > 0
+		// remove excluded ProbeIdentificationPairs
+		for j := 0; j < len(ce.ProbeIdentificationPairs); {
+			if slices.Contains(m.options.ExcludedFunctions, ce.ProbeIdentificationPairs[j].EBPFFuncName) {
+				ce.ProbeIdentificationPairs = slices.Delete(ce.ProbeIdentificationPairs, j, j+1)
+			} else {
+				j++
+			}
+		}
+		// was a specific constant editor, but all the probes are excluded
+		if isSpecific && len(ce.ProbeIdentificationPairs) == 0 {
+			m.options.ConstantEditors = slices.Delete(m.options.ConstantEditors, i, i+1)
+		} else {
+			i++
+		}
+	}
 	// Remove excluded maps
 	for _, excludeMapName := range m.options.ExcludedMaps {
 		delete(m.collectionSpec.Maps, excludeMapName)
