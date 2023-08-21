@@ -225,6 +225,14 @@ type Options struct {
 	// your program uses "manager.CloneProgram", you might want to enable "KeepKernelBTF". As a workaround, you can also
 	// try to strip as much as possible the content of "KernelTypes" to reduce the memory overhead.
 	KeepKernelBTF bool
+
+	// SkipPerfMapReaderStartup - Perf maps whose name is set to true with this option will not have their reader gorountine started when calling the manager.Start() function.
+	// PerfMap.Start() can then be used to start reading events from the corresponding PerfMap.
+	SkipPerfMapReaderStartup map[string]bool
+
+	// SkipRingbufferReaderStartup - Ringbuffer maps whose name is set to true with this option will not have their reader gorountine started when calling the manager.Start() function.
+	// RingBuffer.Start() can then be used to start reading events from the corresponding RingBuffer.
+	SkipRingbufferReaderStartup map[string]bool
 }
 
 // NetlinkSocket - (TC classifier programs and XDP) Netlink socket cache entry holding the netlink socket and the
@@ -771,6 +779,9 @@ func (m *Manager) Start() error {
 
 	// Start perf ring readers
 	for _, perfRing := range m.PerfMaps {
+		if m.options.SkipPerfMapReaderStartup[perfRing.Name] {
+			continue
+		}
 		if err := perfRing.Start(); err != nil {
 			// Clean up
 			_ = m.stop(CleanInternal)
@@ -781,6 +792,9 @@ func (m *Manager) Start() error {
 
 	// Start ring buffer readers
 	for _, ringBuffer := range m.RingBuffers {
+		if m.options.SkipRingbufferReaderStartup[ringBuffer.Name] {
+			continue
+		}
 		if err := ringBuffer.Start(); err != nil {
 			// Clean up
 			_ = m.stop(CleanInternal)
