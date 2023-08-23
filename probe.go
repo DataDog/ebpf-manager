@@ -18,7 +18,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
-	"github.com/DataDog/gopsutil/process"
+	"github.com/DataDog/ebpf-manager/internal"
 )
 
 // XdpAttachMode selects a way how XDP program will be attached to interface
@@ -1459,8 +1459,7 @@ func (p *Probe) cleanupTCFilters(ntl *NetlinkSocket) error {
 		// this short sleep is used to avoid a CPU spike (5s ~ 60k * 80 microseconds)
 		time.Sleep(80 * time.Microsecond)
 
-		_, err = process.NewProcess(int32(pid))
-		if err == nil {
+		if internal.ProcessExists(pid) {
 			continue
 		}
 

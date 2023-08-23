@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DataDog/gopsutil/process"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/btf"
 	"github.com/hashicorp/go-multierror"
@@ -20,6 +19,8 @@ import (
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 	"golang.org/x/sys/unix"
+
+	"github.com/DataDog/ebpf-manager/internal"
 )
 
 // ConstantEditor - A constant editor tries to rewrite the value of a constant in a compiled eBPF program.
@@ -2133,8 +2134,7 @@ func cleanupKprobeEvents(pattern *regexp.Regexp, pidMask map[int]procMask) error
 			// this short sleep is used to avoid a CPU spike (5s ~ 60k * 80 microseconds)
 			time.Sleep(80 * time.Microsecond)
 
-			_, err = process.NewProcess(int32(pid))
-			if err == nil {
+			if internal.ProcessExists(pid) {
 				// the process is still running, continue
 				pidMask[pid] = Running
 				continue
@@ -2174,8 +2174,7 @@ func cleanupUprobeEvents(pattern *regexp.Regexp, pidMask map[int]procMask) error
 			// this short sleep is used to avoid a CPU spike (5s ~ 60k * 80 microseconds)
 			time.Sleep(80 * time.Microsecond)
 
-			_, err = process.NewProcess(int32(pid))
-			if err == nil {
+			if internal.ProcessExists(pid) {
 				// the process is still running, continue
 				pidMask[pid] = Running
 				continue
