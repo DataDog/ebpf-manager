@@ -1,13 +1,12 @@
 module github.com/DataDog/ebpf-manager
 
-go 1.18
+go 1.20
 
 require (
 	github.com/DataDog/gopsutil v1.2.1
 	github.com/avast/retry-go/v4 v4.1.0
 	github.com/cilium/ebpf v0.11.0
 	github.com/hashicorp/go-multierror v1.1.1
-	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
 	github.com/vishvananda/netlink v1.1.1-0.20220316193741-b112db377d18
 	github.com/vishvananda/netns v0.0.0-20200728191858-db3c7e526aae

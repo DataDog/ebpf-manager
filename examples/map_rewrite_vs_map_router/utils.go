@@ -2,11 +2,11 @@ package main
 
 import (
 	"encoding/binary"
+	"log"
 	"os"
 	"unsafe"
 
 	"github.com/cilium/ebpf"
-	"github.com/sirupsen/logrus"
 )
 
 // ByteOrder - host byte order
@@ -31,11 +31,11 @@ func getHostByteOrder() binary.ByteOrder {
 
 // trigger - Creates and then removes a tmp folder to trigger the probes
 func trigger() error {
-	logrus.Println("Generating events to trigger the probes ...")
+	log.Println("Generating events to trigger the probes ...")
 
 	// Creating a tmp directory to trigger the probes
 	tmpDir := "/tmp/test_folder"
-	logrus.Printf("creating %v", tmpDir)
+	log.Printf("creating %v", tmpDir)
 	err := os.MkdirAll(tmpDir, 0666)
 	if err != nil {
 		return err
@@ -51,7 +51,7 @@ func dumpSharedMap(sharedMap *ebpf.Map) error {
 	entries := sharedMap.Iterate()
 	for entries.Next(&key, &val) {
 		// Order of keys is non-deterministic due to randomized map seed
-		logrus.Printf("%v contains %v at key %v", sharedMap, val, key)
+		log.Printf("%v contains %v at key %v", sharedMap, val, key)
 	}
 	return entries.Err()
 }

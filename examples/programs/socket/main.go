@@ -3,8 +3,7 @@ package main
 import (
 	"bytes"
 	_ "embed"
-
-	"github.com/sirupsen/logrus"
+	"log"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
@@ -26,7 +25,7 @@ func main() {
 	// Create a socket pair that will be used to trigger the socket filter
 	sockPair, err := newSocketPair()
 	if err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
 	// Set the socket file descriptor on which the socket filter should trigger
@@ -34,23 +33,23 @@ func main() {
 
 	// Initialize the manager
 	if err := m.Init(bytes.NewReader(Probe)); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
 	// Start the manager
 	if err := m.Start(); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
-	logrus.Println("successfully started, head over to /sys/kernel/debug/tracing/trace_pipe")
+	log.Println("successfully started, head over to /sys/kernel/debug/tracing/trace_pipe")
 
 	// Send a message through the socket pair to trigger the probe
 	if err := trigger(sockPair); err != nil {
-		logrus.Error(err)
+		log.Print(err)
 	}
 
 	// Close the manager
 	if err := m.Stop(manager.CleanAll); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 }

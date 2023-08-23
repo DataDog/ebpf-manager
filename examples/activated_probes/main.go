@@ -4,10 +4,9 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
-
-	"github.com/sirupsen/logrus"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
@@ -197,7 +196,7 @@ var m3 = &manager.Manager{
 func main() {
 	// Initialize the managers
 	if err := m1.InitWithOptions(bytes.NewReader(Probe), options1); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
 	oldID := manager.ProbeIdentificationPair{
@@ -209,60 +208,60 @@ func main() {
 		UID:          "new",
 	}
 	if err := m1.RenameProbeIdentificationPair(oldID, newID); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
 	_, ok := m1.GetProbe(newID)
 	if !ok {
-		logrus.Fatal("RenameProbeIdentificationPair failed")
+		log.Fatal("RenameProbeIdentificationPair failed")
 	}
 
 	// Start m1
 	if err := m1.Start(); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
-	logrus.Println("m1 successfully started")
+	log.Println("m1 successfully started")
 
 	// Create a folder to trigger the probes
 	if err := trigger(); err != nil {
-		logrus.Error(err)
+		log.Print(err)
 	}
 
 	if err := m1.Stop(manager.CleanAll); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
-	logrus.Println("=> Cmd+C to continue")
+	log.Println("=> Cmd+C to continue")
 	wait()
 
-	logrus.Println("moving on to m2 (an error is expected)")
+	log.Println("moving on to m2 (an error is expected)")
 	// Initialize the managers
 	if err := m2.InitWithOptions(bytes.NewReader(Probe), options2); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
 	// Start m2
 	if err := m2.Start(); err != nil {
-		logrus.Error(err)
+		log.Print(err)
 	}
 
-	logrus.Println("=> Cmd+C to continue")
+	log.Println("=> Cmd+C to continue")
 	wait()
 
-	logrus.Println("moving on to m3 (an error is expected)")
+	log.Println("moving on to m3 (an error is expected)")
 	if err := m3.Init(bytes.NewReader(Probe)); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
 	// Start m3
 	if err := m3.Start(); err != nil {
-		logrus.Error(err)
+		log.Print(err)
 	}
 
-	logrus.Println("updating activated probes of m3 (no error is expected)")
+	log.Println("updating activated probes of m3 (no error is expected)")
 	if err := m3.Init(bytes.NewReader(Probe)); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
 	mkdirID := manager.ProbeIdentificationPair{UID: "MyVFSMkdir2", EBPFFuncName: "kprobe_vfs_mkdir"}
@@ -271,17 +270,17 @@ func main() {
 			ProbeIdentificationPair: mkdirID,
 		},
 	}); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
 	vfsOpenID := manager.ProbeIdentificationPair{EBPFFuncName: "kprobe_vfs_opennnnnn"}
 	vfsOpenProbe, ok := m3.GetProbe(vfsOpenID)
 	if !ok {
-		logrus.Fatal("Failed to find kprobe_vfs_opennnnnn")
+		log.Fatal("Failed to find kprobe_vfs_opennnnnn")
 	}
 
 	if vfsOpenProbe.Enabled {
-		logrus.Errorf("kprobe_vfs_opennnnnn should not be enabled")
+		log.Printf("kprobe_vfs_opennnnnn should not be enabled")
 	}
 }
 

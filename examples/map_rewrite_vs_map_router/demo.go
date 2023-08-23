@@ -3,15 +3,15 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"log"
 
 	"github.com/cilium/ebpf"
-	"github.com/sirupsen/logrus"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
 
 func demoMapEditor() error {
-	logrus.Println("MAP EDITOR DEMO")
+	log.Println("MAP EDITOR DEMO")
 	// Select the shared map to give it to m2
 	sharedCache1, found, err := m1.GetMap("shared_cache1")
 	if err != nil || !found {
@@ -49,7 +49,7 @@ func demoMapEditor() error {
 }
 
 func demoMapRouter() error {
-	logrus.Println("MAP ROUTER DEMO")
+	log.Println("MAP ROUTER DEMO")
 	// Select the shared map to give it to m2
 	sharedCache2, found, err := m1.GetMap("shared_cache2")
 	if err != nil || !found {

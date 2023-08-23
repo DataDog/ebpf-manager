@@ -4,10 +4,10 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 
-	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
@@ -43,15 +43,15 @@ var m = &manager.Manager{
 func main() {
 	// Initialize the manager
 	if err := m.Init(bytes.NewReader(Probe)); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
 	// Start the manager
 	if err := m.Start(); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
-	logrus.Println("successfully started, head over to /sys/kernel/debug/tracing/trace_pipe")
+	log.Println("successfully started, head over to /sys/kernel/debug/tracing/trace_pipe")
 
 	// Generate some network traffic to trigger the probe
 	trigger()
@@ -59,7 +59,7 @@ func main() {
 
 	// Close the manager
 	if err := m.Stop(manager.CleanAll); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 }
 

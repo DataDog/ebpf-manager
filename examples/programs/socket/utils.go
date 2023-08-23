@@ -1,14 +1,13 @@
 package main
 
 import (
+	"log"
 	"syscall"
-
-	"github.com/sirupsen/logrus"
 )
 
 // trigger - Send a message through the socket pair to trigger the probe
 func trigger(sockPair SocketPair) error {
-	logrus.Println("Sending a message through the socket pair to trigger the probes ...")
+	log.Println("Sending a message through the socket pair to trigger the probes ...")
 	_, err := syscall.Write(sockPair[1], nil)
 	if err != nil {
 		return err

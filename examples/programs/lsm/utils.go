@@ -1,8 +1,6 @@
 package main
 
-import (
-	"github.com/sirupsen/logrus"
-)
+import "log"
 
 // trigger - lookup value in eBPF map to execute a bpf syscall
 func trigger() error {
@@ -12,9 +10,9 @@ func trigger() error {
 	}
 	var key, val uint32
 	if err = cache.Lookup(&key, &val); err == nil {
-		logrus.Warnf("No error detected while making a bpf syscall :(")
+		log.Printf("No error detected while making a bpf syscall :(")
 	} else {
-		logrus.Printf("bpf syscall: got %v :)", err)
+		log.Printf("bpf syscall: got %v :)", err)
 	}
 	return nil
 }

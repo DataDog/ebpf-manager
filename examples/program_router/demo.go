@@ -1,21 +1,20 @@
 package main
 
 import (
+	"log"
 	"time"
-
-	"github.com/sirupsen/logrus"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
 
 func demoTailCall() error {
-	logrus.Println("generating some traffic to show what happens when the tail call is not set up ...")
+	log.Println("generating some traffic to show what happens when the tail call is not set up ...")
 	trigger1()
 	time.Sleep(1 * time.Second)
 
 	prog, _, err := m2.GetProgram(manager.ProbeIdentificationPair{EBPFFuncName: "three"})
 	if err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
 	// prepare tail call
@@ -38,7 +37,7 @@ func demoTailCall() error {
 	if err := m.UpdateTailCallRoutes(routes...); err != nil {
 		return err
 	}
-	logrus.Println("generating some traffic to show what happens when the tail call is set up ...")
+	log.Println("generating some traffic to show what happens when the tail call is set up ...")
 	trigger2()
 	return nil
 }

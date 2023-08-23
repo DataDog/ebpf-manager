@@ -2,11 +2,10 @@ package main
 
 import (
 	"encoding/binary"
+	"log"
 	"os"
 	"time"
 	"unsafe"
-
-	"github.com/sirupsen/logrus"
 )
 
 // ByteOrder - host byte order
@@ -31,10 +30,10 @@ func getHostByteOrder() binary.ByteOrder {
 
 // trigger - Creates and then removes a tmp folder to trigger the probes
 func trigger() error {
-	logrus.Println("Generating events to trigger the probes ...")
+	log.Println("Generating events to trigger the probes ...")
 	// Creating a tmp directory to trigger the probes
 	tmpDir := "/tmp/test_folder"
-	logrus.Printf("creating %v", tmpDir)
+	log.Printf("creating %v", tmpDir)
 	err := os.MkdirAll(tmpDir, 0666)
 	if err != nil {
 		return err
@@ -44,7 +43,7 @@ func trigger() error {
 	time.Sleep(500 * time.Millisecond)
 
 	// Removing a tmp directory to trigger the probes
-	logrus.Printf("removing %v", tmpDir)
+	log.Printf("removing %v", tmpDir)
 	err = os.RemoveAll(tmpDir)
 	if err != nil {
 		return err

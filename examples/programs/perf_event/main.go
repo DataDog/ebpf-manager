@@ -4,10 +4,10 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 
-	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 
 	manager "github.com/DataDog/ebpf-manager"
@@ -32,28 +32,28 @@ var m = &manager.Manager{
 func main() {
 	// Initialize the manager
 	if err := m.Init(bytes.NewReader(Probe)); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
 	// Start the manager
 	if err := m.Start(); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
 	// Create a folder to trigger the probes
 	if err := trigger(); err != nil {
-		logrus.Error(err)
+		log.Print(err)
 	}
 
-	logrus.Println("successfully started")
-	logrus.Println("=> head over to /sys/kernel/debug/tracing/trace_pipe")
-	logrus.Println("=> Cmd+C to exit")
+	log.Println("successfully started")
+	log.Println("=> head over to /sys/kernel/debug/tracing/trace_pipe")
+	log.Println("=> Cmd+C to exit")
 
 	wait()
 
 	// Close the manager
 	if err := m.Stop(manager.CleanAll); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 }
 

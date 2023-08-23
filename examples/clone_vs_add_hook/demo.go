@@ -1,13 +1,13 @@
 package main
 
 import (
-	"github.com/sirupsen/logrus"
+	"log"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
 
 func demoClone() error {
-	logrus.Println("CLONE DEMO")
+	log.Println("CLONE DEMO")
 	// Clone kprobe/vfs_open program, edit its constant and load a new probe.
 	// This will essentially create a new program, and you should see a new line in /sys/kernel/debug/tracing/kprobe_events.
 	newProbe := manager.Probe{
@@ -36,7 +36,7 @@ func demoClone() error {
 }
 
 func demoAddHook() error {
-	logrus.Println("ADD HOOK DEMO")
+	log.Println("ADD HOOK DEMO")
 	// Add a new hook point to the kprobe/vfs_mkdir program. The program was initially loaded but not attached. This will
 	// not create a copy of the program, it will just add a new hook point. This can be donne multiple times.
 	firstRmdir := manager.Probe{
@@ -47,7 +47,7 @@ func demoAddHook() error {
 	}
 	err := m.AddHook("", &firstRmdir)
 	if err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
 	secondRmdir := manager.Probe{
@@ -65,7 +65,7 @@ func demoAddHook() error {
 		return err
 	}
 
-	logrus.Println("DETACH HOOK DEMO")
+	log.Println("DETACH HOOK DEMO")
 
 	// Detaching a hook point does not close the underlying eBPF program, which means that the other hook points are
 	// still working

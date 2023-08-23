@@ -5,11 +5,11 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
-	"github.com/sirupsen/logrus"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
@@ -76,13 +76,13 @@ func patchBPFTelemetry(m *manager.Manager) error {
 
 func main() {
 	if err := m1.Init(bytes.NewReader(Probe)); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 	if err := m1.Start(); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
-	logrus.Println("Use 'bpftool prog dump xlated id <prog-id>' to verify that the instruction has been patched. Press 'Enter' to exit...")
+	log.Println("Use 'bpftool prog dump xlated id <prog-id>' to verify that the instruction has been patched. Press 'Enter' to exit...")
 	_, _ = bufio.NewReader(os.Stdin).ReadBytes('\n')
 
 	cleanup()
