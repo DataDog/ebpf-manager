@@ -10,7 +10,6 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/rlimit"
-	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 )
 
@@ -144,8 +143,12 @@ func TestManager_getTracefsRegex(t *testing.T) {
 				Probes: tt.Probes,
 			}
 			res, err := m.getTracefsRegex()
-			require.NoError(t, err)
-			require.Equal(t, res.String(), tt.expectedRegex)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.String() != tt.expectedRegex {
+				t.Fatalf("expected: %s, got: %s", tt.expectedRegex, res.String())
+			}
 		})
 	}
 }
