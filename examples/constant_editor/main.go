@@ -3,8 +3,7 @@ package main
 import (
 	"bytes"
 	_ "embed"
-
-	"github.com/sirupsen/logrus"
+	"log"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
@@ -35,25 +34,25 @@ func main() {
 
 	// Initialize the manager
 	if err := m.InitWithOptions(bytes.NewReader(Probe), options); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
 	// Start the manager
 	if err := m.Start(); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
-	logrus.Println("successfully st, checkout the value of the edited constant in /sys/kernel/debug/tracing/trace_pipe")
+	log.Println("successfully st, checkout the value of the edited constant in /sys/kernel/debug/tracing/trace_pipe")
 
 	// Create a folder to trigger the probes
 	if err := trigger(); err != nil {
-		logrus.Error(err)
+		log.Print(err)
 	}
 
 	wait()
 
 	// Close the manager
 	if err := m.Stop(manager.CleanAll); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 }
