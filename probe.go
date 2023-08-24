@@ -62,10 +62,6 @@ const (
 	RetProbeType     = "r"
 )
 
-const (
-	BpfFlagActDirect = uint32(1) // see TCA_BPF_FLAG_ACT_DIRECT
-)
-
 type ProbeIdentificationPair struct {
 	kprobeType string
 
