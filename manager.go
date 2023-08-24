@@ -1739,6 +1739,7 @@ func (m *Manager) editMaps(maps map[string]*ebpf.Map) error {
 	for name, toRewrite := range maps {
 		// ignore deprecated usage
 		//nolint:staticcheck
+		//lint:ignore SA1019 using MapReplacements would require significant refactor
 		if err := m.collectionSpec.RewriteMaps(map[string]*ebpf.Map{name: toRewrite}); err != nil {
 			if m.options.MapEditorsIgnoreMissingMaps {
 				// make sure the map is removed from the collectionSpec
