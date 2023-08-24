@@ -13,12 +13,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/avast/retry-go/v4"
 	"github.com/cilium/ebpf"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
-	"github.com/DataDog/gopsutil/process"
+	"github.com/DataDog/ebpf-manager/internal"
 )
 
 // XdpAttachMode selects a way how XDP program will be attached to interface
@@ -635,7 +634,7 @@ func (p *Probe) resolveLink() (netlink.Link, error) {
 // Attach - Attaches the probe to the right hook point in the kernel depending on the program type and the provided
 // parameters.
 func (p *Probe) Attach() error {
-	return retry.Do(func() error {
+	return internal.Retry(func() error {
 		p.attachRetryAttempt++
 		err := p.attach()
 		if err == nil {
@@ -648,7 +647,7 @@ func (p *Probe) Attach() error {
 		}
 
 		return err
-	}, retry.Attempts(p.getRetryAttemptCount()), retry.Delay(p.ProbeRetryDelay), retry.LastErrorOnly(true))
+	}, p.getRetryAttemptCount(), p.ProbeRetryDelay)
 }
 
 func (p *Probe) Pause() error {
@@ -805,7 +804,7 @@ func (p *Probe) Detach() error {
 
 // detachRetry - Thread unsafe version of Detach with retry
 func (p *Probe) detachRetry() error {
-	return retry.Do(p.detach, retry.Attempts(p.getRetryAttemptCount()), retry.Delay(p.ProbeRetryDelay), retry.LastErrorOnly(true))
+	return internal.Retry(p.detach, p.getRetryAttemptCount(), p.ProbeRetryDelay)
 }
 
 // detach - Thread unsafe version of Detach.
@@ -1459,8 +1458,7 @@ func (p *Probe) cleanupTCFilters(ntl *NetlinkSocket) error {
 		// this short sleep is used to avoid a CPU spike (5s ~ 60k * 80 microseconds)
 		time.Sleep(80 * time.Microsecond)
 
-		_, err = process.NewProcess(int32(pid))
-		if err == nil {
+		if internal.ProcessExists(pid) {
 			continue
 		}
 

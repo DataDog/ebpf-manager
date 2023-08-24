@@ -3,10 +3,10 @@ package main
 import (
 	"bytes"
 	_ "embed"
+	"log"
 	"math"
 
 	"github.com/cilium/ebpf"
-	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 
 	manager "github.com/DataDog/ebpf-manager"
@@ -34,16 +34,16 @@ func main() {
 
 	// Initialize the manager
 	if err := m.InitWithOptions(bytes.NewReader(Probe), options); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
-	logrus.Println("successfully loaded, checkout the parameters of the map \"cache\" using bpftool")
-	logrus.Println("=> You should see MaxEntries 1000000 instead of 10")
+	log.Println("successfully loaded, checkout the parameters of the map \"cache\" using bpftool")
+	log.Println("=> You should see MaxEntries 1000000 instead of 10")
 
 	wait()
 
 	// Close the manager
 	if err := m.Stop(manager.CleanAll); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 }

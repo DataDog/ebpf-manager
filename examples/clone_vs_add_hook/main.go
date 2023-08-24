@@ -3,8 +3,7 @@ package main
 import (
 	"bytes"
 	_ "embed"
-
-	"github.com/sirupsen/logrus"
+	"log"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
@@ -45,7 +44,7 @@ var m = &manager.Manager{
 // myDataHandler - Perf event data handler
 func myDataHandler(cpu int, data []byte, perfmap *manager.PerfMap, manager *manager.Manager) {
 	myConstant := ByteOrder.Uint64(data[0:8])
-	logrus.Printf("received: CPU:%d my_constant:%d", cpu, myConstant)
+	log.Printf("received: CPU:%d my_constant:%d", cpu, myConstant)
 }
 
 var editors = []manager.ConstantEditor{
@@ -81,32 +80,32 @@ func main() {
 
 	// Initialize the manager
 	if err := m.InitWithOptions(bytes.NewReader(Probe), options); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
 	// Start the manager
 	if err := m.Start(); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
-	logrus.Println("eBPF programs running, head over to /sys/kernel/debug/tracing/trace_pipe to see them in action.")
+	log.Println("eBPF programs running, head over to /sys/kernel/debug/tracing/trace_pipe to see them in action.")
 
 	// Demo
-	logrus.Println("INITIAL PROGRAMS")
+	log.Println("INITIAL PROGRAMS")
 	if err := trigger(); err != nil {
 		_ = m.Stop(manager.CleanAll)
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 	if err := demoClone(); err != nil {
 		_ = m.Stop(manager.CleanAll)
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 	if err := demoAddHook(); err != nil {
 		_ = m.Stop(manager.CleanAll)
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
 	// Close the manager
 	if err := m.Stop(manager.CleanAll); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 }

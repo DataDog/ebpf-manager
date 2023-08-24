@@ -11,15 +11,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DataDog/gopsutil/process"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/btf"
-	"github.com/hashicorp/go-multierror"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 	"golang.org/x/sys/unix"
+
+	"github.com/DataDog/ebpf-manager/internal"
 )
 
 // ConstantEditor - A constant editor tries to rewrite the value of a constant in a compiled eBPF program.
@@ -817,7 +817,7 @@ func (m *Manager) Start() error {
 	var validationErrs error
 	for _, selector := range m.options.ActivatedProbes {
 		if err := selector.RunValidator(m); err != nil {
-			validationErrs = multierror.Append(validationErrs, err)
+			validationErrs = errors.Join(validationErrs, err)
 		}
 	}
 	if validationErrs != nil {
@@ -1606,7 +1606,7 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 	var validationErrs error
 	for _, selector := range selectors {
 		if err := selector.RunValidator(m); err != nil {
-			validationErrs = multierror.Append(validationErrs, err)
+			validationErrs = errors.Join(validationErrs, err)
 		}
 	}
 
@@ -2103,14 +2103,11 @@ func (m *Manager) cleanupTracefs() error {
 		return err
 	}
 	// clean up kprobe_events
-	var cleanUpErrors *multierror.Error
+	var cleanUpError error
 	pidMask := map[int]procMask{Getpid(): Running}
-	cleanUpErrors = multierror.Append(cleanUpErrors, cleanupKprobeEvents(pattern, pidMask))
-	cleanUpErrors = multierror.Append(cleanUpErrors, cleanupUprobeEvents(pattern, pidMask))
-	if cleanUpErrors.Len() == 0 {
-		return nil
-	}
-	return cleanUpErrors
+	cleanUpError = errors.Join(cleanUpError, cleanupKprobeEvents(pattern, pidMask))
+	cleanUpError = errors.Join(cleanUpError, cleanupUprobeEvents(pattern, pidMask))
+	return cleanUpError
 }
 
 func cleanupKprobeEvents(pattern *regexp.Regexp, pidMask map[int]procMask) error {
@@ -2133,8 +2130,7 @@ func cleanupKprobeEvents(pattern *regexp.Regexp, pidMask map[int]procMask) error
 			// this short sleep is used to avoid a CPU spike (5s ~ 60k * 80 microseconds)
 			time.Sleep(80 * time.Microsecond)
 
-			_, err = process.NewProcess(int32(pid))
-			if err == nil {
+			if internal.ProcessExists(pid) {
 				// the process is still running, continue
 				pidMask[pid] = Running
 				continue
@@ -2149,7 +2145,7 @@ func cleanupKprobeEvents(pattern *regexp.Regexp, pidMask map[int]procMask) error
 		}
 
 		// remove the entry
-		cleanUpErrors = multierror.Append(cleanUpErrors, unregisterKprobeEventWithEventName(match[3]))
+		cleanUpErrors = errors.Join(cleanUpErrors, unregisterKprobeEventWithEventName(match[3]))
 	}
 	return cleanUpErrors
 }
@@ -2174,8 +2170,7 @@ func cleanupUprobeEvents(pattern *regexp.Regexp, pidMask map[int]procMask) error
 			// this short sleep is used to avoid a CPU spike (5s ~ 60k * 80 microseconds)
 			time.Sleep(80 * time.Microsecond)
 
-			_, err = process.NewProcess(int32(pid))
-			if err == nil {
+			if internal.ProcessExists(pid) {
 				// the process is still running, continue
 				pidMask[pid] = Running
 				continue
@@ -2190,7 +2185,7 @@ func cleanupUprobeEvents(pattern *regexp.Regexp, pidMask map[int]procMask) error
 		}
 
 		// remove the entry
-		cleanUpErrors = multierror.Append(cleanUpErrors, unregisterUprobeEventWithEventName(match[3]))
+		cleanUpErrors = errors.Join(cleanUpErrors, unregisterUprobeEventWithEventName(match[3]))
 	}
 	return cleanUpErrors
 }

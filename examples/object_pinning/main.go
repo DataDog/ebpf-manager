@@ -4,8 +4,7 @@ import (
 	"bytes"
 	_ "embed"
 	"flag"
-
-	"github.com/sirupsen/logrus"
+	"log"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
@@ -56,33 +55,33 @@ func main() {
 	flag.BoolVar(&kill, "kill", false, "kills the programs suddenly before doing any cleanup")
 	flag.Parse()
 
-	logrus.Println("if they exist, pinned object will be automatically loaded")
+	log.Println("if they exist, pinned object will be automatically loaded")
 
 	// Initialize the manager
 	if err := m.Init(bytes.NewReader(Probe)); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
 	// Start the manager
 	if err := m.Start(); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
-	logrus.Println("successfully started, head over to /sys/kernel/debug/tracing/trace_pipe")
+	log.Println("successfully started, head over to /sys/kernel/debug/tracing/trace_pipe")
 
 	// Create a folder to trigger the probes
 	if err := trigger(); err != nil {
-		logrus.Error(err)
+		log.Print(err)
 	}
 
 	if kill {
-		logrus.Println("=> Stopping the program without cleanup, the pinned map should show up in /sys/fs/bpf/")
-		logrus.Println("=> Restart without --kill to load the pinned object from the bpf file system and properly remove them")
+		log.Println("=> Stopping the program without cleanup, the pinned map should show up in /sys/fs/bpf/")
+		log.Println("=> Restart without --kill to load the pinned object from the bpf file system and properly remove them")
 		return
 	}
 
 	// Close the manager
 	if err := m.Stop(manager.CleanAll); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 }

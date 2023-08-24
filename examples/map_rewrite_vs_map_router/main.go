@@ -3,10 +3,9 @@ package main
 import (
 	"bytes"
 	_ "embed"
+	"log"
 
 	manager "github.com/DataDog/ebpf-manager"
-
-	"github.com/sirupsen/logrus"
 )
 
 //go:embed ebpf/bin/prog1.o
@@ -38,31 +37,31 @@ var m2 = &manager.Manager{
 func main() {
 	// Initialize & start m1
 	if err := m1.Init(bytes.NewReader(Probe1)); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 	if err := m1.Start(); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
-	logrus.Println("Head over to /sys/kernel/debug/tracing/trace_pipe to see the eBPF programs in action")
+	log.Println("Head over to /sys/kernel/debug/tracing/trace_pipe to see the eBPF programs in action")
 
 	// Start demos
 	if err := demoMapEditor(); err != nil {
-		logrus.Error(err)
+		log.Print(err)
 		cleanup()
 		return
 	}
 	if err := demoMapRouter(); err != nil {
-		logrus.Error(err)
+		log.Print(err)
 		cleanup()
 		return
 	}
 
 	// Close the managers
 	if err := m1.Stop(manager.CleanAll); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 	if err := m2.Stop(manager.CleanInternal); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 }
 

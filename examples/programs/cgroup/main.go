@@ -5,12 +5,11 @@ import (
 	"bytes"
 	_ "embed"
 	"errors"
+	"log"
 	"os"
 	"strings"
 
 	manager "github.com/DataDog/ebpf-manager"
-
-	"github.com/sirupsen/logrus"
 )
 
 //go:embed ebpf/bin/main.o
@@ -29,28 +28,28 @@ var m = &manager.Manager{
 func main() {
 	cp, err := detectCgroupPath()
 	if err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 	m.Probes[0].CGroupPath = cp
 
 	// Initialize the manager
 	if err := m.Init(bytes.NewReader(Probe)); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
 	// Start the manager
 	if err := m.Start(); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
-	logrus.Println("successfully started, head over to /sys/kernel/debug/tracing/trace_pipe")
+	log.Println("successfully started, head over to /sys/kernel/debug/tracing/trace_pipe")
 
 	// Generate some network traffic to trigger the probe
 	trigger()
 
 	// Close the manager
 	if err := m.Stop(manager.CleanAll); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 }
 
