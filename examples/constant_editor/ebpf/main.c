@@ -13,4 +13,3 @@ int BPF_KPROBE(kprobe_vfs_mkdir, struct user_namespace *mnt_userns)
 };
 
 char _license[] SEC("license") = "GPL";
-__u32 _version SEC("version") = 0xFFFFFFFE;
