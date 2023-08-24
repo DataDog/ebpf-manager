@@ -1,5 +1,6 @@
 #include "all.h"
 #include <uapi/linux/bpf.h>
+#include <linux/user_namespace.h>
 
 #define LOAD_CONSTANT(param, var) asm("%0 = " param " ll" : "=r"(var))
 
