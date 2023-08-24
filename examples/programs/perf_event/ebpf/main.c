@@ -8,4 +8,3 @@ int perf_event_cpu_clock(struct bpf_perf_event_data *ctx)
 };
 
 char _license[] SEC("license") = "GPL";
-__u32 _version SEC("version") = 0xFFFFFFFE;

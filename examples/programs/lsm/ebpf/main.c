@@ -24,4 +24,3 @@ int BPF_PROG(lsm_security_bpf, int cmd) {
 };
 
 char _license[] SEC("license") = "GPL";
-__u32 _version SEC("version") = 0xFFFFFFFE;

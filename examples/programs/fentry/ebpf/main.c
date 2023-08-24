@@ -19,4 +19,3 @@ int BPF_PROG(do_mkdirat_exit, int dfd, struct filename *fname, umode_t mode, int
 }
 
 char _license[] SEC("license") = "GPL";
-__u32 _version SEC("version") = 0xFFFFFFFE;
