@@ -1781,7 +1781,6 @@ func (m *Manager) editMaps(maps map[string]*ebpf.Map) error {
 			// Create a new entry
 			m.Maps = append(m.Maps, &Map{
 				array:       rwMap,
-				manager:     m,
 				externalMap: true,
 				editedMap:   true,
 				Name:        name,

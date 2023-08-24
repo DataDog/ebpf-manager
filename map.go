@@ -48,7 +48,6 @@ type MapOptions struct {
 type Map struct {
 	array     *ebpf.Map
 	arraySpec *ebpf.MapSpec
-	manager   *Manager
 	state     state
 	stateLock sync.RWMutex
 
@@ -104,7 +103,7 @@ func (m *Map) init(manager *Manager) error {
 	if m.state >= initialized {
 		return ErrMapInitialized
 	}
-	m.manager = manager
+
 	// Look for the loaded Map if it isn't already set
 	if m.array == nil {
 		array, ok := manager.collection.Maps[m.Name]
@@ -188,7 +187,6 @@ func (m *Map) close(cleanup MapCleanupType) error {
 func (m *Map) reset() {
 	m.array = nil
 	m.arraySpec = nil
-	m.manager = nil
 	m.state = reset
 	m.externalMap = false
 	m.editedMap = false
