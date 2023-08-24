@@ -2,6 +2,7 @@ PROGRAMS := $(wildcard programs/*)
 EXAMPLES := \
 	activated_probes \
 	clone_vs_add_hook \
+	constant_editor \
 	instruction_patching \
 	map_rewrite_vs_map_router \
 	mapspec_editor \
