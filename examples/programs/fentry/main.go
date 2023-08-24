@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/signal"
 	"syscall"
 	"time"
 
@@ -38,43 +37,49 @@ var m = &manager.Manager{
 }
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	options := manager.Options{
 		DefaultProbeRetry:      2,
 		DefaultProbeRetryDelay: time.Second,
 	}
-
-	// Initialize the manager
 	if err := m.InitWithOptions(bytes.NewReader(Probe), options); err != nil {
-		log.Fatal(err)
+		return err
 	}
+	defer func() {
+		if err := m.Stop(manager.CleanAll); err != nil {
+			log.Print(err)
+		}
+	}()
 
-	// Start the manager
 	if err := m.Start(); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	log.Println("successfully started")
 	log.Println("=> head over to /sys/kernel/debug/tracing/trace_pipe")
 	log.Println("=> checkout /sys/kernel/debug/tracing/kprobe_events, utimes_common might have become utimes_common.isra.0")
-	log.Println("=> Cmd+C to exit")
+	log.Println("=> Enter to exit")
 
-	// Create a folder to trigger the probes
 	if err := trigger(); err != nil {
 		log.Print(err)
 	}
 
-	wait()
-
-	// Close the manager
-	if err := m.Stop(manager.CleanAll); err != nil {
-		log.Fatal(err)
-	}
+	_, _ = fmt.Scanln()
+	return nil
 }
 
-// wait - Waits until an interrupt or kill signal is sent
-func wait() {
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	<-sig
-	fmt.Println()
+// trigger - Creates and then removes a tmp folder to trigger the probes
+func trigger() error {
+	log.Println("Generating events to trigger the probes ...")
+	tmpDir, err := os.MkdirTemp("", "example")
+	if err != nil {
+		return fmt.Errorf("mkdirtmp: %s", err)
+	}
+	log.Printf("removing %v", tmpDir)
+	return os.RemoveAll(tmpDir)
 }

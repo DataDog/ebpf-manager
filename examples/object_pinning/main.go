@@ -4,7 +4,9 @@ import (
 	"bytes"
 	_ "embed"
 	"flag"
+	"fmt"
 	"log"
+	"os"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
@@ -50,6 +52,12 @@ var m = &manager.Manager{
 }
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	// Parse CLI arguments
 	var kill bool
 	flag.BoolVar(&kill, "kill", false, "kills the programs suddenly before doing any cleanup")
@@ -57,14 +65,12 @@ func main() {
 
 	log.Println("if they exist, pinned object will be automatically loaded")
 
-	// Initialize the manager
 	if err := m.Init(bytes.NewReader(Probe)); err != nil {
-		log.Fatal(err)
+		return err
 	}
-
-	// Start the manager
 	if err := m.Start(); err != nil {
-		log.Fatal(err)
+		_ = m.Stop(manager.CleanAll)
+		return err
 	}
 
 	log.Println("successfully started, head over to /sys/kernel/debug/tracing/trace_pipe")
@@ -77,11 +83,18 @@ func main() {
 	if kill {
 		log.Println("=> Stopping the program without cleanup, the pinned map should show up in /sys/fs/bpf/")
 		log.Println("=> Restart without --kill to load the pinned object from the bpf file system and properly remove them")
-		return
+		return m.Stop(manager.CleanInternalNotPinned | manager.CleanExternal)
 	}
+	return m.Stop(manager.CleanAll)
+}
 
-	// Close the manager
-	if err := m.Stop(manager.CleanAll); err != nil {
-		log.Fatal(err)
+// trigger - Creates and then removes a tmp folder to trigger the probes
+func trigger() error {
+	log.Println("Generating events to trigger the probes ...")
+	tmpDir, err := os.MkdirTemp("", "example")
+	if err != nil {
+		return fmt.Errorf("mkdirtmp: %s", err)
 	}
+	log.Printf("removing %v", tmpDir)
+	return os.RemoveAll(tmpDir)
 }

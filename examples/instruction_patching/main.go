@@ -4,15 +4,37 @@ import (
 	"bufio"
 	"bytes"
 	_ "embed"
+	"encoding/binary"
 	"fmt"
 	"log"
 	"os"
+	"unsafe"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
+
+// ByteOrder - host byte order
+var ByteOrder binary.ByteOrder
+
+func init() {
+	ByteOrder = getHostByteOrder()
+}
+
+// getHostByteOrder - Returns the host byte order
+func getHostByteOrder() binary.ByteOrder {
+	var i int32 = 0x01020304
+	u := unsafe.Pointer(&i)
+	pb := (*byte)(u)
+	b := *pb
+	if b == 0x04 {
+		return binary.LittleEndian
+	}
+
+	return binary.BigEndian
+}
 
 //go:embed ebpf/bin/main.o
 var Probe []byte
@@ -75,19 +97,27 @@ func patchBPFTelemetry(m *manager.Manager) error {
 }
 
 func main() {
-	if err := m1.Init(bytes.NewReader(Probe)); err != nil {
+	if err := run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func run() error {
+	if err := m1.Init(bytes.NewReader(Probe)); err != nil {
+		return err
+	}
+	defer func() {
+		if err := m1.Stop(manager.CleanAll); err != nil {
+			log.Print(err)
+		}
+	}()
+
 	if err := m1.Start(); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	log.Println("Use 'bpftool prog dump xlated id <prog-id>' to verify that the instruction has been patched. Press 'Enter' to exit...")
 	_, _ = bufio.NewReader(os.Stdin).ReadBytes('\n')
 
-	cleanup()
-}
-
-func cleanup() {
-	_ = m1.Stop(manager.CleanAll)
+	return nil
 }

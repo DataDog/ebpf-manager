@@ -5,8 +5,6 @@ import (
 	_ "embed"
 	"fmt"
 	"log"
-	"os"
-	"os/signal"
 	"syscall"
 	"time"
 
@@ -32,42 +30,50 @@ var m = &manager.Manager{
 }
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	options := manager.Options{
 		DefaultProbeRetry:      2,
 		DefaultProbeRetryDelay: time.Second,
 	}
-
-	// Initialize the manager
 	if err := m.InitWithOptions(bytes.NewReader(Probe), options); err != nil {
-		log.Fatal(err)
+		return err
 	}
-
-	// Start the manager
+	defer func() {
+		if err := m.Stop(manager.CleanAll); err != nil {
+			log.Print(err)
+		}
+	}()
 	if err := m.Start(); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
-	// Create a folder to trigger the probes
 	if err := trigger(); err != nil {
 		log.Print(err)
 	}
 
 	log.Println("successfully started")
 	log.Println("=> head over to /sys/kernel/debug/tracing/trace_pipe")
-	log.Println("=> Cmd+C to exit")
-
-	wait()
-
-	// Close the manager
-	if err := m.Stop(manager.CleanAll); err != nil {
-		log.Fatal(err)
-	}
+	log.Println("=> Enter to exit")
+	_, _ = fmt.Scanln()
+	return nil
 }
 
-// wait - Waits until an interrupt or kill signal is sent
-func wait() {
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	<-sig
-	fmt.Println()
+// trigger - lookup value in eBPF map to execute a bpf syscall
+func trigger() error {
+	cache, _, err := m.GetMap("cache")
+	if err != nil {
+		return err
+	}
+	var key, val uint32
+	if err = cache.Lookup(&key, &val); err == nil {
+		log.Printf("No error detected while making a bpf syscall :(")
+	} else {
+		log.Printf("bpf syscall: got %v :)", err)
+	}
+	return nil
 }

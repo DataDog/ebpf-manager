@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"time"
 
 	manager "github.com/DataDog/ebpf-manager"
@@ -40,4 +41,14 @@ func demoTailCall() error {
 	log.Println("generating some traffic to show what happens when the tail call is set up ...")
 	trigger2()
 	return nil
+}
+
+// trigger1 - Generate some network traffic to trigger the probe
+func trigger1() {
+	_, _ = http.Get("https://www.google.com/")
+}
+
+// trigger2 - Generate some network traffic to trigger the probe
+func trigger2() {
+	_, _ = http.Get("https://www.google.fr/")
 }

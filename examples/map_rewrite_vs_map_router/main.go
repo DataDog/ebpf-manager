@@ -3,7 +3,11 @@ package main
 import (
 	"bytes"
 	_ "embed"
+	"fmt"
 	"log"
+	"os"
+
+	"github.com/cilium/ebpf"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
@@ -35,37 +39,56 @@ var m2 = &manager.Manager{
 }
 
 func main() {
-	// Initialize & start m1
-	if err := m1.Init(bytes.NewReader(Probe1)); err != nil {
+	if err := run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func run() error {
+	if err := m1.Init(bytes.NewReader(Probe1)); err != nil {
+		return err
+	}
+	defer func() {
+		if err := m1.Stop(manager.CleanAll); err != nil {
+			log.Print(err)
+		}
+		if err := m2.Stop(manager.CleanAll); err != nil {
+			log.Print(err)
+		}
+	}()
 	if err := m1.Start(); err != nil {
-		log.Fatal(err)
+		return err
 	}
 	log.Println("Head over to /sys/kernel/debug/tracing/trace_pipe to see the eBPF programs in action")
 
 	// Start demos
 	if err := demoMapEditor(); err != nil {
-		log.Print(err)
-		cleanup()
-		return
+		return err
 	}
 	if err := demoMapRouter(); err != nil {
-		log.Print(err)
-		cleanup()
-		return
+		return err
 	}
-
-	// Close the managers
-	if err := m1.Stop(manager.CleanAll); err != nil {
-		log.Fatal(err)
-	}
-	if err := m2.Stop(manager.CleanInternal); err != nil {
-		log.Fatal(err)
-	}
+	return nil
 }
 
-func cleanup() {
-	_ = m1.Stop(manager.CleanAll)
-	_ = m2.Stop(manager.CleanInternal)
+// trigger - Creates and then removes a tmp folder to trigger the probes
+func trigger() error {
+	log.Println("Generating events to trigger the probes ...")
+	tmpDir, err := os.MkdirTemp("", "example")
+	if err != nil {
+		return fmt.Errorf("mkdirtmp: %s", err)
+	}
+	log.Printf("removing %v", tmpDir)
+	return os.RemoveAll(tmpDir)
+}
+
+// dumpSharedMap - Dumps the content of the provided map at the provided key
+func dumpSharedMap(sharedMap *ebpf.Map) error {
+	var key, val uint32
+	entries := sharedMap.Iterate()
+	for entries.Next(&key, &val) {
+		// Order of keys is non-deterministic due to randomized map seed
+		log.Printf("%v contains %v at key %v", sharedMap, val, key)
+	}
+	return entries.Err()
 }

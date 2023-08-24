@@ -47,7 +47,7 @@ func demoAddHook() error {
 	}
 	err := m.AddHook("", &firstRmdir)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	secondRmdir := manager.Probe{

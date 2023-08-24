@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/signal"
 	"syscall"
 
 	manager "github.com/DataDog/ebpf-manager"
@@ -195,10 +194,41 @@ var m3 = &manager.Manager{
 }
 
 func main() {
-	// Initialize the managers
-	if err := m1.InitWithOptions(bytes.NewReader(Probe), options1); err != nil {
+	if err := run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func run() error {
+	if err := run1(); err != nil {
+		return err
+	}
+
+	log.Println("=> Enter to continue")
+	_, _ = fmt.Scanln()
+
+	if err := run2(); err != nil {
+		return err
+	}
+
+	log.Println("=> Enter to continue")
+	_, _ = fmt.Scanln()
+
+	if err := run3(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func run1() error {
+	if err := m1.InitWithOptions(bytes.NewReader(Probe), options1); err != nil {
+		return err
+	}
+	defer func() {
+		if err := m1.Stop(manager.CleanAll); err != nil {
+			log.Print(err)
+		}
+	}()
 
 	oldID := manager.ProbeIdentificationPair{
 		EBPFFuncName: "kprobe_exclude",
@@ -209,86 +239,89 @@ func main() {
 		UID:          "new",
 	}
 	if err := m1.RenameProbeIdentificationPair(oldID, newID); err != nil {
-		log.Fatal(err)
+		return err
 	}
-
 	_, ok := m1.GetProbe(newID)
 	if !ok {
-		log.Fatal("RenameProbeIdentificationPair failed")
+		return fmt.Errorf("RenameProbeIdentificationPair failed")
 	}
 
-	// Start m1
 	if err := m1.Start(); err != nil {
-		log.Fatal(err)
+		return err
 	}
-
 	log.Println("m1 successfully started")
 
 	// Create a folder to trigger the probes
 	if err := trigger(); err != nil {
 		log.Print(err)
 	}
+	return nil
+}
 
-	if err := m1.Stop(manager.CleanAll); err != nil {
-		log.Fatal(err)
-	}
-
-	log.Println("=> Cmd+C to continue")
-	wait()
-
+func run2() error {
 	log.Println("moving on to m2 (an error is expected)")
-	// Initialize the managers
 	if err := m2.InitWithOptions(bytes.NewReader(Probe), options2); err != nil {
-		log.Fatal(err)
+		return err
 	}
+	defer func() {
+		if err := m2.Stop(manager.CleanAll); err != nil {
+			log.Print(err)
+		}
+	}()
 
-	// Start m2
 	if err := m2.Start(); err != nil {
 		log.Print(err)
 	}
+	return nil
+}
 
-	log.Println("=> Cmd+C to continue")
-	wait()
-
+func run3() error {
 	log.Println("moving on to m3 (an error is expected)")
 	if err := m3.Init(bytes.NewReader(Probe)); err != nil {
-		log.Fatal(err)
+		return err
 	}
+	defer func() {
+		if err := m3.Stop(manager.CleanAll); err != nil {
+			log.Print(err)
+		}
+	}()
 
-	// Start m3
 	if err := m3.Start(); err != nil {
 		log.Print(err)
 	}
 
 	log.Println("updating activated probes of m3 (no error is expected)")
 	if err := m3.Init(bytes.NewReader(Probe)); err != nil {
-		log.Fatal(err)
+		return err
 	}
-
 	mkdirID := manager.ProbeIdentificationPair{UID: "MyVFSMkdir2", EBPFFuncName: "kprobe_vfs_mkdir"}
 	if err := m3.UpdateActivatedProbes([]manager.ProbesSelector{
 		&manager.ProbeSelector{
 			ProbeIdentificationPair: mkdirID,
 		},
 	}); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	vfsOpenID := manager.ProbeIdentificationPair{EBPFFuncName: "kprobe_vfs_opennnnnn"}
 	vfsOpenProbe, ok := m3.GetProbe(vfsOpenID)
 	if !ok {
-		log.Fatal("Failed to find kprobe_vfs_opennnnnn")
+		return fmt.Errorf("failed to find kprobe_vfs_opennnnnn")
 	}
 
 	if vfsOpenProbe.Enabled {
-		log.Printf("kprobe_vfs_opennnnnn should not be enabled")
+		return fmt.Errorf("kprobe_vfs_opennnnnn should not be enabled")
 	}
+	return nil
 }
 
-// wait - Waits until an interrupt or kill signal is sent
-func wait() {
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	<-sig
-	fmt.Println()
+// trigger - Creates and then removes a tmp folder to trigger the probes
+func trigger() error {
+	log.Println("Generating events to trigger the probes ...")
+	tmpDir, err := os.MkdirTemp("", "example")
+	if err != nil {
+		return fmt.Errorf("mkdirtmp: %s", err)
+	}
+	log.Printf("removing %v", tmpDir)
+	return os.RemoveAll(tmpDir)
 }
