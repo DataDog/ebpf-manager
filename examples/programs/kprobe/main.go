@@ -70,13 +70,13 @@ func run() error {
 	log.Println("successfully started")
 	log.Println("=> head over to /sys/kernel/debug/tracing/trace_pipe")
 	log.Println("=> checkout /sys/kernel/debug/tracing/kprobe_events, utimes_common might have become utimes_common.isra.0")
-	log.Println("=> Enter to exit")
 
 	// Create a folder to trigger the probes
 	if err := trigger(); err != nil {
 		log.Print(err)
 	}
 
+	log.Println("=> Enter to exit")
 	_, _ = fmt.Scanln()
 	return nil
 }

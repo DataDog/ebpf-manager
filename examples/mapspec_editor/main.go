@@ -50,6 +50,7 @@ func run() error {
 
 	log.Println("successfully loaded, checkout the parameters of the map \"cache\" using bpftool")
 	log.Println("=> You should see MaxEntries 1000000 instead of 10")
+	log.Println("=> Enter to continue")
 	_, _ = fmt.Scanln()
 
 	return nil

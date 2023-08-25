@@ -62,8 +62,9 @@ func run() error {
 
 	// Generate some network traffic to trigger the probe
 	trigger()
-	_, _ = fmt.Scanln()
 
+	log.Println("=> Enter to exit")
+	_, _ = fmt.Scanln()
 	return nil
 }
 

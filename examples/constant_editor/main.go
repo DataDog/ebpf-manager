@@ -59,6 +59,7 @@ func run() error {
 		log.Print(err)
 	}
 
+	log.Println("=> Enter to continue")
 	_, _ = fmt.Scanln()
 	return nil
 }
