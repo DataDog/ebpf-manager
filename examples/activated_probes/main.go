@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"syscall"
 
 	manager "github.com/DataDog/ebpf-manager"
 )

@@ -5,8 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"log"
-	"syscall"
-
+	
 	"golang.org/x/sys/unix"
 
 	manager "github.com/DataDog/ebpf-manager"
