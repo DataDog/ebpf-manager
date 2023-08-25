@@ -62,10 +62,6 @@ const (
 	RetProbeType     = "r"
 )
 
-const (
-	BpfFlagActDirect = uint32(1) // see TCA_BPF_FLAG_ACT_DIRECT
-)
-
 type ProbeIdentificationPair struct {
 	kprobeType string
 
@@ -987,7 +983,7 @@ func (p *Probe) attachKprobe() error {
 			}
 		}
 	} else {
-		return fmt.Errorf("Invalid kprobe attach method: %d\n", p.KprobeAttachMethod)
+		return fmt.Errorf("invalid kprobe attach method: %d", p.KprobeAttachMethod)
 	}
 
 	// enable perf event
@@ -1131,7 +1127,7 @@ func (p *Probe) attachUprobe() error {
 			}
 		}
 	} else {
-		return fmt.Errorf("Invalid uprobe attach method: %d\n", p.UprobeAttachMethod)
+		return fmt.Errorf("invalid uprobe attach method: %d", p.UprobeAttachMethod)
 	}
 
 	// enable perf event

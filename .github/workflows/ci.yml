@@ -1,0 +1,37 @@
+name: ci
+on: [push]
+jobs:
+  test:
+    name: "run tests"
+    strategy:
+      fail-fast: false
+      matrix:
+        go: [ "1.20", "1.21" ]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go }}
+      - name: install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm
+          clang --version
+          llc --version
+
+      - name: build examples
+        working-directory: examples
+        run: |
+          TARGET=bin/main make all
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v3
+      - name: staticcheck
+        uses: dominikh/staticcheck-action@v1.3.0
+        with:
+          version: "2023.1.5"
+          install-go: false
+          cache-key: ${{ matrix.go }}
+
+      - run: "sudo go test ./..."

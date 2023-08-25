@@ -1739,6 +1739,7 @@ func (m *Manager) editMaps(maps map[string]*ebpf.Map) error {
 	for name, toRewrite := range maps {
 		// ignore deprecated usage
 		//nolint:staticcheck
+		//lint:ignore SA1019 using MapReplacements would require significant refactor
 		if err := m.collectionSpec.RewriteMaps(map[string]*ebpf.Map{name: toRewrite}); err != nil {
 			if m.options.MapEditorsIgnoreMissingMaps {
 				// make sure the map is removed from the collectionSpec
@@ -1781,7 +1782,6 @@ func (m *Manager) editMaps(maps map[string]*ebpf.Map) error {
 			// Create a new entry
 			m.Maps = append(m.Maps, &Map{
 				array:       rwMap,
-				manager:     m,
 				externalMap: true,
 				editedMap:   true,
 				Name:        name,
@@ -2044,13 +2044,6 @@ func (m *Manager) CleanupNetworkNamespace(nsID uint32) error {
 	return err
 }
 
-type procMask uint8
-
-const (
-	Running procMask = iota
-	Exited
-)
-
 // getUIDSet - Returns the list of UIDs used by this manager.
 func (m *Manager) getUIDSet() []string {
 	var uidSet []string
@@ -2104,13 +2097,13 @@ func (m *Manager) cleanupTracefs() error {
 	}
 	// clean up kprobe_events
 	var cleanUpError error
-	pidMask := map[int]procMask{Getpid(): Running}
+	pidMask := map[int]bool{Getpid(): true}
 	cleanUpError = errors.Join(cleanUpError, cleanupKprobeEvents(pattern, pidMask))
 	cleanUpError = errors.Join(cleanUpError, cleanupUprobeEvents(pattern, pidMask))
 	return cleanUpError
 }
 
-func cleanupKprobeEvents(pattern *regexp.Regexp, pidMask map[int]procMask) error {
+func cleanupKprobeEvents(pattern *regexp.Regexp, pidMask map[int]bool) error {
 	kprobeEvents, err := readKprobeEvents()
 	if err != nil {
 		return fmt.Errorf("couldn't read kprobe_events: %w", err)
@@ -2126,19 +2119,18 @@ func cleanupKprobeEvents(pattern *regexp.Regexp, pidMask map[int]procMask) error
 		if err != nil {
 			continue
 		}
-		if state, ok := pidMask[pid]; !ok {
+		if procRunning, ok := pidMask[pid]; !ok {
 			// this short sleep is used to avoid a CPU spike (5s ~ 60k * 80 microseconds)
 			time.Sleep(80 * time.Microsecond)
 
 			if internal.ProcessExists(pid) {
 				// the process is still running, continue
-				pidMask[pid] = Running
+				pidMask[pid] = true
 				continue
-			} else {
-				pidMask[pid] = Exited
 			}
+			pidMask[pid] = false
 		} else {
-			if state == Running {
+			if procRunning {
 				// the process is still running, continue
 				continue
 			}
@@ -2150,7 +2142,7 @@ func cleanupKprobeEvents(pattern *regexp.Regexp, pidMask map[int]procMask) error
 	return cleanUpErrors
 }
 
-func cleanupUprobeEvents(pattern *regexp.Regexp, pidMask map[int]procMask) error {
+func cleanupUprobeEvents(pattern *regexp.Regexp, pidMask map[int]bool) error {
 	uprobeEvents, err := readUprobeEvents()
 	if err != nil {
 		return fmt.Errorf("couldn't read uprobe_events: %w", err)
@@ -2166,19 +2158,18 @@ func cleanupUprobeEvents(pattern *regexp.Regexp, pidMask map[int]procMask) error
 		if err != nil {
 			continue
 		}
-		if state, ok := pidMask[pid]; !ok {
+		if procRunning, ok := pidMask[pid]; !ok {
 			// this short sleep is used to avoid a CPU spike (5s ~ 60k * 80 microseconds)
 			time.Sleep(80 * time.Microsecond)
 
 			if internal.ProcessExists(pid) {
 				// the process is still running, continue
-				pidMask[pid] = Running
+				pidMask[pid] = true
 				continue
-			} else {
-				pidMask[pid] = Exited
 			}
+			pidMask[pid] = false
 		} else {
-			if state == Running {
+			if procRunning {
 				// the process is still running, continue
 				continue
 			}
