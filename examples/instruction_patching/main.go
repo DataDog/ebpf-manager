@@ -116,7 +116,8 @@ func run() error {
 		return err
 	}
 
-	log.Println("Use 'bpftool prog dump xlated id <prog-id>' to verify that the instruction has been patched. Press 'Enter' to exit...")
+	log.Println("=> Use 'bpftool prog dump xlated id <prog-id>' to verify that the instruction has been patched")
+	log.Println("=> Enter to exit")
 	_, _ = bufio.NewReader(os.Stdin).ReadBytes('\n')
 
 	return nil
