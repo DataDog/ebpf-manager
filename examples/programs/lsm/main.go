@@ -5,8 +5,11 @@ import (
 	_ "embed"
 	"fmt"
 	"log"
-	"syscall"
+	"runtime"
 	"time"
+
+	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/features"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
@@ -36,6 +39,18 @@ func main() {
 }
 
 func run() error {
+	if features.HaveProgramType(ebpf.LSM) != nil {
+		return nil
+	}
+	lvc, err := features.LinuxVersionCode()
+	if err != nil {
+		return err
+	}
+	if runtime.GOARCH == "arm64" && (lvc>>16) < 6 {
+		// LSM unsupported
+		return nil
+	}
+
 	options := manager.Options{
 		DefaultProbeRetry:      2,
 		DefaultProbeRetryDelay: time.Second,

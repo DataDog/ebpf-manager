@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"syscall"
+	"runtime"
 	"time"
+
+	"github.com/cilium/ebpf/features"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
@@ -43,6 +45,15 @@ func main() {
 }
 
 func run() error {
+	lvc, err := features.LinuxVersionCode()
+	if err != nil {
+		return err
+	}
+	if runtime.GOARCH == "arm64" && (lvc>>16) < 6 {
+		// fentry unsupported
+		return nil
+	}
+
 	options := manager.Options{
 		DefaultProbeRetry:      2,
 		DefaultProbeRetryDelay: time.Second,
