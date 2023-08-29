@@ -63,8 +63,6 @@ const (
 )
 
 type ProbeIdentificationPair struct {
-	kprobeType string
-
 	// UID - (optional) this field can be used to identify your probes when the same eBPF program is used on multiple
 	// hook points. Keep in mind that the pair (probe section, probe UID) needs to be unique
 	// system-wide for the kprobes and uprobes registration to work.
@@ -75,16 +73,6 @@ type ProbeIdentificationPair struct {
 }
 
 func (pip ProbeIdentificationPair) String() string {
-}
-
-// Matches - Returns true if the identification pair (probe uid, probe section, probe func name) matches.
-func (pip ProbeIdentificationPair) Matches(id ProbeIdentificationPair) bool {
-	return pip.UID == id.UID && pip.EBPFDefinitionMatches(id)
-}
-
-// EBPFDefinitionMatches - Returns true if the eBPF definition matches.
-func (pip ProbeIdentificationPair) EBPFDefinitionMatches(id ProbeIdentificationPair) bool {
-	return pip.EBPFFuncName == id.EBPFFuncName
 	return fmt.Sprintf("{UID:%s EBPFFuncName:%s}", pip.UID, pip.EBPFFuncName)
 }
 
@@ -150,6 +138,7 @@ type Probe struct {
 	kprobeHookPointNotExist bool
 	systemWideID            int
 	programTag              string
+	kprobeType              string
 	link                    netlink.Link
 	tcFilter                netlink.BpfFilter
 	tcClsActQdisc           netlink.Qdisc
