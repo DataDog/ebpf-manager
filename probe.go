@@ -72,15 +72,9 @@ type ProbeIdentificationPair struct {
 
 	// EBPFFuncName - Name of the main eBPF function of your eBPF program.
 	EBPFFuncName string
-
-	// EBPFSection - Section in which EBPFFuncName lives.
-	//
-	// Deprecated: Only EBPFFuncName is necessary
-	EBPFSection string
 }
 
 func (pip ProbeIdentificationPair) String() string {
-	return fmt.Sprintf("{UID:%s EBPFFuncName:%s EBPFSection:%s}", pip.UID, pip.EBPFFuncName, pip.EBPFSection)
 }
 
 // Matches - Returns true if the identification pair (probe uid, probe section, probe func name) matches.
@@ -91,6 +85,7 @@ func (pip ProbeIdentificationPair) Matches(id ProbeIdentificationPair) bool {
 // EBPFDefinitionMatches - Returns true if the eBPF definition matches.
 func (pip ProbeIdentificationPair) EBPFDefinitionMatches(id ProbeIdentificationPair) bool {
 	return pip.EBPFFuncName == id.EBPFFuncName
+	return fmt.Sprintf("{UID:%s EBPFFuncName:%s}", pip.UID, pip.EBPFFuncName)
 }
 
 // GetKprobeType - Identifies the probe type of the provided KProbe section
