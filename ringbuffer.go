@@ -27,7 +27,7 @@ type RingBuffer struct {
 	wgReader   sync.WaitGroup
 
 	// Map - A PerfMap has the same features as a normal Map
-	Map
+	*Map
 	RingBufferOptions
 }
 
@@ -41,7 +41,7 @@ func loadNewRingBuffer(spec ebpf.MapSpec, options MapOptions, ringBufferOptions 
 
 	// Create the new map
 	ringBuffer := RingBuffer{
-		Map:               *innerMap, //nolint:govet
+		Map:               innerMap,
 		RingBufferOptions: ringBufferOptions,
 	}
 	return &ringBuffer, nil

@@ -44,7 +44,7 @@ type PerfMap struct {
 	wgReader   sync.WaitGroup
 
 	// Map - A PerfMap has the same features as a normal Map
-	Map
+	*Map
 	PerfMapOptions
 }
 
@@ -58,7 +58,7 @@ func loadNewPerfMap(spec ebpf.MapSpec, options MapOptions, perfOptions PerfMapOp
 
 	// Create the new map
 	perfMap := PerfMap{
-		Map:            *innerMap, //nolint:govet
+		Map:            innerMap,
 		PerfMapOptions: perfOptions,
 	}
 	return &perfMap, nil

@@ -1887,7 +1887,7 @@ func (m *Manager) loadPinnedObjects() error {
 		if perfMap.PinPath == "" {
 			continue
 		}
-		if err := m.loadPinnedMap(&perfMap.Map); err != nil {
+		if err := m.loadPinnedMap(perfMap.Map); err != nil {
 			if err == ErrPinnedObjectNotFound {
 				continue
 			}
@@ -1900,7 +1900,7 @@ func (m *Manager) loadPinnedObjects() error {
 		if ringBuffer.PinPath == "" {
 			continue
 		}
-		if err := m.loadPinnedMap(&ringBuffer.Map); err != nil {
+		if err := m.loadPinnedMap(ringBuffer.Map); err != nil {
 			if err == ErrPinnedObjectNotFound {
 				continue
 			}

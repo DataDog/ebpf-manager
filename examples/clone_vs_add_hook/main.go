@@ -31,7 +31,7 @@ var m = &manager.Manager{
 	},
 	PerfMaps: []*manager.PerfMap{
 		{
-			Map: manager.Map{
+			Map: &manager.Map{
 				Name: "my_constants",
 			},
 			PerfMapOptions: manager.PerfMapOptions{
