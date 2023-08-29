@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/cilium/ebpf/asm"
@@ -74,6 +75,6 @@ func (use *unreferencedSymbolError) Error() string {
 // isUnreferencedSymbol returns true if err was caused by
 // an unreferenced symbol.
 func isUnreferencedSymbol(err error) bool {
-	_, ok := err.(*unreferencedSymbolError)
-	return ok
+	var ue *unreferencedSymbolError
+	return errors.As(err, &ue)
 }

@@ -30,7 +30,7 @@ type ConstantEditor struct {
 	// Name - Name of the constant to rewrite
 	Name string
 
-	// Value - Value to write in the eBPF bytecode. When using the asm load method, the Value has to be a uint64.
+	// Value - Value to write in the eBPF bytecode. When using the asm load method, the Value has to be a `uint64`.
 	Value interface{}
 
 	// FailOnMissing - If FailOMissing is set to true, the constant edition process will return an error if the constant
@@ -148,7 +148,7 @@ type Options struct {
 	// deactivated.
 	ExcludedFunctions []string
 
-	// AdditionalExcludedFunctionCollector - A dynamic function excluder, allowing to exclude functions based on the attach point
+	// AdditionalExcludedFunctionCollector - A dynamic function excluder, allowing to exclude functions with a callback.
 	AdditionalExcludedFunctionCollector FunctionExcluder
 
 	// ExcludedMaps - A list of maps that should not be created.
@@ -217,7 +217,7 @@ type Options struct {
 	DefaultProbeRetryDelay time.Duration
 
 	// RLimit - The maps & programs provided to the manager might exceed the maximum allowed memory lock.
-	// (RLIMIT_MEMLOCK) If a limit is provided here it will be applied when the manager is initialized.
+	// `RLIMIT_MEMLOCK` If a limit is provided here it will be applied when the manager is initialized.
 	RLimit *unix.Rlimit
 
 	// KeepKernelBTF - Defines if the kernel types defined in VerifierOptions.Programs.KernelTypes should be cleaned up
@@ -226,11 +226,11 @@ type Options struct {
 	// try to strip as much as possible the content of "KernelTypes" to reduce the memory overhead.
 	KeepKernelBTF bool
 
-	// SkipPerfMapReaderStartup - Perf maps whose name is set to true with this option will not have their reader gorountine started when calling the manager.Start() function.
+	// SkipPerfMapReaderStartup - Perf maps whose name is set to true with this option will not have their reader goroutine started when calling the manager.Start() function.
 	// PerfMap.Start() can then be used to start reading events from the corresponding PerfMap.
 	SkipPerfMapReaderStartup map[string]bool
 
-	// SkipRingbufferReaderStartup - Ringbuffer maps whose name is set to true with this option will not have their reader gorountine started when calling the manager.Start() function.
+	// SkipRingbufferReaderStartup - Ringbuffer maps whose name is set to true with this option will not have their reader goroutine started when calling the manager.Start() function.
 	// RingBuffer.Start() can then be used to start reading events from the corresponding RingBuffer.
 	SkipRingbufferReaderStartup map[string]bool
 }
@@ -1875,7 +1875,7 @@ func (m *Manager) loadPinnedObjects() error {
 			continue
 		}
 		if err := m.loadPinnedMap(managerMap); err != nil {
-			if err == ErrPinnedObjectNotFound {
+			if errors.Is(err, ErrPinnedObjectNotFound) {
 				continue
 			}
 			return err
@@ -1888,7 +1888,7 @@ func (m *Manager) loadPinnedObjects() error {
 			continue
 		}
 		if err := m.loadPinnedMap(&perfMap.Map); err != nil {
-			if err == ErrPinnedObjectNotFound {
+			if errors.Is(err, ErrPinnedObjectNotFound) {
 				continue
 			}
 			return err
@@ -1901,7 +1901,7 @@ func (m *Manager) loadPinnedObjects() error {
 			continue
 		}
 		if err := m.loadPinnedMap(&ringBuffer.Map); err != nil {
-			if err == ErrPinnedObjectNotFound {
+			if errors.Is(err, ErrPinnedObjectNotFound) {
 				continue
 			}
 			return err
@@ -1914,7 +1914,7 @@ func (m *Manager) loadPinnedObjects() error {
 			continue
 		}
 		if err := m.loadPinnedProgram(prog); err != nil {
-			if err == ErrPinnedObjectNotFound {
+			if errors.Is(err, ErrPinnedObjectNotFound) {
 				continue
 			}
 			return err
