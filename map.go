@@ -71,10 +71,10 @@ type Map struct {
 }
 
 // loadNewMap - Creates a new map instance, loads it and returns a pointer to the Map structure
-func loadNewMap(spec ebpf.MapSpec, options MapOptions) (*Map, error) {
+func loadNewMap(spec *ebpf.MapSpec, options MapOptions) (*Map, error) {
 	// Create new map
 	managerMap := Map{
-		arraySpec:  &spec,
+		arraySpec:  spec,
 		Name:       spec.Name,
 		Contents:   spec.Contents,
 		Freeze:     spec.Freeze,
@@ -83,7 +83,7 @@ func loadNewMap(spec ebpf.MapSpec, options MapOptions) (*Map, error) {
 
 	// Load map
 	var err error
-	if managerMap.array, err = ebpf.NewMap(&spec); err != nil {
+	if managerMap.array, err = ebpf.NewMap(spec); err != nil {
 		return nil, err
 	}
 

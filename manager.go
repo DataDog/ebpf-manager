@@ -950,7 +950,7 @@ func (m *Manager) stop(cleanup MapCleanupType) error {
 
 // NewMap - Create a new map using the provided parameters. The map is added to the list of maps managed by the manager.
 // Use a MapRoute to make this map available to the programs of the manager.
-func (m *Manager) NewMap(spec ebpf.MapSpec, options MapOptions) (*ebpf.Map, error) {
+func (m *Manager) NewMap(spec *ebpf.MapSpec, options MapOptions) (*ebpf.Map, error) {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
 	if m.collection == nil || m.state < initialized {
@@ -996,12 +996,12 @@ func (m *Manager) CloneMap(name string, newName string, options MapOptions) (*eb
 	// Duplicate spec and create a new map
 	spec := oldSpec.Copy()
 	spec.Name = newName
-	return m.NewMap(*spec, options)
+	return m.NewMap(spec, options)
 }
 
 // NewPerfRing - Creates a new perf ring and start listening for events.
 // Use a MapRoute to make this map available to the programs of the manager.
-func (m *Manager) NewPerfRing(spec ebpf.MapSpec, options MapOptions, perfMapOptions PerfMapOptions) (*ebpf.Map, error) {
+func (m *Manager) NewPerfRing(spec *ebpf.MapSpec, options MapOptions, perfMapOptions PerfMapOptions) (*ebpf.Map, error) {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
 	if m.state < initialized {
@@ -1052,12 +1052,12 @@ func (m *Manager) ClonePerfRing(name string, newName string, options MapOptions,
 	// Duplicate spec and create a new map
 	spec := oldSpec.Copy()
 	spec.Name = newName
-	return m.NewPerfRing(*spec, options, perfMapOptions)
+	return m.NewPerfRing(spec, options, perfMapOptions)
 }
 
 // NewRingBuffer - Creates a new ring buffer and start listening for events.
 // Use a MapRoute to make this map available to the programs of the manager.
-func (m *Manager) NewRingBuffer(spec ebpf.MapSpec, options MapOptions, ringBufferOptions RingBufferOptions) (*ebpf.Map, error) {
+func (m *Manager) NewRingBuffer(spec *ebpf.MapSpec, options MapOptions, ringBufferOptions RingBufferOptions) (*ebpf.Map, error) {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
 	if m.state < initialized {

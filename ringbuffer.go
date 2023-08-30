@@ -32,7 +32,7 @@ type RingBuffer struct {
 }
 
 // loadNewRingBuffer - Creates a new ring buffer map instance, loads it and sets up the ring buffer reader
-func loadNewRingBuffer(spec ebpf.MapSpec, options MapOptions, ringBufferOptions RingBufferOptions) (*RingBuffer, error) {
+func loadNewRingBuffer(spec *ebpf.MapSpec, options MapOptions, ringBufferOptions RingBufferOptions) (*RingBuffer, error) {
 	// Create underlying map
 	innerMap, err := loadNewMap(spec, options)
 	if err != nil {
