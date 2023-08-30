@@ -2107,11 +2107,12 @@ func (m *Manager) cleanupTraceFS() error {
 		}
 
 		for _, match := range pattern.FindAllStringSubmatch(string(events), -1) {
+			// our probes names should match the pattern provided and have the 5 capture groups + 1 full string
 			if len(match) < 6 {
 				continue
 			}
 
-			// check if the provided pid still exists
+			// the last capture group is the PID, check if the provided PID still exists
 			pid, err := strconv.Atoi(match[5])
 			if err != nil {
 				continue
