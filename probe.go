@@ -195,12 +195,12 @@ type Probe struct {
 	HookFuncName string
 
 	// TracepointCategory - (Tracepoint) The manager expects the tracepoint category to be parsed from the eBPF section
-	// in which the eBPF function of this Probe lives (SEC("tracepoint/[category]/[name])). However you can use this
+	// in which the eBPF function of this Probe lives (SEC("tracepoint/[category]/[name]")). However, you can use this
 	// field to override it.
 	TracepointCategory string
 
 	// TracepointName - (Tracepoint) The manager expects the tracepoint name to be parsed from the eBPF section
-	// in which the eBPF function of this Probe lives (SEC("tracepoint/[category]/[name])). However you can use this
+	// in which the eBPF function of this Probe lives (SEC("tracepoint/[category]/[name]")). However, you can use this
 	// field to override it.
 	TracepointName string
 
@@ -247,7 +247,7 @@ type Probe struct {
 	SocketFD int
 
 	// IfIndex - (TC classifier & XDP) Interface index used to identify the interface on which the probe will be
-	// attached. If not set, fall back to Ifname.
+	// attached. If not set, fall back to `IfName`.
 	IfIndex int
 
 	// IfName - (TC Classifier & XDP) Interface name on which the probe will be attached.
@@ -273,7 +273,7 @@ type Probe struct {
 	XDPAttachMode XdpAttachMode
 
 	// NetworkDirection - (TC classifier) Network traffic direction of the classifier. Can be either Ingress or Egress. Keep
-	// in mind that if you are hooking on the host side of a virtuel ethernet pair, Ingress and Egress are inverted.
+	// in mind that if you are hooking on the host side of a virtual ethernet pair, Ingress and Egress are inverted.
 	NetworkDirection TrafficType
 
 	// TCFilterHandle - (TC classifier) defines the handle to use when loading the classifier. Leave unset to let the kernel decide which handle to use.
@@ -924,7 +924,7 @@ func (p *Probe) attachWithKprobeEvents() error {
 	// Fallback to debugfs, write kprobe_events line to register kprobe
 	var kprobeID int
 	kprobeID, err := registerKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, maxActiveStr, p.attachPID)
-	if err == ErrKprobeIDNotExist {
+	if errors.Is(err, ErrKprobeIDNotExist) {
 		// The probe might have been loaded under a kernel generated event name. Clean up just in case.
 		_ = unregisterKprobeEventWithEventName(getKernelGeneratedEventName(p.GetKprobeType(), p.HookFuncName))
 		// fallback without KProbeMaxActive
@@ -1000,7 +1000,7 @@ func (p *Probe) attachKprobe() error {
 func (p *Probe) detachKprobe() error {
 	// Prepare kprobe_events line parameters
 	if p.GetKprobeType() == UnknownProbeType {
-		// this might be a Uprobe
+		// this might be a `uprobe`
 		return p.detachUprobe()
 	}
 

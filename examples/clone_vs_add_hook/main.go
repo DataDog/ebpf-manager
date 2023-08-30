@@ -42,7 +42,7 @@ var m = &manager.Manager{
 }
 
 // myDataHandler - Perf event data handler
-func myDataHandler(cpu int, data []byte, perfmap *manager.PerfMap, manager *manager.Manager) {
+func myDataHandler(cpu int, data []byte, _ *manager.PerfMap, _ *manager.Manager) {
 	myConstant := ByteOrder.Uint64(data[0:8])
 	log.Printf("received: CPU:%d my_constant:%d", cpu, myConstant)
 }

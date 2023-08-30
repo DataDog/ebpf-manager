@@ -233,7 +233,7 @@ func readKprobeEvents() (string, error) {
 }
 
 // registerKprobeEvent - Writes a new kprobe in kprobe_events with the provided parameters. Call DisableKprobeEvent
-// to remove the krpobe.
+// to remove the kprobe.
 func registerKprobeEvent(probeType, funcName, UID, maxActiveStr string, kprobeAttachPID int) (int, error) {
 	// Generate event name
 	eventName, err := generateEventName(probeType, funcName, UID, kprobeAttachPID)
@@ -311,7 +311,7 @@ func readUprobeEvents() (string, error) {
 }
 
 // registerUprobeEvent - Writes a new Uprobe in uprobe_events with the provided parameters. Call DisableUprobeEvent
-// to remove the krpobe.
+// to remove the kprobe.
 func registerUprobeEvent(probeType string, funcName, path, UID string, uprobeAttachPID int, offset uint64) (int, error) {
 	// Generate event name
 	eventName, err := generateEventName(probeType, funcName, UID, uprobeAttachPID)
