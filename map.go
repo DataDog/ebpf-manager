@@ -49,7 +49,7 @@ type Map struct {
 	array     *ebpf.Map
 	arraySpec *ebpf.MapSpec
 	state     state
-	stateLock sync.RWMutex
+	stateLock sync.Mutex
 
 	// externalMap - Indicates if the underlying eBPF map came from the current Manager or was loaded from an external
 	// source (=> pinned maps or rewritten maps)

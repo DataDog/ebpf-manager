@@ -179,8 +179,8 @@ func (m *PerfMap) Stop(cleanup MapCleanupType) error {
 
 // Pause - Pauses a perf ring buffer reader
 func (m *PerfMap) Pause() error {
-	m.stateLock.RLock()
-	defer m.stateLock.RUnlock()
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
 	if m.state < running {
 		return ErrMapNotRunning
 	}
@@ -193,6 +193,8 @@ func (m *PerfMap) Pause() error {
 
 // Resume - Resumes a perf ring buffer reader
 func (m *PerfMap) Resume() error {
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
 	if m.state < paused {
 		return ErrMapNotRunning
 	}
