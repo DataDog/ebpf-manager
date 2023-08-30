@@ -50,16 +50,24 @@ type PerfMap struct {
 
 // loadNewPerfMap - Creates a new perf map instance, loads it and sets up the perf ring buffer reader
 func loadNewPerfMap(spec *ebpf.MapSpec, options MapOptions, perfOptions PerfMapOptions) (*PerfMap, error) {
-	// Create underlying map
-	innerMap, err := loadNewMap(spec, options)
-	if err != nil {
+	perfMap := PerfMap{
+		Map: Map{
+			arraySpec:  spec,
+			Name:       spec.Name,
+			MapOptions: options,
+		},
+		PerfMapOptions: perfOptions,
+	}
+
+	var err error
+	if perfMap.array, err = ebpf.NewMap(spec); err != nil {
 		return nil, err
 	}
 
-	// Create the new map
-	perfMap := PerfMap{
-		Map:            *innerMap, //nolint:govet
-		PerfMapOptions: perfOptions,
+	if perfMap.PinPath != "" {
+		if err = perfMap.array.Pin(perfMap.PinPath); err != nil {
+			return nil, fmt.Errorf("couldn't pin map %s at %s: %w", perfMap.Name, perfMap.PinPath, err)
+		}
 	}
 	return &perfMap, nil
 }
@@ -81,7 +89,7 @@ func (m *PerfMap) init(manager *Manager) error {
 	}
 
 	// Initialize the underlying map structure
-	if err := m.Map.init(manager); err != nil {
+	if err := m.Map.init(); err != nil {
 		return err
 	}
 	return nil
