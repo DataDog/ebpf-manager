@@ -2102,7 +2102,7 @@ func (m *Manager) cleanupTraceFS() error {
 	for _, eventFile := range eventFiles {
 		events, err := tracefs.ReadFile(eventFile)
 		if err != nil {
-			cleanUpErrors = errors.Join(cleanUpErrors, fmt.Errorf("read %s: %s", eventFile, err))
+			cleanUpErrors = errors.Join(cleanUpErrors, fmt.Errorf("read %s: %w", eventFile, err))
 			continue
 		}
 
