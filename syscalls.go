@@ -8,7 +8,6 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/cilium/ebpf"
 	"golang.org/x/sys/unix"
 )
 
@@ -117,16 +116,7 @@ func ioctlPerfEventDisable(perfEventOpenFD *fd) error {
 	return unix.IoctlSetInt(int(perfEventOpenFD.raw), unix.PERF_EVENT_IOC_DISABLE, 0)
 }
 
-type bpfProgAttachAttr struct {
-	targetFD    uint32
-	attachBpfFD uint32
-	attachType  uint32
-	attachFlags uint32 //nolint:structcheck
-}
-
 const (
-	_ProgAttach        = 8
-	_ProgDetach        = 9
 	_RawTracepointOpen = 17
 )
 
@@ -141,32 +131,6 @@ func bpf(cmd int, attr unsafe.Pointer, size uintptr) (uintptr, error) {
 	}
 
 	return r1, err
-}
-
-func bpfProgAttach(progFd int, targetFd int, attachType ebpf.AttachType) (int, error) {
-	attr := bpfProgAttachAttr{
-		targetFD:    uint32(targetFd),
-		attachBpfFD: uint32(progFd),
-		attachType:  uint32(attachType),
-	}
-	ptr, err := bpf(_ProgAttach, unsafe.Pointer(&attr), unsafe.Sizeof(attr))
-	if err != nil {
-		return -1, fmt.Errorf("can't attach program id %d to target fd %d: %w", progFd, targetFd, err)
-	}
-	return int(ptr), nil
-}
-
-func bpfProgDetach(progFd int, targetFd int, attachType ebpf.AttachType) (int, error) {
-	attr := bpfProgAttachAttr{
-		targetFD:    uint32(targetFd),
-		attachBpfFD: uint32(progFd),
-		attachType:  uint32(attachType),
-	}
-	ptr, err := bpf(_ProgDetach, unsafe.Pointer(&attr), unsafe.Sizeof(attr))
-	if err != nil {
-		return -1, fmt.Errorf("can't detach program id %d to target fd %d: %w", progFd, targetFd, err)
-	}
-	return int(ptr), nil
 }
 
 func sockAttach(sockFd int, progFd int) error {

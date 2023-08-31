@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/link"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
@@ -142,6 +143,7 @@ type Probe struct {
 	link                    netlink.Link
 	tcFilter                netlink.BpfFilter
 	tcClsActQdisc           netlink.Qdisc
+	progLink                link.Link
 
 	// lastError - stores the last error that the probe encountered, it is used to surface a more useful error message
 	// when one of the validators (see Options.ActivatedProbes) fails.
@@ -804,8 +806,6 @@ func (p *Probe) detach() error {
 		err = errors.Join(err, p.detachKprobe())
 	case ebpf.RawTracepoint, ebpf.RawTracepointWritable:
 		err = errors.Join(err, p.detachRawTracepoint())
-	case ebpf.CGroupDevice, ebpf.CGroupSKB, ebpf.CGroupSock, ebpf.CGroupSockAddr, ebpf.CGroupSockopt, ebpf.CGroupSysctl:
-		err = errors.Join(err, p.detachCgroup())
 	case ebpf.SocketFilter:
 		err = errors.Join(err, p.detachSocket())
 	case ebpf.SchedCLS:
@@ -819,8 +819,9 @@ func (p *Probe) detach() error {
 	case ebpf.PerfEvent:
 		err = errors.Join(err, p.detachPerfEvent())
 	default:
-		// unsupported section, nothing to do either
-		break
+		if p.progLink != nil {
+			err = errors.Join(err, p.progLink.Close())
+		}
 	}
 	return err
 }
@@ -1146,39 +1147,6 @@ func (p *Probe) detachUprobe() error {
 
 	// Write uprobe_events line to remove hook point
 	return unregisterUprobeEvent(p.GetUprobeType(), p.HookFuncName, p.UID, p.attachPID)
-}
-
-// attachCGroup - Attaches the probe to a cgroup hook point
-func (p *Probe) attachCGroup() error {
-	// open CGroupPath
-	f, err := os.Open(p.CGroupPath)
-	if err != nil {
-		return fmt.Errorf("error opening cgroup %s from probe %s: %w", p.CGroupPath, p.ProbeIdentificationPair, err)
-	}
-	defer f.Close()
-
-	// Attach CGroup
-	ret, err := bpfProgAttach(p.program.FD(), int(f.Fd()), p.programSpec.AttachType)
-	if ret < 0 {
-		return fmt.Errorf("failed to attach probe %v to cgroup %s: %w", p.ProbeIdentificationPair, p.CGroupPath, err)
-	}
-	return nil
-}
-
-// detachCGroup - Detaches the probe from its cgroup hook point
-func (p *Probe) detachCgroup() error {
-	// open CGroupPath
-	f, err := os.Open(p.CGroupPath)
-	if err != nil {
-		return fmt.Errorf("error opening cgroup %s from probe %s: %w", p.CGroupPath, p.ProbeIdentificationPair, err)
-	}
-
-	// Detach CGroup
-	ret, err := bpfProgDetach(p.program.FD(), int(f.Fd()), p.programSpec.AttachType)
-	if ret < 0 {
-		return fmt.Errorf("failed to detach probe %v from cgroup %s: %w", p.ProbeIdentificationPair, p.CGroupPath, err)
-	}
-	return nil
 }
 
 // attachSocket - Attaches the probe to the provided socket
