@@ -804,8 +804,6 @@ func (p *Probe) detach() error {
 		break
 	case ebpf.Kprobe:
 		err = errors.Join(err, p.detachKprobe())
-	case ebpf.RawTracepoint, ebpf.RawTracepointWritable:
-		err = errors.Join(err, p.detachRawTracepoint())
 	case ebpf.SocketFilter:
 		err = errors.Join(err, p.detachSocket())
 	case ebpf.SchedCLS:
@@ -1544,26 +1542,6 @@ func (p *Probe) detachPerfEvent() error {
 	}
 	p.perfEventCPUFDs = []*fd{}
 	return errors.Join(errs...)
-}
-
-// attachRawTracepoint - Attaches the probe to its raw_tracepoint
-func (p *Probe) attachRawTracepoint() error {
-	var err error
-	p.rawTracepointFD, err = rawTracepointOpen(p.TracepointName, p.program.FD())
-	if err != nil {
-		return fmt.Errorf("failed to attach raw_tracepoint %s: %w", p.ProbeIdentificationPair, err)
-	}
-	return nil
-}
-
-// detachRawTracepoint - Detaches the probe from its raw_tracepoint
-func (p *Probe) detachRawTracepoint() error {
-	if p.rawTracepointFD != nil {
-		if closeErr := p.rawTracepointFD.Close(); closeErr != nil {
-			return fmt.Errorf("failed to detech raw_tracepoint %s: %w", p.ProbeIdentificationPair, closeErr)
-		}
-	}
-	return nil
 }
 
 func (p *Probe) getRetryAttemptCount() uint {
