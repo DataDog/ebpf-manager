@@ -40,17 +40,6 @@ const (
 	maxBPFClassifierNameLen = 256
 )
 
-// concatErrors - Concatenate 2 errors into one error.
-func concatErrors(err1, err2 error) error {
-	if err1 == nil {
-		return err2
-	}
-	if err2 != nil {
-		return fmt.Errorf("%s: %w", err2.Error(), err1)
-	}
-	return err1
-}
-
 // availableFilterFunctions - cache of the list of available kernel functions.
 var availableFilterFunctions []string
 

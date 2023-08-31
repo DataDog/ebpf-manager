@@ -897,39 +897,40 @@ func (m *Manager) StopReaders(cleanup MapCleanupType) error {
 }
 
 func (m *Manager) stopReaders(cleanup MapCleanupType) error {
-	var err error
+	var errs []error
 
 	// Stop perf ring readers
 	for _, perfRing := range m.PerfMaps {
 		if stopErr := perfRing.Stop(cleanup); stopErr != nil {
-			err = concatErrors(err, fmt.Errorf("perf ring reader %s couldn't gracefully shut down: %w", perfRing.Name, stopErr))
+			errs = append(errs, fmt.Errorf("perf ring reader %s couldn't gracefully shut down: %w", perfRing.Name, stopErr))
 		}
 	}
 
 	// Stop ring buffer readers
 	for _, ringBuffer := range m.RingBuffers {
 		if stopErr := ringBuffer.Stop(cleanup); stopErr != nil {
-			err = concatErrors(err, fmt.Errorf("ring buffer reader %s couldn't gracefully shut down: %w", ringBuffer.Name, stopErr))
+			errs = append(errs, fmt.Errorf("ring buffer reader %s couldn't gracefully shut down: %w", ringBuffer.Name, stopErr))
 		}
 	}
 
-	return err
+	return errors.Join(errs...)
 }
 
 func (m *Manager) stop(cleanup MapCleanupType) error {
-	err := m.stopReaders(cleanup)
+	var errs []error
+	errs = append(errs, m.stopReaders(cleanup))
 
 	// Detach eBPF programs
 	for _, probe := range m.Probes {
 		if stopErr := probe.Stop(); stopErr != nil {
-			err = concatErrors(err, fmt.Errorf("program %s couldn't gracefully shut down: %w", probe.ProbeIdentificationPair, stopErr))
+			errs = append(errs, fmt.Errorf("program %s couldn't gracefully shut down: %w", probe.ProbeIdentificationPair, stopErr))
 		}
 	}
 
 	// Close maps
 	for _, managerMap := range m.Maps {
 		if closeErr := managerMap.Close(cleanup); closeErr != nil {
-			err = concatErrors(err, fmt.Errorf("couldn't gracefully close map %s: %w", managerMap.Name, closeErr))
+			errs = append(errs, fmt.Errorf("couldn't gracefully close map %s: %w", managerMap.Name, closeErr))
 		}
 	}
 
@@ -943,7 +944,7 @@ func (m *Manager) stop(cleanup MapCleanupType) error {
 	m.collection.Close()
 
 	m.state = reset
-	return err
+	return errors.Join(errs...)
 }
 
 // NewMap - Create a new map using the provided parameters. The map is added to the list of maps managed by the manager.
@@ -2016,7 +2017,7 @@ func (m *Manager) CleanupNetworkNamespace(nsID uint32) error {
 		return ErrManagerNotInitialized
 	}
 
-	var err error
+	var errs []error
 	var toDelete []int
 	for i, probe := range m.Probes {
 		if probe.IfIndexNetnsID != nsID {
@@ -2027,7 +2028,7 @@ func (m *Manager) CleanupNetworkNamespace(nsID uint32) error {
 		probe.Enabled = false
 
 		// stop the probe
-		err = concatErrors(err, probe.Stop())
+		errs = append(errs, probe.Stop())
 
 		// append probe to delete (biggest indexes first)
 		toDelete = append([]int{i}, toDelete...)
@@ -2041,7 +2042,7 @@ func (m *Manager) CleanupNetworkNamespace(nsID uint32) error {
 		// we delete the biggest indexes first, so we should be good to go !
 		m.Probes = append(m.Probes[:i], m.Probes[i+1:]...)
 	}
-	return err
+	return errors.Join(errs...)
 }
 
 // getUIDSet - Returns the list of UIDs used by this manager.
