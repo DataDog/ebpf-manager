@@ -64,4 +64,3 @@ int kretprobe_mkdirat(void *ctx)
 }
 
 char _license[] SEC("license") = "GPL";
-__u32 _version SEC("version") = 0xFFFFFFFE;

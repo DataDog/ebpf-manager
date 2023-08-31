@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"errors"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 
@@ -26,31 +27,41 @@ var m = &manager.Manager{
 }
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	cp, err := detectCgroupPath()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	m.Probes[0].CGroupPath = cp
 
-	// Initialize the manager
 	if err := m.Init(bytes.NewReader(Probe)); err != nil {
-		log.Fatal(err)
+		return err
 	}
-
-	// Start the manager
+	defer func() {
+		if err := m.Stop(manager.CleanAll); err != nil {
+			log.Print(err)
+		}
+	}()
 	if err := m.Start(); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	log.Println("successfully started, head over to /sys/kernel/debug/tracing/trace_pipe")
 
 	// Generate some network traffic to trigger the probe
 	trigger()
+	return nil
+}
 
-	// Close the manager
-	if err := m.Stop(manager.CleanAll); err != nil {
-		log.Fatal(err)
-	}
+// trigger - Generate some network traffic to trigger the probe
+func trigger() {
+	log.Println("Generating some network traffic to trigger the probes ...")
+	_, _ = http.Get("https://www.google.com/")
 }
 
 func detectCgroupPath() (string, error) {

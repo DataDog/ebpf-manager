@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	_ "embed"
+	"fmt"
 	"log"
+	"os"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
@@ -23,6 +25,12 @@ var m = &manager.Manager{
 }
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	options := manager.Options{
 		ConstantEditors: []manager.ConstantEditor{
 			{
@@ -32,27 +40,37 @@ func main() {
 		},
 	}
 
-	// Initialize the manager
 	if err := m.InitWithOptions(bytes.NewReader(Probe), options); err != nil {
-		log.Fatal(err)
+		return err
 	}
-
-	// Start the manager
+	defer func() {
+		if err := m.Stop(manager.CleanAll); err != nil {
+			log.Print(err)
+		}
+	}()
 	if err := m.Start(); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
-	log.Println("successfully st, checkout the value of the edited constant in /sys/kernel/debug/tracing/trace_pipe")
+	log.Println("successfully started, check out the value of the edited constant in /sys/kernel/debug/tracing/trace_pipe")
 
 	// Create a folder to trigger the probes
 	if err := trigger(); err != nil {
 		log.Print(err)
 	}
 
-	wait()
+	log.Println("=> Enter to continue")
+	_, _ = fmt.Scanln()
+	return nil
+}
 
-	// Close the manager
-	if err := m.Stop(manager.CleanAll); err != nil {
-		log.Fatal(err)
+// trigger - Creates and then removes a tmp folder to trigger the probes
+func trigger() error {
+	log.Println("Generating events to trigger the probes ...")
+	tmpDir, err := os.MkdirTemp("", "example")
+	if err != nil {
+		return fmt.Errorf("mkdirtmp: %s", err)
 	}
+	log.Printf("removing %v", tmpDir)
+	return os.RemoveAll(tmpDir)
 }

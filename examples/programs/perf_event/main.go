@@ -5,10 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"log"
-	"os"
-	"os/signal"
-	"syscall"
-
+	
 	"golang.org/x/sys/unix"
 
 	manager "github.com/DataDog/ebpf-manager"
@@ -31,37 +28,28 @@ var m = &manager.Manager{
 }
 
 func main() {
-	// Initialize the manager
-	if err := m.Init(bytes.NewReader(Probe)); err != nil {
-		log.Fatal(err)
-	}
-
-	// Start the manager
-	if err := m.Start(); err != nil {
-		log.Fatal(err)
-	}
-
-	// Create a folder to trigger the probes
-	if err := trigger(); err != nil {
-		log.Print(err)
-	}
-
-	log.Println("successfully started")
-	log.Println("=> head over to /sys/kernel/debug/tracing/trace_pipe")
-	log.Println("=> Cmd+C to exit")
-
-	wait()
-
-	// Close the manager
-	if err := m.Stop(manager.CleanAll); err != nil {
+	if err := run(); err != nil {
 		log.Fatal(err)
 	}
 }
 
-// wait - Waits until an interrupt or kill signal is sent
-func wait() {
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	<-sig
-	fmt.Println()
+func run() error {
+	if err := m.Init(bytes.NewReader(Probe)); err != nil {
+		return err
+	}
+	defer func() {
+		if err := m.Stop(manager.CleanAll); err != nil {
+			log.Print(err)
+		}
+	}()
+	if err := m.Start(); err != nil {
+		return err
+	}
+
+	log.Println("successfully started")
+	log.Println("=> head over to /sys/kernel/debug/tracing/trace_pipe")
+	log.Println("=> Enter to exit")
+	_, _ = fmt.Scanln()
+
+	return nil
 }

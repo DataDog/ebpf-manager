@@ -39,4 +39,3 @@ int my_func_test(struct __sk_buff *skb)
 };
 
 char _license[] SEC("license") = "GPL";
-__u32 _version SEC("version") = 0xFFFFFFFE;

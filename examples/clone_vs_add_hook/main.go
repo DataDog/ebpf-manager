@@ -3,10 +3,35 @@ package main
 import (
 	"bytes"
 	_ "embed"
+	"encoding/binary"
+	"fmt"
 	"log"
+	"os"
+	"time"
+	"unsafe"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
+
+// ByteOrder - host byte order
+var ByteOrder binary.ByteOrder
+
+func init() {
+	ByteOrder = getHostByteOrder()
+}
+
+// getHostByteOrder - Returns the host byte order
+func getHostByteOrder() binary.ByteOrder {
+	var i int32 = 0x01020304
+	u := unsafe.Pointer(&i)
+	pb := (*byte)(u)
+	b := *pb
+	if b == 0x04 {
+		return binary.LittleEndian
+	}
+
+	return binary.BigEndian
+}
 
 //go:embed ebpf/bin/main.o
 var Probe []byte
@@ -72,40 +97,61 @@ var editors = []manager.ConstantEditor{
 }
 
 func main() {
-	// Prepare manager options
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	options := manager.Options{
 		ConstantEditors:          editors,
 		KeepUnmappedProgramSpecs: true,
 	}
-
-	// Initialize the manager
 	if err := m.InitWithOptions(bytes.NewReader(Probe), options); err != nil {
-		log.Fatal(err)
+		return err
 	}
+	defer func() {
+		if err := m.Stop(manager.CleanAll); err != nil {
+			log.Print(err)
+		}
+	}()
 
-	// Start the manager
 	if err := m.Start(); err != nil {
-		log.Fatal(err)
+		return err
 	}
 	log.Println("eBPF programs running, head over to /sys/kernel/debug/tracing/trace_pipe to see them in action.")
 
 	// Demo
 	log.Println("INITIAL PROGRAMS")
 	if err := trigger(); err != nil {
-		_ = m.Stop(manager.CleanAll)
-		log.Fatal(err)
+		return err
 	}
 	if err := demoClone(); err != nil {
-		_ = m.Stop(manager.CleanAll)
-		log.Fatal(err)
+		return err
 	}
 	if err := demoAddHook(); err != nil {
-		_ = m.Stop(manager.CleanAll)
-		log.Fatal(err)
+		return err
+	}
+	return nil
+}
+
+// trigger - Creates and then removes a tmp folder to trigger the probes
+func trigger() error {
+	log.Println("Generating events to trigger the probes ...")
+	tmpDir, err := os.MkdirTemp("", "example")
+	if err != nil {
+		return fmt.Errorf("mkdirtmp: %s", err)
+	}
+	// Sleep a bit to give time to the perf event
+	time.Sleep(500 * time.Millisecond)
+
+	log.Printf("removing %v", tmpDir)
+	err = os.RemoveAll(tmpDir)
+	if err != nil {
+		return fmt.Errorf("rmdir: %s", err)
 	}
 
-	// Close the manager
-	if err := m.Stop(manager.CleanAll); err != nil {
-		log.Fatal(err)
-	}
+	// Sleep a bit to give time to the perf event
+	time.Sleep(500 * time.Millisecond)
+	return nil
 }

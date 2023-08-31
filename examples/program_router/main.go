@@ -31,20 +31,34 @@ var m2 = &manager.Manager{
 }
 
 func main() {
-	// Initialize the manager
-	if err := m.Init(bytes.NewReader(Probe1)); err != nil {
+	if err := run(); err != nil {
 		log.Fatal(err)
 	}
-	if err := m2.Init(bytes.NewReader(Probe2)); err != nil {
-		log.Fatal(err)
-	}
+}
 
-	// Start the manager
+func run() error {
+	if err := m.Init(bytes.NewReader(Probe1)); err != nil {
+		return err
+	}
+	defer func() {
+		if err := m.Stop(manager.CleanAll); err != nil {
+			log.Print(err)
+		}
+	}()
+	if err := m2.Init(bytes.NewReader(Probe2)); err != nil {
+		return err
+	}
+	defer func() {
+		if err := m2.Stop(manager.CleanAll); err != nil {
+			log.Print(err)
+		}
+	}()
+
 	if err := m.Start(); err != nil {
-		log.Fatal(err)
+		return err
 	}
 	if err := m2.Start(); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	log.Println("successfully started, head over to /sys/kernel/debug/tracing/trace_pipe")
@@ -52,12 +66,5 @@ func main() {
 	if err := demoTailCall(); err != nil {
 		log.Print(err)
 	}
-
-	// Close the manager
-	if err := m.Stop(manager.CleanAll); err != nil {
-		log.Fatal(err)
-	}
-	if err := m2.Stop(manager.CleanAll); err != nil {
-		log.Fatal(err)
-	}
+	return nil
 }

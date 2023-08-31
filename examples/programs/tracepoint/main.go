@@ -3,7 +3,10 @@ package main
 import (
 	"bytes"
 	_ "embed"
+	"fmt"
 	"log"
+	"os"
+	"os/exec"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
@@ -29,14 +32,22 @@ var m = &manager.Manager{
 }
 
 func main() {
-	// Initialize the manager
-	if err := m.Init(bytes.NewReader(Probe)); err != nil {
+	if err := run(); err != nil {
 		log.Fatal(err)
 	}
+}
 
-	// Start the manager
+func run() error {
+	if err := m.Init(bytes.NewReader(Probe)); err != nil {
+		return err
+	}
+	defer func() {
+		if err := m.Stop(manager.CleanAll); err != nil {
+			log.Print(err)
+		}
+	}()
 	if err := m.Start(); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	log.Println("successfully started, head over to /sys/kernel/debug/tracing/trace_pipe")
@@ -45,9 +56,26 @@ func main() {
 	if err := trigger(); err != nil {
 		log.Print(err)
 	}
+	return nil
+}
 
-	// Close the manager
-	if err := m.Stop(manager.CleanAll); err != nil {
-		log.Fatal(err)
+// trigger - Creates and then removes a tmp folder to trigger the probes
+func trigger() (err error) {
+	log.Println("Generating events to trigger the probes ...")
+	tmpDir, err := os.MkdirTemp("", "example")
+	if err != nil {
+		return fmt.Errorf("mkdirtmp: %s", err)
 	}
+	defer func() {
+		log.Printf("removing %v", tmpDir)
+		err = os.RemoveAll(tmpDir)
+	}()
+
+	// trigger a fork by executing a binary
+	out, err := exec.Command("date").Output()
+	if err != nil {
+		return err
+	}
+	log.Printf("The date is %s", out)
+	return nil
 }
