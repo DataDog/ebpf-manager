@@ -810,8 +810,6 @@ func (p *Probe) detach() error {
 		err = errors.Join(err, p.detachTCCLS())
 	case ebpf.XDP:
 		err = errors.Join(err, p.detachXDP())
-	case ebpf.LSM:
-		err = errors.Join(err, p.detachLSM())
 	case ebpf.PerfEvent:
 		err = errors.Join(err, p.detachPerfEvent())
 	default:
@@ -1447,26 +1445,6 @@ func (p *Probe) detachXDP() error {
 	err = netlink.LinkSetXdpFdWithFlags(p.link, -1, int(p.XDPAttachMode))
 	if err != nil {
 		return fmt.Errorf("couldn't detach XDP program %v from interface %v: %w", p.ProbeIdentificationPair, p.IfIndex, err)
-	}
-	return nil
-}
-
-// attachLSM - Attaches the probe to its LSM hook point
-func (p *Probe) attachLSM() error {
-	var err error
-	p.rawTracepointFD, err = rawTracepointOpen("", p.program.FD())
-	if err != nil {
-		return fmt.Errorf("failed to attach LSM hook point: %w", err)
-	}
-	return nil
-}
-
-// detachLSM - Detaches the probe from its LSM hook point
-func (p *Probe) detachLSM() error {
-	if p.rawTracepointFD != nil {
-		if closeErr := p.rawTracepointFD.Close(); closeErr != nil {
-			return fmt.Errorf("failed to detach LSM hook point: %w", closeErr)
-		}
 	}
 	return nil
 }
