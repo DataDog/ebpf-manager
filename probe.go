@@ -3,6 +3,7 @@ package manager
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"regexp"
@@ -14,29 +15,13 @@ import (
 	"time"
 
 	"github.com/cilium/ebpf"
-	"github.com/cilium/ebpf/link"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
 	"github.com/DataDog/ebpf-manager/internal"
 )
 
-// XdpAttachMode selects a way how XDP program will be attached to interface
-type XdpAttachMode int
-
 const (
-	// XdpAttachModeNone stands for "best effort" - the kernel automatically
-	// selects the best mode (would try Drv first, then fallback to Generic).
-	// NOTE: Kernel will not fall back to Generic XDP if NIC driver failed
-	//       to install XDP program.
-	XdpAttachModeNone XdpAttachMode = 0
-	// XdpAttachModeSkb is "generic", kernel mode, less performant comparing to native,
-	// but does not requires driver support.
-	XdpAttachModeSkb XdpAttachMode = 1 << 1
-	// XdpAttachModeDrv is native, driver mode (support from driver side required)
-	XdpAttachModeDrv XdpAttachMode = 1 << 2
-	// XdpAttachModeHw suitable for NICs with hardware XDP support
-	XdpAttachModeHw XdpAttachMode = 1 << 3
 	// DefaultTCFilterPriority is the default TC filter priority if none were given
 	DefaultTCFilterPriority = 50
 )
@@ -143,7 +128,7 @@ type Probe struct {
 	link                    netlink.Link
 	tcFilter                netlink.BpfFilter
 	tcClsActQdisc           netlink.Qdisc
-	progLink                link.Link
+	progLink                io.Closer
 
 	// lastError - stores the last error that the probe encountered, it is used to surface a more useful error message
 	// when one of the validators (see Options.ActivatedProbes) fails.
@@ -808,8 +793,6 @@ func (p *Probe) detach() error {
 		err = errors.Join(err, p.detachSocket())
 	case ebpf.SchedCLS:
 		err = errors.Join(err, p.detachTCCLS())
-	case ebpf.XDP:
-		err = errors.Join(err, p.detachXDP())
 	case ebpf.PerfEvent:
 		err = errors.Join(err, p.detachPerfEvent())
 	default:
@@ -1415,38 +1398,6 @@ func (p *Probe) cleanupTCFilters(ntl *NetlinkSocket) error {
 		errs = append(errs, ntl.Sock.FilterDel(elem))
 	}
 	return errors.Join(errs...)
-}
-
-// attachXDP - Attaches the probe to an interface with an XDP hook point
-func (p *Probe) attachXDP() error {
-	var err error
-	// Resolve Probe's interface
-	if _, err = p.resolveLink(); err != nil {
-		return err
-	}
-
-	// Attach program
-	err = netlink.LinkSetXdpFdWithFlags(p.link, p.program.FD(), int(p.XDPAttachMode))
-	if err != nil {
-		return fmt.Errorf("couldn't attach XDP program %v to interface %v: %w", p.ProbeIdentificationPair, p.IfIndex, err)
-	}
-	return nil
-}
-
-// detachXDP - Detaches the probe from its XDP hook point
-func (p *Probe) detachXDP() error {
-	var err error
-	// Resolve Probe's interface
-	if _, err = p.resolveLink(); err != nil {
-		return err
-	}
-
-	// Detach program
-	err = netlink.LinkSetXdpFdWithFlags(p.link, -1, int(p.XDPAttachMode))
-	if err != nil {
-		return fmt.Errorf("couldn't detach XDP program %v from interface %v: %w", p.ProbeIdentificationPair, p.IfIndex, err)
-	}
-	return nil
 }
 
 // attachPerfEvent - Attaches the perf_event program
