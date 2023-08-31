@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/link"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
@@ -142,6 +143,7 @@ type Probe struct {
 	link                    netlink.Link
 	tcFilter                netlink.BpfFilter
 	tcClsActQdisc           netlink.Qdisc
+	progLink                link.Link
 
 	// lastError - stores the last error that the probe encountered, it is used to surface a more useful error message
 	// when one of the validators (see Options.ActivatedProbes) fails.
@@ -814,13 +816,12 @@ func (p *Probe) detach() error {
 		err = errors.Join(err, p.detachXDP())
 	case ebpf.LSM:
 		err = errors.Join(err, p.detachLSM())
-	case ebpf.Tracing:
-		err = errors.Join(err, p.detachTracing())
 	case ebpf.PerfEvent:
 		err = errors.Join(err, p.detachPerfEvent())
 	default:
-		// unsupported section, nothing to do either
-		break
+		if p.progLink != nil {
+			err = errors.Join(err, p.progLink.Close())
+		}
 	}
 	return err
 }
@@ -1502,24 +1503,6 @@ func (p *Probe) detachLSM() error {
 	if p.rawTracepointFD != nil {
 		if closeErr := p.rawTracepointFD.Close(); closeErr != nil {
 			return fmt.Errorf("failed to detach LSM hook point: %w", closeErr)
-		}
-	}
-	return nil
-}
-
-func (p *Probe) attachTracing() error {
-	var err error
-	p.rawTracepointFD, err = rawTracepointOpen("", p.program.FD())
-	if err != nil {
-		return fmt.Errorf("failed to attach tracing hook point: %w", err)
-	}
-	return nil
-}
-
-func (p *Probe) detachTracing() error {
-	if p.rawTracepointFD != nil {
-		if closeErr := p.rawTracepointFD.Close(); closeErr != nil {
-			return fmt.Errorf("failed to detach tracing hook point: %w", closeErr)
 		}
 	}
 	return nil
