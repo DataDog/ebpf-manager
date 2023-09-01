@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/cilium/ebpf"
 	"golang.org/x/sys/unix"
 )
 
@@ -37,31 +38,69 @@ func (p *Probe) attachPerfEvent() error {
 		pid = -1
 	}
 
+	link := &perfEventProgLink{
+		perfEventCPUFDs: make([]*perfEventLink, 0, p.PerfEventCPUCount),
+	}
 	for cpu := 0; cpu < p.PerfEventCPUCount; cpu++ {
 		fd, err := perfEventOpenRaw(&attr, pid, cpu, -1, 0)
 		if err != nil {
 			return fmt.Errorf("couldn't attach perf_event program %s on pid %d and CPU %d: %v", p.ProbeIdentificationPair, pid, cpu, err)
 		}
-		p.perfEventCPUFDs = append(p.perfEventCPUFDs, fd)
-
-		if err = ioctlPerfEventSetBPF(fd, p.program.FD()); err != nil {
-			return fmt.Errorf("couldn't set perf event bpf %s: %w", p.ProbeIdentificationPair, err)
-		}
-		if err = ioctlPerfEventEnable(fd); err != nil {
-			return fmt.Errorf("couldn't enable perf event %s for pid %d and CPU %d: %w", p.ProbeIdentificationPair, pid, cpu, err)
+		pfd := newPerfEventLink(fd)
+		link.perfEventCPUFDs = append(link.perfEventCPUFDs, pfd)
+		if err := attachPerfEvent(pfd, p.program); err != nil {
+			_ = link.Close()
+			return fmt.Errorf("attach: %w", err)
 		}
 	}
+	p.progLink = link
 	return nil
 }
 
-// detachPerfEvent - Detaches the perf_event program
-func (p *Probe) detachPerfEvent() error {
+type perfEventProgLink struct {
+	perfEventCPUFDs []*perfEventLink
+}
+
+func (p *perfEventProgLink) Close() error {
 	var errs []error
 	for _, fd := range p.perfEventCPUFDs {
 		errs = append(errs, fd.Close())
 	}
-	p.perfEventCPUFDs = []*fd{}
+	p.perfEventCPUFDs = []*perfEventLink{}
 	return errors.Join(errs...)
+}
+
+type perfEventLink struct {
+	fd *fd
+}
+
+func newPerfEventLink(fd *fd) *perfEventLink {
+	pe := &perfEventLink{fd}
+	runtime.SetFinalizer(pe, (*perfEventLink).Close)
+	return pe
+}
+
+func (pe *perfEventLink) Close() error {
+	runtime.SetFinalizer(pe, nil)
+	return pe.fd.Close()
+}
+
+func (pe *perfEventLink) Pause() error {
+	return ioctlPerfEventDisable(pe.fd)
+}
+
+func (pe *perfEventLink) Resume() error {
+	return ioctlPerfEventEnable(pe.fd)
+}
+
+func attachPerfEvent(pe *perfEventLink, prog *ebpf.Program) error {
+	if err := ioctlPerfEventSetBPF(pe.fd, prog.FD()); err != nil {
+		return fmt.Errorf("set perf event bpf: %w", err)
+	}
+	if err := ioctlPerfEventEnable(pe.fd); err != nil {
+		return fmt.Errorf("enable perf event: %w", err)
+	}
+	return nil
 }
 
 // perfEventOpenPMU - Kernel API with e12f03d ("perf/core: Implement the 'perf_kprobe' PMU") allows

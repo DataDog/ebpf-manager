@@ -24,29 +24,15 @@ func (p *Probe) attachTracepoint() error {
 	}
 
 	// Hook the eBPF program to the tracepoint
-	p.perfEventFD, err = perfEventOpenTracingEvent(tracepointID, -1)
+	fd, err := perfEventOpenTracingEvent(tracepointID, -1)
 	if err != nil {
 		return fmt.Errorf("couldn't enable tracepoint %s: %w", p.ProbeIdentificationPair, err)
 	}
-	if err = ioctlPerfEventSetBPF(p.perfEventFD, p.program.FD()); err != nil {
-		return fmt.Errorf("couldn't set perf event bpf %s: %w", p.ProbeIdentificationPair, err)
+	pe := newPerfEventLink(fd)
+	if err := attachPerfEvent(pe, p.program); err != nil {
+		_ = pe.Close()
+		return fmt.Errorf("attach %s: %w", p.ProbeIdentificationPair, err)
 	}
-	if err = ioctlPerfEventEnable(p.perfEventFD); err != nil {
-		return fmt.Errorf("couldn't enable perf event %s: %w", p.ProbeIdentificationPair, err)
-	}
-	return nil
-}
-
-func (p *Probe) pauseTracepoint() error {
-	if err := ioctlPerfEventDisable(p.perfEventFD); err != nil {
-		return fmt.Errorf("pause tracepoint: %w", err)
-	}
-	return nil
-}
-
-func (p *Probe) resumeTracepoint() error {
-	if err := ioctlPerfEventEnable(p.perfEventFD); err != nil {
-		return fmt.Errorf("resume tracepoint: %w", err)
-	}
+	p.progLink = pe
 	return nil
 }

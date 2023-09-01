@@ -82,27 +82,22 @@ func findSymbolOffsets(path string, pattern *regexp.Regexp) ([]elf.Symbol, error
 }
 
 // attachWithUprobeEvents attaches the uprobe using the uprobes_events ABI
-func (p *Probe) attachWithUprobeEvents() error {
-	// fallback to debugfs
+func (p *Probe) attachWithUprobeEvents() (*fd, error) {
 	var uprobeID int
 	uprobeID, err := registerUprobeEvent(p.prefix(), p.HookFuncName, p.BinaryPath, p.UID, p.attachPID, p.UprobeOffset)
 	if err != nil {
-		return fmt.Errorf("couldn't enable uprobe %s: %w", p.ProbeIdentificationPair, err)
+		return nil, fmt.Errorf("couldn't enable uprobe %s: %w", p.ProbeIdentificationPair, err)
 	}
 
-	// Activate perf event
-	p.perfEventFD, err = perfEventOpenTracingEvent(uprobeID, p.PerfEventPID)
+	pfd, err := perfEventOpenTracingEvent(uprobeID, p.PerfEventPID)
 	if err != nil {
-		return fmt.Errorf("couldn't open perf event fd for %s: %w", p.ProbeIdentificationPair, err)
+		return nil, fmt.Errorf("couldn't open perf event fd for %s: %w", p.ProbeIdentificationPair, err)
 	}
-	p.attachedWithDebugFS = true
-	return nil
+	return pfd, nil
 }
 
 // attachUprobe - Attaches the probe to its Uprobe
 func (p *Probe) attachUprobe() error {
-	var err error
-
 	// compute the offset if it was not provided
 	if p.UprobeOffset == 0 {
 		var funcPattern string
@@ -127,29 +122,30 @@ func (p *Probe) attachUprobe() error {
 		p.HookFuncName = offsets[0].Name
 	}
 
-	if p.UprobeAttachMethod == AttachWithPerfEventOpen {
-		if p.perfEventFD, err = perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffset), p.PerfEventPID, "uprobe", p.isReturnProbe, 0); err != nil {
-			if err = p.attachWithUprobeEvents(); err != nil {
-				return err
-			}
-		}
-	} else if p.UprobeAttachMethod == AttachWithProbeEvents {
-		if err = p.attachWithUprobeEvents(); err != nil {
-			if p.perfEventFD, err = perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffset), p.PerfEventPID, "uprobe", p.isReturnProbe, 0); err != nil {
-				return err
-			}
-		}
-	} else {
-		return fmt.Errorf("invalid uprobe attach method: %d", p.UprobeAttachMethod)
+	var eventsFunc attachFunc = p.attachWithUprobeEvents
+	var pmuFunc attachFunc = func() (*fd, error) {
+		return perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffset), p.PerfEventPID, "uprobe", p.isReturnProbe, 0)
 	}
 
-	// enable perf event
-	if err = ioctlPerfEventSetBPF(p.perfEventFD, p.program.FD()); err != nil {
-		return fmt.Errorf("couldn't set perf event bpf %s: %w", p.ProbeIdentificationPair, err)
+	startFunc, fallbackFunc := pmuFunc, eventsFunc
+	if p.UprobeAttachMethod == AttachWithProbeEvents {
+		startFunc, fallbackFunc = eventsFunc, pmuFunc
 	}
-	if err = ioctlPerfEventEnable(p.perfEventFD); err != nil {
-		return fmt.Errorf("couldn't enable perf event %s: %w", p.ProbeIdentificationPair, err)
+
+	var err error
+	var pfd *fd
+	if pfd, err = startFunc(); err != nil {
+		if pfd, err = fallbackFunc(); err != nil {
+			return err
+		}
 	}
+
+	pe := newPerfEventLink(pfd)
+	if err := attachPerfEvent(pe, p.program); err != nil {
+		_ = pe.Close()
+		return fmt.Errorf("attach %s: %w", p.ProbeIdentificationPair, err)
+	}
+	p.progLink = pe
 	return nil
 }
 

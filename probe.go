@@ -30,7 +30,6 @@ type Probe struct {
 	netlinkSocketCache      *netlinkSocketCache
 	program                 *ebpf.Program
 	programSpec             *ebpf.ProgramSpec
-	perfEventFD             *fd
 	state                   state
 	stateLock               sync.RWMutex
 	manualLoadNeeded        bool
@@ -204,7 +203,7 @@ type Probe struct {
 	PerfEventCPUCount int
 
 	// perfEventCPUFDs - (Perf event) holds the fd of the perf_event program per CPU
-	perfEventCPUFDs []*fd
+	perfEventCPUFDs []*perfEventLink
 }
 
 // GetEBPFFuncName - Returns EBPFFuncName with the UID as a postfix if the Probe was copied
@@ -463,9 +462,7 @@ func (p *Probe) internalInit(manager *Manager) error {
 
 	// set default kprobe attach method
 	if p.KprobeAttachMethod == AttachKprobeMethodNotSet {
-		if manager != nil {
-			p.KprobeAttachMethod = manager.options.DefaultKprobeAttachMethod
-		}
+		p.KprobeAttachMethod = manager.options.DefaultKprobeAttachMethod
 		if p.KprobeAttachMethod == AttachKprobeMethodNotSet {
 			p.KprobeAttachMethod = AttachKprobeWithPerfEventOpen
 		}
@@ -473,9 +470,7 @@ func (p *Probe) internalInit(manager *Manager) error {
 
 	// set default uprobe attach method
 	if p.UprobeAttachMethod == AttachMethodNotSet {
-		if manager != nil {
-			p.UprobeAttachMethod = manager.options.DefaultUprobeAttachMethod
-		}
+		p.UprobeAttachMethod = manager.options.DefaultUprobeAttachMethod
 		if p.UprobeAttachMethod == AttachMethodNotSet {
 			p.UprobeAttachMethod = AttachWithPerfEventOpen
 		}
@@ -591,18 +586,12 @@ func (p *Probe) pause() error {
 		return nil
 	}
 
-	var err error
-	switch p.programSpec.Type {
-	case ebpf.Kprobe:
-		err = p.pauseKprobe()
-	case ebpf.SocketFilter:
-		err = p.detachSocket()
-	case ebpf.TracePoint:
-		err = p.pauseTracepoint()
-	default:
+	v, ok := p.progLink.(pauser)
+	if !ok {
 		return fmt.Errorf("pause not supported for program type %s", p.programSpec.Type)
 	}
-	if err != nil {
+
+	if err := v.Pause(); err != nil {
 		p.lastError = err
 		return fmt.Errorf("error pausing probe %s: %w", p.ProbeIdentificationPair, err)
 	}
@@ -618,18 +607,12 @@ func (p *Probe) resume() error {
 		return nil
 	}
 
-	var err error
-	switch p.programSpec.Type {
-	case ebpf.Kprobe:
-		err = p.resumeKprobe()
-	case ebpf.SocketFilter:
-		err = p.attachSocket()
-	case ebpf.TracePoint:
-		err = p.resumeTracepoint()
-	default:
+	v, ok := p.progLink.(pauser)
+	if !ok {
 		return fmt.Errorf("resume not supported for program type %s", p.programSpec.Type)
 	}
-	if err != nil {
+
+	if err := v.Resume(); err != nil {
 		p.lastError = err
 		return fmt.Errorf("error resuming probe %s: %w", p.ProbeIdentificationPair, err)
 	}
@@ -668,10 +651,6 @@ func (p *Probe) detachRetry() error {
 // detach - Thread unsafe version of Detach.
 func (p *Probe) detach() error {
 	err := p.program.Unpin()
-	// Shared with all probes: close the perf event file descriptor
-	if p.perfEventFD != nil {
-		err = p.perfEventFD.Close()
-	}
 
 	// Per program type cleanup
 	switch p.programSpec.Type {
@@ -685,12 +664,8 @@ func (p *Probe) detach() error {
 		case uprobe:
 			err = errors.Join(err, p.detachUprobe())
 		}
-	case ebpf.SocketFilter:
-		err = errors.Join(err, p.detachSocket())
 	case ebpf.SchedCLS:
 		err = errors.Join(err, p.detachTCCLS())
-	case ebpf.PerfEvent:
-		err = errors.Join(err, p.detachPerfEvent())
 	default:
 		if p.progLink != nil {
 			err = errors.Join(err, p.progLink.Close())
@@ -741,7 +716,7 @@ func (p *Probe) reset() {
 	p.netlinkSocketCache = nil
 	p.program = nil
 	p.programSpec = nil
-	p.perfEventFD = nil
+	p.progLink = nil
 	p.state = reset
 	p.manualLoadNeeded = false
 	p.checkPin = false

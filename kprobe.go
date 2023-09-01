@@ -32,51 +32,57 @@ func (p *Probe) prefix() string {
 	return "p"
 }
 
+type attachFunc func() (*fd, error)
+
 // attachKprobe - Attaches the probe to its kprobe
 func (p *Probe) attachKprobe() error {
-	var err error
-
 	if len(p.HookFuncName) == 0 {
-		return errors.New("HookFuncName, MatchFuncName or SyscallFuncName is required")
+		return fmt.Errorf("HookFuncName, MatchFuncName or SyscallFuncName is required")
 	}
 
+	var eventsFunc attachFunc = p.attachWithKprobeEvents
+	var pmuFunc attachFunc = func() (*fd, error) {
+		return perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", p.isReturnProbe, 0)
+	}
+
+	startFunc, fallbackFunc := pmuFunc, eventsFunc
 	// currently the perf event open ABI doesn't allow to specify the max active parameter
-	if p.KProbeMaxActive > 0 && p.isReturnProbe {
-		if err = p.attachWithKprobeEvents(); err != nil {
-			if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", p.isReturnProbe, 0); err != nil {
-				return err
-			}
-		}
-	} else if p.KprobeAttachMethod == AttachKprobeWithPerfEventOpen {
-		if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", p.isReturnProbe, 0); err != nil {
-			if err = p.attachWithKprobeEvents(); err != nil {
-				return err
-			}
-		}
-	} else if p.KprobeAttachMethod == AttachKprobeWithKprobeEvents {
-		if err = p.attachWithKprobeEvents(); err != nil {
-			if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", p.isReturnProbe, 0); err != nil {
-				return err
-			}
-		}
-	} else {
-		return fmt.Errorf("invalid kprobe attach method: %d", p.KprobeAttachMethod)
+	if (p.KProbeMaxActive > 0 && p.isReturnProbe) || p.KprobeAttachMethod == AttachKprobeWithKprobeEvents {
+		startFunc, fallbackFunc = eventsFunc, pmuFunc
 	}
 
-	// enable perf event
-	if err = ioctlPerfEventSetBPF(p.perfEventFD, p.program.FD()); err != nil {
-		return fmt.Errorf("couldn't set perf event bpf %s: %w", p.ProbeIdentificationPair, err)
+	var err error
+	var pfd *fd
+	if pfd, err = startFunc(); err != nil {
+		if pfd, err = fallbackFunc(); err != nil {
+			return err
+		}
 	}
-	if err = ioctlPerfEventEnable(p.perfEventFD); err != nil {
-		return fmt.Errorf("couldn't enable perf event %s: %w", p.ProbeIdentificationPair, err)
+
+	pe := newPerfEventLink(pfd)
+	if err := attachPerfEvent(pe, p.program); err != nil {
+		_ = pe.Close()
+		return fmt.Errorf("attach %s: %w", p.ProbeIdentificationPair, err)
 	}
+	p.progLink = pe
 	return nil
 }
 
+// detachKprobe - Detaches the probe from its kprobe
+func (p *Probe) detachKprobe() error {
+	if !p.attachedWithDebugFS {
+		// nothing to do
+		return nil
+	}
+
+	// Write kprobe_events line to remove hook point
+	return unregisterKprobeEvent(p.prefix(), p.HookFuncName, p.UID, p.attachPID)
+}
+
 // attachWithKprobeEvents attaches the kprobe using the kprobes_events ABI
-func (p *Probe) attachWithKprobeEvents() error {
+func (p *Probe) attachWithKprobeEvents() (*fd, error) {
 	if p.kprobeHookPointNotExist {
-		return ErrKProbeHookPointNotExist
+		return nil, ErrKProbeHookPointNotExist
 	}
 
 	// Prepare kprobe_events line parameters
@@ -101,42 +107,15 @@ func (p *Probe) attachWithKprobeEvents() error {
 		if errors.Is(err, os.ErrNotExist) {
 			p.kprobeHookPointNotExist = true
 		}
-		return fmt.Errorf("couldn't enable kprobe %s: %w", p.ProbeIdentificationPair, err)
+		return nil, fmt.Errorf("couldn't enable kprobe %s: %w", p.ProbeIdentificationPair, err)
 	}
 
 	// create perf event fd
-	p.perfEventFD, err = perfEventOpenTracingEvent(kprobeID, -1)
+	pfd, err := perfEventOpenTracingEvent(kprobeID, -1)
 	if err != nil {
-		return fmt.Errorf("couldn't open perf event fd for %s: %w", p.ProbeIdentificationPair, err)
+		return nil, fmt.Errorf("couldn't open perf event fd for %s: %w", p.ProbeIdentificationPair, err)
 	}
-	p.attachedWithDebugFS = true
-
-	return nil
-}
-
-// detachKprobe - Detaches the probe from its kprobe
-func (p *Probe) detachKprobe() error {
-	if !p.attachedWithDebugFS {
-		// nothing to do
-		return nil
-	}
-
-	// Write kprobe_events line to remove hook point
-	return unregisterKprobeEvent(p.prefix(), p.HookFuncName, p.UID, p.attachPID)
-}
-
-func (p *Probe) pauseKprobe() error {
-	if err := ioctlPerfEventDisable(p.perfEventFD); err != nil {
-		return fmt.Errorf("pause kprobe: %w", err)
-	}
-	return nil
-}
-
-func (p *Probe) resumeKprobe() error {
-	if err := ioctlPerfEventEnable(p.perfEventFD); err != nil {
-		return fmt.Errorf("resume kprobe: %w", err)
-	}
-	return nil
+	return pfd, nil
 }
 
 // registerKprobeEvent - Writes a new kprobe in kprobe_events with the provided parameters. Call DisableKprobeEvent
