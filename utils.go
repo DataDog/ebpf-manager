@@ -21,12 +21,6 @@ import (
 	"github.com/DataDog/ebpf-manager/tracefs"
 )
 
-const (
-	// maxBPFClassifierNameLen - maximum length for a TC
-	// CLS_BPF_NAME_LEN (linux/net/sched/cls_bpf.c)
-	maxBPFClassifierNameLen = 256
-)
-
 // cache of the syscall prefix depending on kernel version
 var syscallPrefix string
 
@@ -144,21 +138,6 @@ func getSyscallFnNameWithKallsyms(name string, kallsymsContent io.Reader, arch s
 	}
 
 	return "", fmt.Errorf("could not find a valid syscall name")
-}
-
-func generateTCFilterName(UID, sectionName string, attachPID int) (string, error) {
-	attachPIDstr := strconv.Itoa(attachPID)
-	maxSectionNameLen := maxBPFClassifierNameLen - 3 /* _ */ - len(UID) - len(attachPIDstr)
-	if maxSectionNameLen < 0 {
-		dbgFullFilterString := safeEventRegexp.ReplaceAllString(fmt.Sprintf("%s_%s_%s", sectionName, UID, attachPIDstr), "_")
-		return "", fmt.Errorf("filter name is too long (kernel limit is %d (CLS_BPF_NAME_LEN)): sectionName %d, UID %d, attachPIDstr %d ; full event string : '%s'", maxEventNameLen, len(sectionName), len(UID), len(attachPIDstr), dbgFullFilterString)
-	}
-	filterName := safeEventRegexp.ReplaceAllString(fmt.Sprintf("%.*s_%s_%s", maxSectionNameLen, sectionName, UID, attachPIDstr), "_")
-
-	if len(filterName) > maxBPFClassifierNameLen {
-		return "", fmt.Errorf("filter name too long (kernel limit CLS_BPF_NAME_LEN is %d): '%s'", maxBPFClassifierNameLen, filterName)
-	}
-	return filterName, nil
 }
 
 // registerKprobeEvent - Writes a new kprobe in kprobe_events with the provided parameters. Call DisableKprobeEvent
