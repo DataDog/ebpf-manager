@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"regexp"
 	"runtime"
 	"strings"
@@ -18,26 +17,6 @@ import (
 
 	"github.com/DataDog/ebpf-manager/internal"
 )
-
-const (
-	UnknownProbeType = ""
-	ProbeType        = "p"
-	RetProbeType     = "r"
-)
-
-// GetKprobeType - Identifies the probe type of the provided KProbe section
-func (p *Probe) GetKprobeType() string {
-	if len(p.kprobeType) == 0 {
-		if strings.HasPrefix(p.programSpec.SectionName, "kretprobe/") {
-			p.kprobeType = RetProbeType
-		} else if strings.HasPrefix(p.programSpec.SectionName, "kprobe/") {
-			p.kprobeType = ProbeType
-		} else {
-			p.kprobeType = UnknownProbeType
-		}
-	}
-	return p.kprobeType
-}
 
 // GetUprobeType - Identifies the probe type of the provided Uprobe section
 func (p *Probe) GetUprobeType() string {
@@ -59,14 +38,6 @@ const (
 	AttachMethodNotSet AttachMethod = iota
 	AttachWithPerfEventOpen
 	AttachWithProbeEvents
-)
-
-type KprobeAttachMethod = AttachMethod
-
-const (
-	AttachKprobeMethodNotSet      = AttachMethodNotSet
-	AttachKprobeWithPerfEventOpen = AttachWithPerfEventOpen
-	AttachKprobeWithKprobeEvents  = AttachWithProbeEvents
 )
 
 // Probe - Main eBPF probe wrapper. This structure is used to store the required data to attach a loaded eBPF
@@ -807,126 +778,6 @@ func (p *Probe) reset() {
 	p.programTag = ""
 	p.tcFilter = netlink.BpfFilter{}
 	p.tcClsActQdisc = nil
-}
-
-// attachWithKprobeEvents attaches the kprobe using the kprobes_events ABI
-func (p *Probe) attachWithKprobeEvents() error {
-	if p.kprobeHookPointNotExist {
-		return ErrKProbeHookPointNotExist
-	}
-
-	// Prepare kprobe_events line parameters
-	var maxActiveStr string
-	if p.GetKprobeType() == RetProbeType {
-		if p.KProbeMaxActive > 0 {
-			maxActiveStr = fmt.Sprintf("%d", p.KProbeMaxActive)
-		}
-	}
-
-	// Fallback to debugfs, write kprobe_events line to register kprobe
-	var kprobeID int
-	kprobeID, err := registerKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, maxActiveStr, p.attachPID)
-	if errors.Is(err, ErrKprobeIDNotExist) {
-		// The probe might have been loaded under a kernel generated event name. Clean up just in case.
-		_ = unregisterTraceFSEvent("kprobe_events", getKernelGeneratedEventName(p.GetKprobeType(), p.HookFuncName))
-		// fallback without KProbeMaxActive
-		kprobeID, err = registerKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, "", p.attachPID)
-	}
-
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			p.kprobeHookPointNotExist = true
-		}
-		return fmt.Errorf("couldn't enable kprobe %s: %w", p.ProbeIdentificationPair, err)
-	}
-
-	// create perf event fd
-	p.perfEventFD, err = perfEventOpenTracingEvent(kprobeID, -1)
-	if err != nil {
-		return fmt.Errorf("couldn't open perf event fd for %s: %w", p.ProbeIdentificationPair, err)
-	}
-	p.attachedWithDebugFS = true
-
-	return nil
-}
-
-// attachKprobe - Attaches the probe to its kprobe
-func (p *Probe) attachKprobe() error {
-	var err error
-
-	if len(p.HookFuncName) == 0 {
-		return errors.New("HookFuncName, MatchFuncName or SyscallFuncName is required")
-	}
-
-	if p.GetKprobeType() == UnknownProbeType {
-		// this might actually be a UProbe
-		return p.attachUprobe()
-	}
-
-	isKRetProbe := p.GetKprobeType() == RetProbeType
-
-	// currently the perf event open ABI doesn't allow to specify the max active parameter
-	if p.KProbeMaxActive > 0 && isKRetProbe {
-		if err = p.attachWithKprobeEvents(); err != nil {
-			if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", isKRetProbe, 0); err != nil {
-				return err
-			}
-		}
-	} else if p.KprobeAttachMethod == AttachKprobeWithPerfEventOpen {
-		if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", isKRetProbe, 0); err != nil {
-			if err = p.attachWithKprobeEvents(); err != nil {
-				return err
-			}
-		}
-	} else if p.KprobeAttachMethod == AttachKprobeWithKprobeEvents {
-		if err = p.attachWithKprobeEvents(); err != nil {
-			if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", isKRetProbe, 0); err != nil {
-				return err
-			}
-		}
-	} else {
-		return fmt.Errorf("invalid kprobe attach method: %d", p.KprobeAttachMethod)
-	}
-
-	// enable perf event
-	if err = ioctlPerfEventSetBPF(p.perfEventFD, p.program.FD()); err != nil {
-		return fmt.Errorf("couldn't set perf event bpf %s: %w", p.ProbeIdentificationPair, err)
-	}
-	if err = ioctlPerfEventEnable(p.perfEventFD); err != nil {
-		return fmt.Errorf("couldn't enable perf event %s: %w", p.ProbeIdentificationPair, err)
-	}
-	return nil
-}
-
-// detachKprobe - Detaches the probe from its kprobe
-func (p *Probe) detachKprobe() error {
-	// Prepare kprobe_events line parameters
-	if p.GetKprobeType() == UnknownProbeType {
-		// this might be a `uprobe`
-		return p.detachUprobe()
-	}
-
-	if !p.attachedWithDebugFS {
-		// nothing to do
-		return nil
-	}
-
-	// Write kprobe_events line to remove hook point
-	return unregisterKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, p.attachPID)
-}
-
-func (p *Probe) pauseKprobe() error {
-	if err := ioctlPerfEventDisable(p.perfEventFD); err != nil {
-		return fmt.Errorf("pause kprobe: %w", err)
-	}
-	return nil
-}
-
-func (p *Probe) resumeKprobe() error {
-	if err := ioctlPerfEventEnable(p.perfEventFD); err != nil {
-		return fmt.Errorf("resume kprobe: %w", err)
-	}
-	return nil
 }
 
 // attachTracepoint - Attaches the probe to its tracepoint

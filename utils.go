@@ -140,53 +140,6 @@ func getSyscallFnNameWithKallsyms(name string, kallsymsContent io.Reader, arch s
 	return "", fmt.Errorf("could not find a valid syscall name")
 }
 
-// registerKprobeEvent - Writes a new kprobe in kprobe_events with the provided parameters. Call DisableKprobeEvent
-// to remove the kprobe.
-func registerKprobeEvent(probeType, funcName, UID, maxActiveStr string, kprobeAttachPID int) (int, error) {
-	// Generate event name
-	eventName, err := generateEventName(probeType, funcName, UID, kprobeAttachPID)
-	if err != nil {
-		return -1, err
-	}
-
-	// Write line to kprobe_events
-	f, err := tracefs.OpenFile("kprobe_events", os.O_APPEND|os.O_WRONLY, 0666)
-	if err != nil {
-		return -1, fmt.Errorf("cannot open kprobe_events: %w", err)
-	}
-	defer f.Close()
-	cmd := fmt.Sprintf("%s%s:%s %s\n", probeType, maxActiveStr, eventName, funcName)
-	if _, err = f.WriteString(cmd); err != nil && !os.IsExist(err) {
-		return -1, fmt.Errorf("cannot write %q to kprobe_events: %w", cmd, err)
-	}
-
-	// Retrieve kprobe ID
-	kprobeIDFile := fmt.Sprintf("events/kprobes/%s/id", eventName)
-	kprobeIDBytes, err := tracefs.ReadFile(kprobeIDFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return -1, ErrKprobeIDNotExist
-		}
-		return -1, fmt.Errorf("cannot read kprobe id: %w", err)
-	}
-	id := strings.TrimSpace(string(kprobeIDBytes))
-	kprobeID, err := strconv.Atoi(id)
-	if err != nil {
-		return -1, fmt.Errorf("invalid kprobe id: '%s': %w", id, err)
-	}
-	return kprobeID, nil
-}
-
-// unregisterKprobeEvent - Removes a kprobe from kprobe_events
-func unregisterKprobeEvent(probeType, funcName, UID string, kprobeAttachPID int) error {
-	// Generate event name
-	eventName, err := generateEventName(probeType, funcName, UID, kprobeAttachPID)
-	if err != nil {
-		return err
-	}
-	return unregisterTraceFSEvent("kprobe_events", eventName)
-}
-
 // registerUprobeEvent - Writes a new Uprobe in uprobe_events with the provided parameters. Call DisableUprobeEvent
 // to remove the kprobe.
 func registerUprobeEvent(probeType string, funcName, path, UID string, uprobeAttachPID int, offset uint64) (int, error) {
