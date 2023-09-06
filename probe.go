@@ -464,45 +464,6 @@ func (p *Probe) internalInit(manager *Manager) error {
 	return nil
 }
 
-// ResolveLink - Resolves the Probe's network interface
-func (p *Probe) ResolveLink() (netlink.Link, error) {
-	return p.resolveLink()
-}
-
-func (p *Probe) resolveLink() (netlink.Link, error) {
-	if p.link != nil {
-		return p.link, nil
-	}
-
-	// get a netlink socket in the probe network namespace
-	ntl, err := p.getNetlinkSocket()
-	if err != nil {
-		return nil, err
-	}
-
-	if p.IfIndex > 0 {
-		p.link, err = ntl.Sock.LinkByIndex(p.IfIndex)
-		if err != nil {
-			return nil, fmt.Errorf("couldn't resolve interface with IfIndex %d in namespace %d: %w", p.IfIndex, p.IfIndexNetnsID, err)
-		}
-	} else if len(p.IfName) > 0 {
-		p.link, err = ntl.Sock.LinkByName(p.IfName)
-		if err != nil {
-			return nil, fmt.Errorf("couldn't resolve interface with IfName %s in namespace %d: %w", p.IfName, p.IfIndexNetnsID, err)
-		}
-	} else {
-		return nil, ErrInterfaceNotSet
-	}
-
-	attrs := p.link.Attrs()
-	if attrs != nil {
-		p.IfIndex = attrs.Index
-		p.IfName = attrs.Name
-	}
-
-	return p.link, nil
-}
-
 // Attach - Attaches the probe to the right hook point in the kernel depending on the program type and the provided
 // parameters.
 func (p *Probe) Attach() error {
