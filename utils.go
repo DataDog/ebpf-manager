@@ -22,15 +22,7 @@ import (
 	"github.com/DataDog/ebpf-manager/tracefs"
 )
 
-type state uint
-
 const (
-	reset state = iota
-	initialized
-	stopped
-	paused
-	running
-
 	// maxEventNameLen - maximum length for a kprobe (or uprobe) event name
 	// MAX_EVENT_NAME_LEN (linux/kernel/trace/trace.h)
 	maxEventNameLen    = 64
