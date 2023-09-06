@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -772,59 +771,6 @@ func (p *Probe) attachSocket() error {
 // detachSocket - Detaches the probe from its socket
 func (p *Probe) detachSocket() error {
 	return sockDetach(p.SocketFD, p.program.FD())
-}
-
-// attachPerfEvent - Attaches the perf_event program
-func (p *Probe) attachPerfEvent() error {
-	if p.PerfEventType != unix.PERF_TYPE_HARDWARE && p.PerfEventType != unix.PERF_TYPE_SOFTWARE {
-		return fmt.Errorf("unknown PerfEventType parameter: %v (expected unix.PERF_TYPE_HARDWARE or unix.PERF_TYPE_SOFTWARE)", p.PerfEventType)
-	}
-
-	attr := unix.PerfEventAttr{
-		Type:   uint32(p.PerfEventType),
-		Sample: uint64(p.SamplePeriod),
-		Config: uint64(p.PerfEventConfig),
-	}
-
-	if p.SampleFrequency > 0 {
-		attr.Sample = uint64(p.SampleFrequency)
-		attr.Bits |= unix.PerfBitFreq
-	}
-
-	if p.PerfEventCPUCount == 0 {
-		p.PerfEventCPUCount = runtime.NumCPU()
-	}
-
-	pid := p.PerfEventPID
-	if pid == 0 {
-		pid = -1
-	}
-
-	for cpu := 0; cpu < p.PerfEventCPUCount; cpu++ {
-		fd, err := perfEventOpenRaw(&attr, pid, cpu, -1, 0)
-		if err != nil {
-			return fmt.Errorf("couldn't attach perf_event program %s on pid %d and CPU %d: %v", p.ProbeIdentificationPair, pid, cpu, err)
-		}
-		p.perfEventCPUFDs = append(p.perfEventCPUFDs, fd)
-
-		if err = ioctlPerfEventSetBPF(fd, p.program.FD()); err != nil {
-			return fmt.Errorf("couldn't set perf event bpf %s: %w", p.ProbeIdentificationPair, err)
-		}
-		if err = ioctlPerfEventEnable(fd); err != nil {
-			return fmt.Errorf("couldn't enable perf event %s for pid %d and CPU %d: %w", p.ProbeIdentificationPair, pid, cpu, err)
-		}
-	}
-	return nil
-}
-
-// detachPerfEvent - Detaches the perf_event program
-func (p *Probe) detachPerfEvent() error {
-	var errs []error
-	for _, fd := range p.perfEventCPUFDs {
-		errs = append(errs, fd.Close())
-	}
-	p.perfEventCPUFDs = []*fd{}
-	return errors.Join(errs...)
 }
 
 func (p *Probe) getRetryAttemptCount() uint {
