@@ -1,8 +1,8 @@
 package manager
 
 import (
+	"errors"
 	"fmt"
-	"os"
 	"sync"
 
 	"github.com/cilium/ebpf"
@@ -169,12 +169,7 @@ func (m *Map) close(cleanup MapCleanupType) error {
 		}
 	}
 	if shouldClose {
-		var err error
-		// Remove pin if needed
-		if m.PinPath != "" {
-			err = concatErrors(err, os.Remove(m.PinPath))
-		}
-		err = concatErrors(err, m.array.Close())
+		err := errors.Join(m.array.Unpin(), m.array.Close())
 		if err != nil {
 			return err
 		}

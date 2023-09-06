@@ -789,12 +789,7 @@ func (p *Probe) detachRetry() error {
 
 // detach - Thread unsafe version of Detach.
 func (p *Probe) detach() error {
-	var err error
-	// Remove pin if needed
-	if p.PinPath != "" {
-		err = concatErrors(err, os.Remove(p.PinPath))
-	}
-
+	err := p.program.Unpin()
 	// Shared with all probes: close the perf event file descriptor
 	if p.perfEventFD != nil {
 		err = p.perfEventFD.Close()
@@ -806,23 +801,23 @@ func (p *Probe) detach() error {
 		// nothing to do
 		break
 	case ebpf.Kprobe:
-		err = concatErrors(err, p.detachKprobe())
+		err = errors.Join(err, p.detachKprobe())
 	case ebpf.RawTracepoint, ebpf.RawTracepointWritable:
-		err = concatErrors(err, p.detachRawTracepoint())
+		err = errors.Join(err, p.detachRawTracepoint())
 	case ebpf.CGroupDevice, ebpf.CGroupSKB, ebpf.CGroupSock, ebpf.CGroupSockAddr, ebpf.CGroupSockopt, ebpf.CGroupSysctl:
-		err = concatErrors(err, p.detachCgroup())
+		err = errors.Join(err, p.detachCgroup())
 	case ebpf.SocketFilter:
-		err = concatErrors(err, p.detachSocket())
+		err = errors.Join(err, p.detachSocket())
 	case ebpf.SchedCLS:
-		err = concatErrors(err, p.detachTCCLS())
+		err = errors.Join(err, p.detachTCCLS())
 	case ebpf.XDP:
-		err = concatErrors(err, p.detachXDP())
+		err = errors.Join(err, p.detachXDP())
 	case ebpf.LSM:
-		err = concatErrors(err, p.detachLSM())
+		err = errors.Join(err, p.detachLSM())
 	case ebpf.Tracing:
-		err = concatErrors(err, p.detachTracing())
+		err = errors.Join(err, p.detachTracing())
 	case ebpf.PerfEvent:
-		err = concatErrors(err, p.detachPerfEvent())
+		err = errors.Join(err, p.detachPerfEvent())
 	default:
 		// unsupported section, nothing to do either
 		break
@@ -847,12 +842,12 @@ func (p *Probe) stop(saveStopError bool) error {
 
 	// close the loaded program
 	if p.attachRetryAttempt >= p.getRetryAttemptCount() {
-		err = concatErrors(err, p.program.Close())
+		err = errors.Join(err, p.program.Close())
 	}
 
 	// update state of the probe
 	if saveStopError {
-		p.lastError = concatErrors(p.lastError, err)
+		p.lastError = errors.Join(p.lastError, err)
 	}
 
 	// Cleanup probe if stop was successful
@@ -1411,7 +1406,7 @@ func (p *Probe) cleanupTCFilters(ntl *NetlinkSocket) error {
 		return err
 	}
 
-	var deleteErr error
+	var errs []error
 	bpfType := (&netlink.BpfFilter{}).Type()
 	for _, elem := range resp {
 		if elem.Type() != bpfType {
@@ -1443,9 +1438,9 @@ func (p *Probe) cleanupTCFilters(ntl *NetlinkSocket) error {
 		}
 
 		// remove this filter
-		deleteErr = concatErrors(deleteErr, ntl.Sock.FilterDel(elem))
+		errs = append(errs, ntl.Sock.FilterDel(elem))
 	}
-	return deleteErr
+	return errors.Join(errs...)
 }
 
 // attachXDP - Attaches the probe to an interface with an XDP hook point
@@ -1563,12 +1558,12 @@ func (p *Probe) attachPerfEvent() error {
 
 // detachPerfEvent - Detaches the perf_event program
 func (p *Probe) detachPerfEvent() error {
-	var err error
+	var errs []error
 	for _, fd := range p.perfEventCPUFDs {
-		err = concatErrors(err, fd.Close())
+		errs = append(errs, fd.Close())
 	}
 	p.perfEventCPUFDs = []*fd{}
-	return err
+	return errors.Join(errs...)
 }
 
 // attachRawTracepoint - Attaches the probe to its raw_tracepoint
