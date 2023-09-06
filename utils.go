@@ -223,15 +223,6 @@ func getKernelGeneratedEventName(probeType, funcName string) string {
 	return fmt.Sprintf("%s_%s_0", probeType, funcName)
 }
 
-// readKprobeEvents - Returns the content of kprobe_events
-func readKprobeEvents() (string, error) {
-	kprobeEvents, err := tracefs.ReadFile("kprobe_events")
-	if err != nil {
-		return "", err
-	}
-	return string(kprobeEvents), nil
-}
-
 // registerKprobeEvent - Writes a new kprobe in kprobe_events with the provided parameters. Call DisableKprobeEvent
 // to remove the kprobe.
 func registerKprobeEvent(probeType, funcName, UID, maxActiveStr string, kprobeAttachPID int) (int, error) {
@@ -276,38 +267,7 @@ func unregisterKprobeEvent(probeType, funcName, UID string, kprobeAttachPID int)
 	if err != nil {
 		return err
 	}
-	return unregisterKprobeEventWithEventName(eventName)
-}
-
-func unregisterKprobeEventWithEventName(eventName string) error {
-	// Write line to kprobe_events
-	f, err := tracefs.OpenFile("kprobe_events", os.O_APPEND|os.O_WRONLY, 0)
-	if err != nil {
-		return fmt.Errorf("cannot open kprobe_events: %w", err)
-	}
-	defer f.Close()
-	cmd := fmt.Sprintf("-:%s\n", eventName)
-	if _, err = f.WriteString(cmd); err != nil {
-		pathErr, ok := err.(*os.PathError)
-		if ok && pathErr.Err == syscall.ENOENT {
-			// This can happen when for example two modules
-			// use the same elf object and both ratecall `Close()`.
-			// The second will encounter the error as the
-			// probe already has been cleared by the first.
-			return nil
-		}
-		return fmt.Errorf("cannot write %q to kprobe_events: %w", cmd, err)
-	}
-	return nil
-}
-
-// readUprobeEvents - Returns the content of uprobe_events
-func readUprobeEvents() (string, error) {
-	uprobeEvents, err := tracefs.ReadFile("uprobe_events")
-	if err != nil {
-		return "", err
-	}
-	return string(uprobeEvents), nil
+	return unregisterTraceFSEvent("kprobe_events", eventName)
 }
 
 // registerUprobeEvent - Writes a new Uprobe in uprobe_events with the provided parameters. Call DisableUprobeEvent
@@ -357,19 +317,26 @@ func unregisterUprobeEvent(probeType string, funcName string, UID string, uprobe
 	if err != nil {
 		return err
 	}
-	return unregisterUprobeEventWithEventName(eventName)
+	return unregisterTraceFSEvent("uprobe_events", eventName)
 }
 
-func unregisterUprobeEventWithEventName(eventName string) error {
-	// Write uprobe_events line
-	f, err := tracefs.OpenFile("uprobe_events", os.O_APPEND|os.O_WRONLY, 0)
+func unregisterTraceFSEvent(eventsFile string, name string) error {
+	f, err := tracefs.OpenFile(eventsFile, os.O_APPEND|os.O_WRONLY, 0)
 	if err != nil {
-		return fmt.Errorf("cannot open uprobe_events: %w", err)
+		return fmt.Errorf("open %s: %w", eventsFile, err)
 	}
 	defer f.Close()
-	cmd := fmt.Sprintf("-:%s\n", eventName)
+	cmd := fmt.Sprintf("-:%s\n", name)
 	if _, err = f.WriteString(cmd); err != nil {
-		return fmt.Errorf("cannot write %q to uprobe_events: %w", cmd, err)
+		var pe *os.PathError
+		if errors.As(err, &pe) && pe.Err == syscall.ENOENT {
+			// This can happen when for example two modules
+			// use the same elf object and both call `Close()`.
+			// The second will encounter the error as the
+			// probe already has been cleared by the first.
+			return nil
+		}
+		return fmt.Errorf("write %q to %s: %w", cmd, eventsFile, err)
 	}
 	return nil
 }

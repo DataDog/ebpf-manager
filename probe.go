@@ -926,7 +926,7 @@ func (p *Probe) attachWithKprobeEvents() error {
 	kprobeID, err := registerKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, maxActiveStr, p.attachPID)
 	if errors.Is(err, ErrKprobeIDNotExist) {
 		// The probe might have been loaded under a kernel generated event name. Clean up just in case.
-		_ = unregisterKprobeEventWithEventName(getKernelGeneratedEventName(p.GetKprobeType(), p.HookFuncName))
+		_ = unregisterTraceFSEvent("kprobe_events", getKernelGeneratedEventName(p.GetKprobeType(), p.HookFuncName))
 		// fallback without KProbeMaxActive
 		kprobeID, err = registerKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, "", p.attachPID)
 	}

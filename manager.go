@@ -20,6 +20,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/DataDog/ebpf-manager/internal"
+	"github.com/DataDog/ebpf-manager/tracefs"
 )
 
 // ConstantEditor - A constant editor tries to rewrite the value of a constant in a compiled eBPF program.
@@ -772,7 +773,7 @@ func (m *Manager) Start() error {
 	}
 
 	// clean up tracefs
-	if err := m.cleanupTracefs(); err != nil {
+	if err := m.cleanupTraceFS(); err != nil {
 		m.stateLock.Unlock()
 		return fmt.Errorf("failed to cleanup tracefs: %w", err)
 	}
@@ -2080,7 +2081,7 @@ func (m *Manager) getTracefsRegex() (*regexp.Regexp, error) {
 	return re, nil
 }
 
-// cleanupKprobeEvents - Cleans up kprobe_events and uprobe_events by removing entries of known UIDs, that are not used
+// cleanupTraceFS - Cleans up kprobe_events and uprobe_events by removing entries of known UIDs, that are not used
 // anymore.
 //
 // Previous instances of this manager might have been killed unexpectedly. When this happens,
@@ -2089,94 +2090,45 @@ func (m *Manager) getTracefsRegex() (*regexp.Regexp, error) {
 // Once the limit is reached, the kernel refuses to load new probes and throws a "no such device"
 // error. To prevent this, start by cleaning up the kprobe_events entries of previous managers that
 // are not running anymore.
-func (m *Manager) cleanupTracefs() error {
-	// build the pattern to look for in kprobe_events and uprobe_events
+func (m *Manager) cleanupTraceFS() error {
 	pattern, err := m.getTracefsRegex()
 	if err != nil {
-		return err
+		return fmt.Errorf("tracefs regex: %s", err)
 	}
-	// clean up kprobe_events
-	var cleanUpError error
+
+	var cleanUpErrors error
 	pidMask := map[int]bool{Getpid(): true}
-	cleanUpError = errors.Join(cleanUpError, cleanupKprobeEvents(pattern, pidMask))
-	cleanUpError = errors.Join(cleanUpError, cleanupUprobeEvents(pattern, pidMask))
-	return cleanUpError
-}
-
-func cleanupKprobeEvents(pattern *regexp.Regexp, pidMask map[int]bool) error {
-	kprobeEvents, err := readKprobeEvents()
-	if err != nil {
-		return fmt.Errorf("couldn't read kprobe_events: %w", err)
-	}
-	var cleanUpErrors error
-	for _, match := range pattern.FindAllStringSubmatch(kprobeEvents, -1) {
-		if len(match) < 6 {
-			continue
-		}
-
-		// check if the provided pid still exists
-		pid, err := strconv.Atoi(match[5])
+	eventFiles := []string{"kprobe_events", "uprobe_events"}
+	for _, eventFile := range eventFiles {
+		events, err := tracefs.ReadFile(eventFile)
 		if err != nil {
+			cleanUpErrors = errors.Join(cleanUpErrors, fmt.Errorf("read %s: %w", eventFile, err))
 			continue
 		}
-		if procRunning, ok := pidMask[pid]; !ok {
-			// this short sleep is used to avoid a CPU spike (5s ~ 60k * 80 microseconds)
-			time.Sleep(80 * time.Microsecond)
 
-			if internal.ProcessExists(pid) {
-				// the process is still running, continue
-				pidMask[pid] = true
+		for _, match := range pattern.FindAllStringSubmatch(string(events), -1) {
+			// our probes names should match the pattern provided and have the 5 capture groups + 1 full string
+			if len(match) < 6 {
 				continue
 			}
-			pidMask[pid] = false
-		} else {
+
+			// the last capture group is the PID, check if the provided PID still exists
+			pid, err := strconv.Atoi(match[5])
+			if err != nil {
+				continue
+			}
+			procRunning, ok := pidMask[pid]
+			if !ok {
+				// this short sleep is used to avoid a CPU spike (5s ~ 60k * 80 microseconds)
+				time.Sleep(80 * time.Microsecond)
+				procRunning = internal.ProcessExists(pid)
+				pidMask[pid] = procRunning
+			}
 			if procRunning {
-				// the process is still running, continue
 				continue
 			}
+			cleanUpErrors = errors.Join(cleanUpErrors, unregisterTraceFSEvent(eventFile, match[3]))
 		}
-
-		// remove the entry
-		cleanUpErrors = errors.Join(cleanUpErrors, unregisterKprobeEventWithEventName(match[3]))
-	}
-	return cleanUpErrors
-}
-
-func cleanupUprobeEvents(pattern *regexp.Regexp, pidMask map[int]bool) error {
-	uprobeEvents, err := readUprobeEvents()
-	if err != nil {
-		return fmt.Errorf("couldn't read uprobe_events: %w", err)
-	}
-	var cleanUpErrors error
-	for _, match := range pattern.FindAllStringSubmatch(uprobeEvents, -1) {
-		if len(match) < 6 {
-			continue
-		}
-
-		// check if the provided pid still exists
-		pid, err := strconv.Atoi(match[5])
-		if err != nil {
-			continue
-		}
-		if procRunning, ok := pidMask[pid]; !ok {
-			// this short sleep is used to avoid a CPU spike (5s ~ 60k * 80 microseconds)
-			time.Sleep(80 * time.Microsecond)
-
-			if internal.ProcessExists(pid) {
-				// the process is still running, continue
-				pidMask[pid] = true
-				continue
-			}
-			pidMask[pid] = false
-		} else {
-			if procRunning {
-				// the process is still running, continue
-				continue
-			}
-		}
-
-		// remove the entry
-		cleanUpErrors = errors.Join(cleanUpErrors, unregisterUprobeEventWithEventName(match[3]))
 	}
 	return cleanUpErrors
 }
