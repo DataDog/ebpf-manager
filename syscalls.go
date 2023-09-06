@@ -116,53 +116,10 @@ func ioctlPerfEventDisable(perfEventOpenFD *fd) error {
 	return unix.IoctlSetInt(int(perfEventOpenFD.raw), unix.PERF_EVENT_IOC_DISABLE, 0)
 }
 
-const (
-	_RawTracepointOpen = 17
-)
-
-// bpf - wraps SYS_BPF
-func bpf(cmd int, attr unsafe.Pointer, size uintptr) (uintptr, error) {
-	r1, _, errNo := unix.Syscall(unix.SYS_BPF, uintptr(cmd), uintptr(attr), size)
-	runtime.KeepAlive(attr)
-
-	var err error
-	if errNo != 0 {
-		err = fmt.Errorf("bpf syscall error: %s", errNo.Error())
-	}
-
-	return r1, err
-}
-
 func sockAttach(sockFd int, progFd int) error {
 	return syscall.SetsockoptInt(sockFd, syscall.SOL_SOCKET, unix.SO_ATTACH_BPF, progFd)
 }
 
 func sockDetach(sockFd int, progFd int) error {
 	return syscall.SetsockoptInt(sockFd, syscall.SOL_SOCKET, unix.SO_DETACH_BPF, progFd)
-}
-
-type bpfRawTracepointOpenAttr struct {
-	name   uint64
-	progFD uint32
-	_      [4]byte
-}
-
-func rawTracepointOpen(name string, progFD int) (*fd, error) {
-	attr := bpfRawTracepointOpenAttr{
-		progFD: uint32(progFD),
-	}
-
-	if len(name) > 0 {
-		namePtr, err := syscall.BytePtrFromString(name)
-		if err != nil {
-			return nil, err
-		}
-		attr.name = uint64(uintptr(unsafe.Pointer(namePtr)))
-	}
-
-	ptr, err := bpf(_RawTracepointOpen, unsafe.Pointer(&attr), unsafe.Sizeof(attr))
-	if err != nil {
-		return nil, fmt.Errorf("can't attach prog_fd %d to raw_tracepoint %s: %w", progFD, name, err)
-	}
-	return newFD(uint32(ptr)), nil
 }
