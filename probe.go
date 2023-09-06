@@ -113,7 +113,6 @@ type Probe struct {
 	program                 *ebpf.Program
 	programSpec             *ebpf.ProgramSpec
 	perfEventFD             *fd
-	rawTracepointFD         *fd
 	state                   state
 	stateLock               sync.RWMutex
 	manualLoadNeeded        bool
@@ -845,7 +844,6 @@ func (p *Probe) reset() {
 	p.program = nil
 	p.programSpec = nil
 	p.perfEventFD = nil
-	p.rawTracepointFD = nil
 	p.state = reset
 	p.manualLoadNeeded = false
 	p.checkPin = false
