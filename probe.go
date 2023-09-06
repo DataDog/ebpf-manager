@@ -25,20 +25,6 @@ const (
 	RetProbeType     = "r"
 )
 
-type ProbeIdentificationPair struct {
-	// UID - (optional) this field can be used to identify your probes when the same eBPF program is used on multiple
-	// hook points. Keep in mind that the pair (probe section, probe UID) needs to be unique
-	// system-wide for the kprobes and uprobes registration to work.
-	UID string
-
-	// EBPFFuncName - Name of the main eBPF function of your eBPF program.
-	EBPFFuncName string
-}
-
-func (pip ProbeIdentificationPair) String() string {
-	return fmt.Sprintf("{UID:%s EBPFFuncName:%s}", pip.UID, pip.EBPFFuncName)
-}
-
 // GetKprobeType - Identifies the probe type of the provided KProbe section
 func (p *Probe) GetKprobeType() string {
 	if len(p.kprobeType) == 0 {
@@ -332,17 +318,6 @@ func (p *Probe) IsInitialized() bool {
 	p.stateLock.RLock()
 	defer p.stateLock.RUnlock()
 	return p.state >= initialized
-}
-
-// RenameProbeIdentificationPair - Renames the probe identification pair of a probe
-func (p *Probe) RenameProbeIdentificationPair(newID ProbeIdentificationPair) error {
-	p.stateLock.Lock()
-	defer p.stateLock.Unlock()
-	if p.state >= paused {
-		return fmt.Errorf("couldn't rename ProbeIdentificationPair of %s with %s: %w", p.ProbeIdentificationPair, newID, ErrProbeRunning)
-	}
-	p.UID = newID.UID
-	return nil
 }
 
 // Test - Triggers the probe with the provided test data. Returns the length of the output, the raw output or an error.

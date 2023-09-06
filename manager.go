@@ -542,41 +542,6 @@ func (m *Manager) GetProbe(id ProbeIdentificationPair) (*Probe, bool) {
 	return m.getProbe(id)
 }
 
-// RenameProbeIdentificationPair - Renames a probe identification pair. This change will propagate to all the features in
-// the manager that will try to select the probe by its old ProbeIdentificationPair.
-func (m *Manager) RenameProbeIdentificationPair(oldID ProbeIdentificationPair, newID ProbeIdentificationPair) error {
-	m.stateLock.Lock()
-	defer m.stateLock.Unlock()
-
-	// sanity check: make sure the newID doesn't already exist
-	for _, mProbe := range m.Probes {
-		if mProbe.ProbeIdentificationPair == newID {
-			return ErrIdentificationPairInUse
-		}
-	}
-
-	if oldID.EBPFFuncName != newID.EBPFFuncName {
-		// edit the excluded sections
-		for i, excludedFuncName := range m.options.ExcludedFunctions {
-			if excludedFuncName == oldID.EBPFFuncName {
-				m.options.ExcludedFunctions[i] = newID.EBPFFuncName
-			}
-		}
-	}
-
-	// edit the probe selectors
-	for _, selector := range m.options.ActivatedProbes {
-		selector.EditProbeIdentificationPair(oldID, newID)
-	}
-
-	// edit the probe
-	p, ok := m.getProbe(oldID)
-	if !ok {
-		return ErrSymbolNotFound
-	}
-	return p.RenameProbeIdentificationPair(newID)
-}
-
 // Init - Initialize the manager.
 // elf: reader containing the eBPF bytecode
 func (m *Manager) Init(elf io.ReaderAt) error {
