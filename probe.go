@@ -763,16 +763,6 @@ func (p *Probe) reset() {
 	p.tcClsActQdisc = nil
 }
 
-// attachSocket - Attaches the probe to the provided socket
-func (p *Probe) attachSocket() error {
-	return sockAttach(p.SocketFD, p.program.FD())
-}
-
-// detachSocket - Detaches the probe from its socket
-func (p *Probe) detachSocket() error {
-	return sockDetach(p.SocketFD, p.program.FD())
-}
-
 func (p *Probe) getRetryAttemptCount() uint {
 	return p.ProbeRetry + 1
 }
