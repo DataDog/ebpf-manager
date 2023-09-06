@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -17,20 +16,6 @@ import (
 
 	"github.com/DataDog/ebpf-manager/internal"
 )
-
-// GetUprobeType - Identifies the probe type of the provided Uprobe section
-func (p *Probe) GetUprobeType() string {
-	if len(p.kprobeType) == 0 {
-		if strings.HasPrefix(p.programSpec.SectionName, "uretprobe/") {
-			p.kprobeType = RetProbeType
-		} else if strings.HasPrefix(p.programSpec.SectionName, "uprobe/") {
-			p.kprobeType = ProbeType
-		} else {
-			p.kprobeType = UnknownProbeType
-		}
-	}
-	return p.kprobeType
-}
 
 type AttachMethod uint32
 
@@ -824,102 +809,6 @@ func (p *Probe) resumeTracepoint() error {
 		return fmt.Errorf("resume tracepoint: %w", err)
 	}
 	return nil
-}
-
-// attachWithUprobeEvents attaches the uprobe using the uprobes_events ABI
-func (p *Probe) attachWithUprobeEvents() error {
-	// fallback to debugfs
-	var uprobeID int
-	uprobeID, err := registerUprobeEvent(p.GetUprobeType(), p.HookFuncName, p.BinaryPath, p.UID, p.attachPID, p.UprobeOffset)
-	if err != nil {
-		return fmt.Errorf("couldn't enable uprobe %s: %w", p.ProbeIdentificationPair, err)
-	}
-
-	// Activate perf event
-	p.perfEventFD, err = perfEventOpenTracingEvent(uprobeID, p.PerfEventPID)
-	if err != nil {
-		return fmt.Errorf("couldn't open perf event fd for %s: %w", p.ProbeIdentificationPair, err)
-	}
-	p.attachedWithDebugFS = true
-	return nil
-}
-
-// attachUprobe - Attaches the probe to its Uprobe
-func (p *Probe) attachUprobe() error {
-	var err error
-
-	// Prepare uprobe_events line parameters
-	if p.GetUprobeType() == UnknownProbeType {
-		// unknown type
-		return fmt.Errorf("program type unrecognized in %s: %w", p.ProbeIdentificationPair, ErrSectionFormat)
-	}
-
-	// compute the offset if it was not provided
-	if p.UprobeOffset == 0 {
-		var funcPattern string
-
-		// find the offset of the first symbol matching the provided pattern
-		if len(p.MatchFuncName) > 0 {
-			funcPattern = p.MatchFuncName
-		} else {
-			funcPattern = fmt.Sprintf("^%s$", p.HookFuncName)
-		}
-		pattern, err := regexp.Compile(funcPattern)
-		if err != nil {
-			return fmt.Errorf("failed to compile pattern %s: %w", funcPattern, err)
-		}
-
-		// Retrieve dynamic symbol offset
-		offsets, err := findSymbolOffsets(p.BinaryPath, pattern)
-		if err != nil {
-			return fmt.Errorf("couldn't find symbol matching %s in %s: %w", pattern.String(), p.BinaryPath, err)
-		}
-		p.UprobeOffset = offsets[0].Value
-		p.HookFuncName = offsets[0].Name
-	}
-
-	isURetProbe := p.GetUprobeType() == "r"
-	if p.UprobeAttachMethod == AttachWithPerfEventOpen {
-		if p.perfEventFD, err = perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffset), p.PerfEventPID, "uprobe", isURetProbe, 0); err != nil {
-			if err = p.attachWithUprobeEvents(); err != nil {
-				return err
-			}
-		}
-	} else if p.UprobeAttachMethod == AttachWithProbeEvents {
-		if err = p.attachWithUprobeEvents(); err != nil {
-			if p.perfEventFD, err = perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffset), p.PerfEventPID, "uprobe", isURetProbe, 0); err != nil {
-				return err
-			}
-		}
-	} else {
-		return fmt.Errorf("invalid uprobe attach method: %d", p.UprobeAttachMethod)
-	}
-
-	// enable perf event
-	if err = ioctlPerfEventSetBPF(p.perfEventFD, p.program.FD()); err != nil {
-		return fmt.Errorf("couldn't set perf event bpf %s: %w", p.ProbeIdentificationPair, err)
-	}
-	if err = ioctlPerfEventEnable(p.perfEventFD); err != nil {
-		return fmt.Errorf("couldn't enable perf event %s: %w", p.ProbeIdentificationPair, err)
-	}
-	return nil
-}
-
-// detachUprobe - Detaches the probe from its Uprobe
-func (p *Probe) detachUprobe() error {
-	if !p.attachedWithDebugFS {
-		// nothing to do
-		return nil
-	}
-
-	// Prepare uprobe_events line parameters
-	if p.GetUprobeType() == UnknownProbeType {
-		// unknown type
-		return fmt.Errorf("program type unrecognized in section %v: %w", p.ProbeIdentificationPair, ErrSectionFormat)
-	}
-
-	// Write uprobe_events line to remove hook point
-	return unregisterUprobeEvent(p.GetUprobeType(), p.HookFuncName, p.UID, p.attachPID)
 }
 
 // attachSocket - Attaches the probe to the provided socket

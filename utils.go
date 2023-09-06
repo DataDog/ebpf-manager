@@ -3,7 +3,6 @@ package manager
 import (
 	"bufio"
 	"bytes"
-	"debug/elf"
 	"errors"
 	"fmt"
 	"io"
@@ -17,8 +16,6 @@ import (
 
 	"github.com/cilium/ebpf"
 	"golang.org/x/sys/unix"
-
-	"github.com/DataDog/ebpf-manager/tracefs"
 )
 
 // cache of the syscall prefix depending on kernel version
@@ -138,126 +135,6 @@ func getSyscallFnNameWithKallsyms(name string, kallsymsContent io.Reader, arch s
 	}
 
 	return "", fmt.Errorf("could not find a valid syscall name")
-}
-
-// registerUprobeEvent - Writes a new Uprobe in uprobe_events with the provided parameters. Call DisableUprobeEvent
-// to remove the kprobe.
-func registerUprobeEvent(probeType string, funcName, path, UID string, uprobeAttachPID int, offset uint64) (int, error) {
-	// Generate event name
-	eventName, err := generateEventName(probeType, funcName, UID, uprobeAttachPID)
-	if err != nil {
-		return -1, err
-	}
-
-	// Write line to uprobe_events, only eventName is tested to max MAX_EVENT_NAME_LEN (linux/kernel/trace/trace.h)
-
-	f, err := tracefs.OpenFile("uprobe_events", os.O_APPEND|os.O_WRONLY, 0666)
-	if err != nil {
-		return -1, fmt.Errorf("cannot open uprobe_events: %w", err)
-	}
-	defer f.Close()
-
-	cmd := fmt.Sprintf("%s:%s %s:%#x\n", probeType, eventName, path, offset)
-
-	if _, err = f.WriteString(cmd); err != nil && !os.IsExist(err) {
-		return -1, fmt.Errorf("cannot write %q to uprobe_events: %w", cmd, err)
-	}
-
-	// Retrieve Uprobe ID
-	uprobeIDFile := fmt.Sprintf("events/uprobes/%s/id", eventName)
-	uprobeIDBytes, err := tracefs.ReadFile(uprobeIDFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return -1, ErrUprobeIDNotExist
-		}
-		return -1, fmt.Errorf("cannot read uprobe id: %w", err)
-	}
-	uprobeID, err := strconv.Atoi(strings.TrimSpace(string(uprobeIDBytes)))
-	if err != nil {
-		return -1, fmt.Errorf("invalid uprobe id: %w", err)
-	}
-
-	return uprobeID, nil
-}
-
-// unregisterUprobeEvent - Removes a uprobe from uprobe_events
-func unregisterUprobeEvent(probeType string, funcName string, UID string, uprobeAttachPID int) error {
-	// Generate event name
-	eventName, err := generateEventName(probeType, funcName, UID, uprobeAttachPID)
-	if err != nil {
-		return err
-	}
-	return unregisterTraceFSEvent("uprobe_events", eventName)
-}
-
-// OpenAndListSymbols - Opens an elf file and extracts all its symbols
-func OpenAndListSymbols(path string) (*elf.File, []elf.Symbol, error) {
-	// open elf file
-	f, err := elf.Open(path)
-	if err != nil {
-		return nil, nil, fmt.Errorf("couldn't open elf file %s: %w", path, err)
-	}
-	defer f.Close()
-
-	// Loop through all symbols
-	syms, errSyms := f.Symbols()
-	dynSyms, errDynSyms := f.DynamicSymbols()
-	syms = append(syms, dynSyms...)
-
-	if len(syms) == 0 {
-		var err error
-		if errSyms != nil {
-			err = fmt.Errorf("failed to list symbols: %w", err)
-		}
-		if errDynSyms != nil {
-			err = fmt.Errorf("failed to list dynamic symbols: %w", err)
-		}
-		if err != nil {
-			return nil, nil, err
-		}
-		return nil, nil, fmt.Errorf("no symbols found")
-	}
-	return f, syms, nil
-}
-
-// SanitizeUprobeAddresses - sanitizes the addresses of the provided symbols
-func SanitizeUprobeAddresses(f *elf.File, syms []elf.Symbol) {
-	// If the binary is a non-PIE executable, addr must be a virtual address, otherwise it must be an offset relative to
-	// the file load address. For executable (ET_EXEC) binaries and shared objects (ET_DYN), translate the virtual
-	// address to physical address in the binary file.
-	if f.Type == elf.ET_EXEC || f.Type == elf.ET_DYN {
-		for i, sym := range syms {
-			for _, prog := range f.Progs {
-				if prog.Type == elf.PT_LOAD {
-					if sym.Value >= prog.Vaddr && sym.Value < (prog.Vaddr+prog.Memsz) {
-						syms[i].Value = sym.Value - prog.Vaddr + prog.Off
-					}
-				}
-			}
-		}
-	}
-}
-
-// findSymbolOffsets - Parses the provided file and returns the offsets of the symbols that match the provided pattern
-func findSymbolOffsets(path string, pattern *regexp.Regexp) ([]elf.Symbol, error) {
-	f, syms, err := OpenAndListSymbols(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var matches []elf.Symbol
-	for _, sym := range syms {
-		if elf.ST_TYPE(sym.Info) == elf.STT_FUNC && pattern.MatchString(sym.Name) {
-			matches = append(matches, sym)
-		}
-	}
-
-	if len(matches) == 0 {
-		return nil, ErrSymbolNotFound
-	}
-
-	SanitizeUprobeAddresses(f, matches)
-	return matches, nil
 }
 
 // errClosedFd - Use of closed file descriptor error
