@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,9 +16,6 @@ import (
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 	"golang.org/x/sys/unix"
-
-	"github.com/DataDog/ebpf-manager/internal"
-	"github.com/DataDog/ebpf-manager/tracefs"
 )
 
 // ConstantEditor - A constant editor tries to rewrite the value of a constant in a compiled eBPF program.
@@ -1959,7 +1954,6 @@ func (m *Manager) sanityCheck() error {
 	}
 	return nil
 }
-
 // CleanupNetworkNamespace - Cleans up all references to the provided network namespace within the manager. This means
 // that any TC classifier or XDP probe in that network namespace will be stopped and all opened netlink socket in that
 // namespace will be closed.
@@ -2000,94 +1994,6 @@ func (m *Manager) CleanupNetworkNamespace(nsID uint32) error {
 		m.Probes = append(m.Probes[:i], m.Probes[i+1:]...)
 	}
 	return errors.Join(errs...)
-}
-
-// getUIDSet - Returns the list of UIDs used by this manager.
-func (m *Manager) getUIDSet() []string {
-	var uidSet []string
-	for _, p := range m.Probes {
-		if len(p.UID) == 0 {
-			continue
-		}
-
-		var found bool
-		for _, uid := range uidSet {
-			if uid == p.UID {
-				found = true
-				break
-			}
-		}
-		if !found {
-			uidSet = append(uidSet, p.UID)
-		}
-	}
-	return uidSet
-}
-
-func (m *Manager) getTracefsRegex() (*regexp.Regexp, error) {
-	uidSet := m.getUIDSet()
-	escapedUIDs := make([]string, len(uidSet))
-	for i, uid := range uidSet {
-		escapedUIDs[i] = regexp.QuoteMeta(uid)
-	}
-	stringPattern := fmt.Sprintf(`(p|r)[0-9]*:(kprobes|uprobes)\/(.*(%s)*_([0-9]*)) .*`, strings.Join(escapedUIDs, "|"))
-	re, err := regexp.Compile(stringPattern)
-	if err != nil {
-		return nil, fmt.Errorf("event name pattern (%q) generation failed: %w", stringPattern, err)
-	}
-	return re, nil
-}
-
-// cleanupTraceFS - Cleans up kprobe_events and uprobe_events by removing entries of known UIDs, that are not used
-// anymore.
-//
-// Previous instances of this manager might have been killed unexpectedly. When this happens,
-// kprobe_events is not cleaned up properly and can grow indefinitely until it reaches 65k
-// entries (see: https://elixir.bootlin.com/linux/v5.6.1/source/kernel/trace/trace_output.c#L699)
-// Once the limit is reached, the kernel refuses to load new probes and throws a "no such device"
-// error. To prevent this, start by cleaning up the kprobe_events entries of previous managers that
-// are not running anymore.
-func (m *Manager) cleanupTraceFS() error {
-	pattern, err := m.getTracefsRegex()
-	if err != nil {
-		return fmt.Errorf("tracefs regex: %s", err)
-	}
-
-	var cleanUpErrors error
-	pidMask := map[int]bool{Getpid(): true}
-	eventFiles := []string{"kprobe_events", "uprobe_events"}
-	for _, eventFile := range eventFiles {
-		events, err := tracefs.ReadFile(eventFile)
-		if err != nil {
-			cleanUpErrors = errors.Join(cleanUpErrors, fmt.Errorf("read %s: %w", eventFile, err))
-			continue
-		}
-
-		for _, match := range pattern.FindAllStringSubmatch(string(events), -1) {
-			// our probes names should match the pattern provided and have the 5 capture groups + 1 full string
-			if len(match) < 6 {
-				continue
-			}
-
-			// the last capture group is the PID, check if the provided PID still exists
-			pid, err := strconv.Atoi(match[5])
-			if err != nil {
-				continue
-			}
-			procRunning, ok := pidMask[pid]
-			if !ok {
-				// this short sleep is used to avoid a CPU spike (5s ~ 60k * 80 microseconds)
-				time.Sleep(80 * time.Microsecond)
-				procRunning = internal.ProcessExists(pid)
-				pidMask[pid] = procRunning
-			}
-			if procRunning {
-				continue
-			}
-			cleanUpErrors = errors.Join(cleanUpErrors, unregisterTraceFSEvent(eventFile, match[3]))
-		}
-	}
-	return cleanUpErrors
 }
 
 func (m *Manager) GetNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, error) {

@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 
 	"github.com/cilium/ebpf"
 	"golang.org/x/sys/unix"
@@ -23,54 +22,10 @@ import (
 )
 
 const (
-	// maxEventNameLen - maximum length for a kprobe (or uprobe) event name
-	// MAX_EVENT_NAME_LEN (linux/kernel/trace/trace.h)
-	maxEventNameLen    = 64
-	minFunctionNameLen = 10
-
 	// maxBPFClassifierNameLen - maximum length for a TC
 	// CLS_BPF_NAME_LEN (linux/net/sched/cls_bpf.c)
 	maxBPFClassifierNameLen = 256
 )
-
-func FindFilterFunction(funcName string) (string, error) {
-	// Prepare matching pattern
-	searchedName, err := regexp.Compile(funcName)
-	if err != nil {
-		return "", err
-	}
-
-	funcsReader, err := tracefs.Open("available_filter_functions")
-	if err != nil {
-		return "", err
-	}
-	defer funcsReader.Close()
-
-	funcs := bufio.NewScanner(funcsReader)
-	funcs.Split(bufio.ScanLines)
-
-	var potentialMatches []string
-	for funcs.Scan() {
-		name := funcs.Bytes()
-		name, _, _ = bytes.Cut(name, []byte(" "))
-		name, _, _ = bytes.Cut(name, []byte("\t"))
-
-		if string(name) == funcName {
-			return funcName, nil
-		}
-		if searchedName.Match(name) {
-			potentialMatches = append(potentialMatches, string(name))
-		}
-	}
-	if err := funcs.Err(); err != nil {
-		return "", err
-	}
-
-	if len(potentialMatches) > 0 {
-		return potentialMatches[0], nil
-	}
-	return "", nil
-}
 
 // cache of the syscall prefix depending on kernel version
 var syscallPrefix string
@@ -191,24 +146,6 @@ func getSyscallFnNameWithKallsyms(name string, kallsymsContent io.Reader, arch s
 	return "", fmt.Errorf("could not find a valid syscall name")
 }
 
-var safeEventRegexp = regexp.MustCompile("[^a-zA-Z0-9]")
-
-func generateEventName(probeType, funcName, UID string, attachPID int) (string, error) {
-	// truncate the function name and UID name to reduce the length of the event
-	attachPIDstr := strconv.Itoa(attachPID)
-	maxFuncNameLen := maxEventNameLen - 3 /* _ */ - len(probeType) - len(UID) - len(attachPIDstr)
-	if maxFuncNameLen < minFunctionNameLen { /* let's guarantee that we have a function name minimum of 10 chars (minFunctionNameLen) or trow an error */
-		dbgFullEventString := safeEventRegexp.ReplaceAllString(fmt.Sprintf("%s_%s_%s_%s", probeType, funcName, UID, attachPIDstr), "_")
-		return "", fmt.Errorf("event name is too long (kernel limit is %d (MAX_EVENT_NAME_LEN)): minFunctionNameLen %d, len 3, probeType %d, funcName %d, UID %d, attachPIDstr %d ; full event string : '%s'", maxEventNameLen, minFunctionNameLen, len(probeType), len(funcName), len(UID), len(attachPIDstr), dbgFullEventString)
-	}
-	eventName := safeEventRegexp.ReplaceAllString(fmt.Sprintf("%s_%.*s_%s_%s", probeType, maxFuncNameLen, funcName, UID, attachPIDstr), "_")
-
-	if len(eventName) > maxEventNameLen {
-		return "", fmt.Errorf("event name too long (kernel limit MAX_EVENT_NAME_LEN is %d): '%s'", maxEventNameLen, eventName)
-	}
-	return eventName, nil
-}
-
 func generateTCFilterName(UID, sectionName string, attachPID int) (string, error) {
 	attachPIDstr := strconv.Itoa(attachPID)
 	maxSectionNameLen := maxBPFClassifierNameLen - 3 /* _ */ - len(UID) - len(attachPIDstr)
@@ -222,12 +159,6 @@ func generateTCFilterName(UID, sectionName string, attachPID int) (string, error
 		return "", fmt.Errorf("filter name too long (kernel limit CLS_BPF_NAME_LEN is %d): '%s'", maxBPFClassifierNameLen, filterName)
 	}
 	return filterName, nil
-}
-
-// getKernelGeneratedEventName returns the pattern used by the kernel when a [k|u]probe is loaded without an event name.
-// The library doesn't support loading a [k|u]probe with an address directly, so only one pattern applies here.
-func getKernelGeneratedEventName(probeType, funcName string) string {
-	return fmt.Sprintf("%s_%s_0", probeType, funcName)
 }
 
 // registerKprobeEvent - Writes a new kprobe in kprobe_events with the provided parameters. Call DisableKprobeEvent
@@ -327,27 +258,6 @@ func unregisterUprobeEvent(probeType string, funcName string, UID string, uprobe
 	return unregisterTraceFSEvent("uprobe_events", eventName)
 }
 
-func unregisterTraceFSEvent(eventsFile string, name string) error {
-	f, err := tracefs.OpenFile(eventsFile, os.O_APPEND|os.O_WRONLY, 0)
-	if err != nil {
-		return fmt.Errorf("open %s: %w", eventsFile, err)
-	}
-	defer f.Close()
-	cmd := fmt.Sprintf("-:%s\n", name)
-	if _, err = f.WriteString(cmd); err != nil {
-		var pe *os.PathError
-		if errors.As(err, &pe) && pe.Err == syscall.ENOENT {
-			// This can happen when for example two modules
-			// use the same elf object and both call `Close()`.
-			// The second will encounter the error as the
-			// probe already has been cleared by the first.
-			return nil
-		}
-		return fmt.Errorf("write %q to %s: %w", cmd, eventsFile, err)
-	}
-	return nil
-}
-
 // OpenAndListSymbols - Opens an elf file and extracts all its symbols
 func OpenAndListSymbols(path string) (*elf.File, []elf.Symbol, error) {
 	// open elf file
@@ -416,20 +326,6 @@ func findSymbolOffsets(path string, pattern *regexp.Regexp) ([]elf.Symbol, error
 
 	SanitizeUprobeAddresses(f, matches)
 	return matches, nil
-}
-
-// GetTracepointID - Returns a tracepoint ID from its category and name
-func GetTracepointID(category, name string) (int, error) {
-	tracepointIDFile := fmt.Sprintf("events/%s/%s/id", category, name)
-	tracepointIDBytes, err := tracefs.ReadFile(tracepointIDFile)
-	if err != nil {
-		return -1, fmt.Errorf("cannot read tracepoint id %q: %w", tracepointIDFile, err)
-	}
-	tracepointID, err := strconv.Atoi(strings.TrimSpace(string(tracepointIDBytes)))
-	if err != nil {
-		return -1, fmt.Errorf("invalid tracepoint id: %w", err)
-	}
-	return tracepointID, nil
 }
 
 // errClosedFd - Use of closed file descriptor error
