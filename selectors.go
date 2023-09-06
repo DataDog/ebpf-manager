@@ -59,7 +59,7 @@ func (ps *ProbeSelector) RunValidator(manager *Manager) error {
 // EditProbeIdentificationPair - Changes all the selectors looking for the old ProbeIdentificationPair so that they
 // mow select the new one
 func (ps *ProbeSelector) EditProbeIdentificationPair(old ProbeIdentificationPair, new ProbeIdentificationPair) {
-	if ps.Matches(old) {
+	if ps.ProbeIdentificationPair == old {
 		ps.ProbeIdentificationPair = new
 	}
 }

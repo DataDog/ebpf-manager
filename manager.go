@@ -452,7 +452,7 @@ func (m *Manager) getProgram(id ProbeIdentificationPair) ([]*ebpf.Program, bool,
 	var programs []*ebpf.Program
 	if id.UID == "" {
 		for _, probe := range m.Probes {
-			if probe.EBPFDefinitionMatches(id) {
+			if probe.EBPFFuncName == id.EBPFFuncName {
 				programs = append(programs, probe.program)
 			}
 		}
@@ -463,7 +463,7 @@ func (m *Manager) getProgram(id ProbeIdentificationPair) ([]*ebpf.Program, bool,
 		return []*ebpf.Program{prog}, ok, nil
 	}
 	for _, probe := range m.Probes {
-		if probe.Matches(id) {
+		if probe.ProbeIdentificationPair == id {
 			return []*ebpf.Program{probe.program}, true, nil
 		}
 	}
@@ -499,7 +499,7 @@ func (m *Manager) getProgramSpec(id ProbeIdentificationPair) ([]*ebpf.ProgramSpe
 	var programs []*ebpf.ProgramSpec
 	if id.UID == "" {
 		for _, probe := range m.Probes {
-			if probe.EBPFDefinitionMatches(id) {
+			if probe.EBPFFuncName == id.EBPFFuncName {
 				programs = append(programs, probe.programSpec)
 			}
 		}
@@ -510,7 +510,7 @@ func (m *Manager) getProgramSpec(id ProbeIdentificationPair) ([]*ebpf.ProgramSpe
 		return []*ebpf.ProgramSpec{prog}, ok, nil
 	}
 	for _, probe := range m.Probes {
-		if probe.Matches(id) {
+		if probe.ProbeIdentificationPair == id {
 			return []*ebpf.ProgramSpec{probe.programSpec}, true, nil
 		}
 	}
@@ -533,7 +533,7 @@ func (m *Manager) GetProgramSpec(id ProbeIdentificationPair) ([]*ebpf.ProgramSpe
 // getProbe - Thread unsafe version of GetProbe
 func (m *Manager) getProbe(id ProbeIdentificationPair) (*Probe, bool) {
 	for _, managerProbe := range m.Probes {
-		if managerProbe.Matches(id) {
+		if managerProbe.ProbeIdentificationPair == id {
 			return managerProbe, true
 		}
 	}
@@ -555,7 +555,7 @@ func (m *Manager) RenameProbeIdentificationPair(oldID ProbeIdentificationPair, n
 
 	// sanity check: make sure the newID doesn't already exist
 	for _, mProbe := range m.Probes {
-		if mProbe.Matches(newID) {
+		if mProbe.ProbeIdentificationPair == newID {
 			return ErrIdentificationPairInUse
 		}
 	}
@@ -1187,7 +1187,7 @@ func (m *Manager) DetachHook(id ProbeIdentificationPair) error {
 	// Look for the probe
 	idToDelete := -1
 	for mID, mProbe := range m.Probes {
-		if mProbe.Matches(id) {
+		if mProbe.ProbeIdentificationPair == id {
 			// Detach or stop the probe depending on shouldStop
 			if shouldStop {
 				if err = mProbe.Stop(); err != nil {
@@ -1527,7 +1527,7 @@ func (m *Manager) activateProbes() {
 		shouldActivate := shouldPopulateActivatedProbes
 		for _, selector := range m.options.ActivatedProbes {
 			for _, p := range selector.GetProbesIdentificationPairList() {
-				if mProbe.Matches(p) {
+				if mProbe.ProbeIdentificationPair == p {
 					shouldActivate = true
 				}
 			}
