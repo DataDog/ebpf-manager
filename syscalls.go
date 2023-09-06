@@ -106,24 +106,15 @@ func perfEventOpenRaw(attr *unix.PerfEventAttr, pid int, cpu int, groupFd int, f
 }
 
 func ioctlPerfEventSetBPF(perfEventOpenFD *fd, progFD int) error {
-	if _, _, err := unix.Syscall(unix.SYS_IOCTL, uintptr(perfEventOpenFD.raw), unix.PERF_EVENT_IOC_SET_BPF, uintptr(progFD)); err != 0 {
-		return fmt.Errorf("error attaching bpf program to perf event: %w", err)
-	}
-	return nil
+	return unix.IoctlSetInt(int(perfEventOpenFD.raw), unix.PERF_EVENT_IOC_SET_BPF, progFD)
 }
 
 func ioctlPerfEventEnable(perfEventOpenFD *fd) error {
-	if _, _, err := unix.Syscall(unix.SYS_IOCTL, uintptr(perfEventOpenFD.raw), unix.PERF_EVENT_IOC_ENABLE, 0); err != 0 {
-		return fmt.Errorf("error enabling perf event: %w", err)
-	}
-	return nil
+	return unix.IoctlSetInt(int(perfEventOpenFD.raw), unix.PERF_EVENT_IOC_ENABLE, 0)
 }
 
 func ioctlPerfEventDisable(perfEventOpenFD *fd) error {
-	if _, _, err := unix.Syscall(unix.SYS_IOCTL, uintptr(perfEventOpenFD.raw), unix.PERF_EVENT_IOC_DISABLE, 0); err != 0 {
-		return fmt.Errorf("error disabling perf event: %w", err)
-	}
-	return nil
+	return unix.IoctlSetInt(int(perfEventOpenFD.raw), unix.PERF_EVENT_IOC_DISABLE, 0)
 }
 
 type bpfProgAttachAttr struct {
