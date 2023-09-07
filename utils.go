@@ -130,18 +130,19 @@ func getSyscallName(name string, symFile string) (string, error) {
 	}
 	defer syms.Close()
 
-	return getSyscallFnNameWithKallsyms(name, syms)
+	return getSyscallFnNameWithKallsyms(name, syms, "")
 }
 
-func getSyscallFnNameWithKallsyms(name string, kallsymsContent io.Reader) (string, error) {
-	var arch string
-	switch runtime.GOARCH {
-	case "386":
-		arch = "ia32"
-	case "arm64":
-		arch = "arm64"
-	default:
-		arch = "x64"
+func getSyscallFnNameWithKallsyms(name string, kallsymsContent io.Reader, arch string) (string, error) {
+	if arch == "" {
+		switch runtime.GOARCH {
+		case "386":
+			arch = "ia32"
+		case "arm64":
+			arch = "arm64"
+		default:
+			arch = "x64"
+		}
 	}
 
 	// We should search for new syscall function like "__x64__sys_open"
