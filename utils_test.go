@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"bytes"
 	"testing"
 )
 
@@ -66,7 +67,7 @@ func TestGetSyscallFnNameWithKallsyms(t *testing.T) {
 0000000000000000 t arch_local_irq_save
 	`
 
-	res, err := getSyscallFnNameWithKallsyms("open", kallsymsContent)
+	res, err := getSyscallFnNameWithKallsyms("open", bytes.NewBuffer([]byte(kallsymsContent)))
 	if err != nil {
 		t.Fatal(err)
 	}

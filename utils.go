@@ -1,10 +1,12 @@
 package manager
 
 import (
+	"bufio"
 	"bytes"
 	"debug/elf"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -122,14 +124,16 @@ const defaultSymFile = "/proc/kallsyms"
 // for older syscall functions to run on newer kernels
 func getSyscallName(name string, symFile string) (string, error) {
 	// Get kernel symbols
-	syms, err := os.ReadFile(symFile)
+	syms, err := os.Open(symFile)
 	if err != nil {
 		return "", err
 	}
-	return getSyscallFnNameWithKallsyms(name, string(syms))
+	defer syms.Close()
+
+	return getSyscallFnNameWithKallsyms(name, syms)
 }
 
-func getSyscallFnNameWithKallsyms(name string, kallsymsContent string) (string, error) {
+func getSyscallFnNameWithKallsyms(name string, kallsymsContent io.Reader) (string, error) {
 	var arch string
 	switch runtime.GOARCH {
 	case "386":
@@ -142,32 +146,30 @@ func getSyscallFnNameWithKallsyms(name string, kallsymsContent string) (string, 
 
 	// We should search for new syscall function like "__x64__sys_open"
 	// Note the start of word boundary. Should return exactly one string
-	regexStr := `(\b__` + arch + `_[Ss]y[sS]_` + name + `\b)`
-	fnRegex := regexp.MustCompile(regexStr)
-
-	match := fnRegex.FindAllString(kallsymsContent, -1)
-	if len(match) > 0 {
-		return match[0], nil
-	}
-
+	newSyscall := regexp.MustCompile(`\b__` + arch + `_[Ss]y[sS]_` + name + `\b`)
 	// If nothing found, search for old syscall function to be sure
-	regexStr = `(\b[Ss]y[sS]_` + name + `\b)`
-	fnRegex = regexp.MustCompile(regexStr)
-	match = fnRegex.FindAllString(kallsymsContent, -1)
-	// If we get something like 'sys_open' or 'SyS_open', return
-	// either (they have same addr) else, just return original string
-	if len(match) > 0 {
-		return match[0], nil
-	}
-
+	oldSyscall := regexp.MustCompile(`\b[Ss]y[sS]_` + name + `\b`)
 	// check for '__' prefixed functions, like '__sys_open'
-	regexStr = `(\b__[Ss]y[sS]_` + name + `\b)`
-	fnRegex = regexp.MustCompile(regexStr)
-	match = fnRegex.FindAllString(kallsymsContent, -1)
-	// If we get something like '__sys_open' or '__SyS_open', return
-	// either (they have same addr) else, just return original string
-	if len(match) > 0 {
-		return match[0], nil
+	prefixed := regexp.MustCompile(`\b__[Ss]y[sS]_` + name + `\b`)
+
+	scanner := bufio.NewScanner(kallsymsContent)
+	scanner.Split(bufio.ScanLines)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if !strings.Contains(line, name) {
+			continue
+		}
+
+		for _, pattern := range []*regexp.Regexp{newSyscall, oldSyscall, prefixed} {
+			if res := pattern.FindString(line); res != "" {
+				return res, nil
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", err
 	}
 
 	return "", fmt.Errorf("could not find a valid syscall name")
