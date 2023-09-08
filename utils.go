@@ -153,6 +153,8 @@ func getSyscallFnNameWithKallsyms(name string, kallsymsContent io.Reader, arch s
 	// check for '__' prefixed functions, like '__sys_open'
 	prefixed := regexp.MustCompile(`\b__[Ss]y[sS]_` + name + `\b`)
 
+	patterns := []*regexp.Regexp{newSyscall, oldSyscall, prefixed}
+
 	scanner := bufio.NewScanner(kallsymsContent)
 	scanner.Split(bufio.ScanLines)
 
@@ -163,7 +165,7 @@ func getSyscallFnNameWithKallsyms(name string, kallsymsContent io.Reader, arch s
 			continue
 		}
 
-		for _, pattern := range []*regexp.Regexp{newSyscall, oldSyscall, prefixed} {
+		for _, pattern := range patterns {
 			if res := pattern.FindString(line); res != "" {
 				return res, nil
 			}
