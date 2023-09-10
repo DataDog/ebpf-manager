@@ -2,6 +2,7 @@ package manager
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 )
 
@@ -34,7 +35,14 @@ func TestGenerateEventName(t *testing.T) {
 }
 
 func TestGetSyscallFnNameWithKallsyms(t *testing.T) {
-	kallsymsContent := `
+	entries := []struct {
+		fnName          string
+		kallsymsContent string
+		expected        string
+	}{
+		{
+			fnName: "open",
+			kallsymsContent: `
 0000000000000000 T do_fchownat
 0000000000000000 T __arm64_sys_fchownat
 0000000000000000 T __arm64_sys_chown
@@ -65,15 +73,29 @@ func TestGetSyscallFnNameWithKallsyms(t *testing.T) {
 0000000000000000 T vfs_llseek
 0000000000000000 T default_llseek
 0000000000000000 t arch_local_irq_save
-	`
-
-	res, err := getSyscallFnNameWithKallsyms("open", bytes.NewBuffer([]byte(kallsymsContent)), "arm64")
-	if err != nil {
-		t.Fatal(err)
+	`,
+			expected: "__arm64_sys_open",
+		},
+		{
+			fnName: "connect",
+			kallsymsContent: `
+0000000000000000 T __sys_connect
+0000000000000000 T __arm64_sys_connect
+	`,
+			expected: "__arm64_sys_connect",
+		},
 	}
 
-	expected := "__arm64_sys_open"
-	if res != expected {
-		t.Errorf("expected %s, got %s", expected, res)
+	for i, testEntry := range entries {
+		t.Run(fmt.Sprintf("%s_%d", testEntry.fnName, i), func(t *testing.T) {
+			res, err := getSyscallFnNameWithKallsyms(testEntry.fnName, bytes.NewBuffer([]byte(testEntry.kallsymsContent)), "arm64")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if res != testEntry.expected {
+				t.Errorf("expected %s, got %s", testEntry.expected, res)
+			}
+		})
 	}
 }
