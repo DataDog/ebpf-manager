@@ -174,7 +174,8 @@ func getSyscallFnNameWithKallsyms(name string, kallsymsContent io.Reader, arch s
 			continue
 		}
 
-		for i, p := range patterns {
+		for i := range patterns {
+			p := &patterns[i]
 			// if we already found a match for this pattern we continue
 			if p.result != "" {
 				continue
