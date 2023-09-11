@@ -1,10 +1,12 @@
 package manager
 
 import (
+	"bufio"
 	"bytes"
 	"debug/elf"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -122,52 +124,80 @@ const defaultSymFile = "/proc/kallsyms"
 // for older syscall functions to run on newer kernels
 func getSyscallName(name string, symFile string) (string, error) {
 	// Get kernel symbols
-	syms, err := os.ReadFile(symFile)
+	syms, err := os.Open(symFile)
 	if err != nil {
 		return "", err
 	}
-	return getSyscallFnNameWithKallsyms(name, string(syms))
+	defer syms.Close()
+
+	return getSyscallFnNameWithKallsyms(name, syms, "")
 }
 
-func getSyscallFnNameWithKallsyms(name string, kallsymsContent string) (string, error) {
-	var arch string
-	switch runtime.GOARCH {
-	case "386":
-		arch = "ia32"
-	case "arm64":
-		arch = "arm64"
-	default:
-		arch = "x64"
+func getSyscallFnNameWithKallsyms(name string, kallsymsContent io.Reader, arch string) (string, error) {
+	if arch == "" {
+		switch runtime.GOARCH {
+		case "386":
+			arch = "ia32"
+		case "arm64":
+			arch = "arm64"
+		default:
+			arch = "x64"
+		}
 	}
 
 	// We should search for new syscall function like "__x64__sys_open"
 	// Note the start of word boundary. Should return exactly one string
-	regexStr := `(\b__` + arch + `_[Ss]y[sS]_` + name + `\b)`
-	fnRegex := regexp.MustCompile(regexStr)
-
-	match := fnRegex.FindAllString(kallsymsContent, -1)
-	if len(match) > 0 {
-		return match[0], nil
-	}
-
+	newSyscall := regexp.MustCompile(`\b__` + arch + `_[Ss]y[sS]_` + name + `\b`)
 	// If nothing found, search for old syscall function to be sure
-	regexStr = `(\b[Ss]y[sS]_` + name + `\b)`
-	fnRegex = regexp.MustCompile(regexStr)
-	match = fnRegex.FindAllString(kallsymsContent, -1)
-	// If we get something like 'sys_open' or 'SyS_open', return
-	// either (they have same addr) else, just return original string
-	if len(match) > 0 {
-		return match[0], nil
+	oldSyscall := regexp.MustCompile(`\b[Ss]y[sS]_` + name + `\b`)
+	// check for '__' prefixed functions, like '__sys_open'
+	prefixed := regexp.MustCompile(`\b__[Ss]y[sS]_` + name + `\b`)
+
+	// the order of patterns is important
+	// we first want to look for the new syscall format, then the old format, then the prefixed format
+	patterns := []struct {
+		pattern *regexp.Regexp
+		result  string
+	}{
+		{newSyscall, ""},
+		{oldSyscall, ""},
+		{prefixed, ""},
 	}
 
-	// check for '__' prefixed functions, like '__sys_open'
-	regexStr = `(\b__[Ss]y[sS]_` + name + `\b)`
-	fnRegex = regexp.MustCompile(regexStr)
-	match = fnRegex.FindAllString(kallsymsContent, -1)
-	// If we get something like '__sys_open' or '__SyS_open', return
-	// either (they have same addr) else, just return original string
-	if len(match) > 0 {
-		return match[0], nil
+	scanner := bufio.NewScanner(kallsymsContent)
+	scanner.Split(bufio.ScanLines)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if !strings.Contains(line, name) {
+			continue
+		}
+
+		for i, p := range patterns {
+			// if we already found a match for this pattern we continue
+			if p.result != "" {
+				continue
+			}
+
+			if res := p.pattern.FindString(line); res != "" {
+				// fast path for first match on first pattern
+				if i == 0 {
+					return res, nil
+				}
+
+				p.result = res
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", err
+	}
+
+	for _, p := range patterns {
+		if p.result != "" {
+			return p.result, nil
+		}
 	}
 
 	return "", fmt.Errorf("could not find a valid syscall name")
