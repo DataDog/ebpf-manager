@@ -84,6 +84,14 @@ func TestGetSyscallFnNameWithKallsyms(t *testing.T) {
 	`,
 			expected: "__arm64_sys_connect",
 		},
+		{
+			fnName: "open",
+			kallsymsContent: `
+0000000000000000 T __SyS_open
+0000000000000000 T __sys_open
+	`,
+			expected: "__SyS_open",
+		},
 	}
 
 	for i, testEntry := range entries {
