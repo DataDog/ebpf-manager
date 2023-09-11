@@ -153,6 +153,8 @@ func getSyscallFnNameWithKallsyms(name string, kallsymsContent io.Reader, arch s
 	// check for '__' prefixed functions, like '__sys_open'
 	prefixed := regexp.MustCompile(`\b__[Ss]y[sS]_` + name + `\b`)
 
+	// the order of patterns is important
+	// we first want to look for the new syscall format, then the old format, then the prefixed format
 	patterns := []struct {
 		pattern *regexp.Regexp
 		result  string
