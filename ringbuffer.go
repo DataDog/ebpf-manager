@@ -32,17 +32,25 @@ type RingBuffer struct {
 }
 
 // loadNewRingBuffer - Creates a new ring buffer map instance, loads it and sets up the ring buffer reader
-func loadNewRingBuffer(spec ebpf.MapSpec, options MapOptions, ringBufferOptions RingBufferOptions) (*RingBuffer, error) {
-	// Create underlying map
-	innerMap, err := loadNewMap(spec, options)
-	if err != nil {
+func loadNewRingBuffer(spec *ebpf.MapSpec, options MapOptions, ringBufferOptions RingBufferOptions) (*RingBuffer, error) {
+	ringBuffer := RingBuffer{
+		Map: Map{
+			arraySpec:  spec,
+			Name:       spec.Name,
+			MapOptions: options,
+		},
+		RingBufferOptions: ringBufferOptions,
+	}
+
+	var err error
+	if ringBuffer.array, err = ebpf.NewMap(spec); err != nil {
 		return nil, err
 	}
 
-	// Create the new map
-	ringBuffer := RingBuffer{
-		Map:               *innerMap, //nolint:govet
-		RingBufferOptions: ringBufferOptions,
+	if ringBuffer.PinPath != "" {
+		if err = ringBuffer.array.Pin(ringBuffer.PinPath); err != nil {
+			return nil, fmt.Errorf("couldn't pin map %s at %s: %w", ringBuffer.Name, ringBuffer.PinPath, err)
+		}
 	}
 	return &ringBuffer, nil
 }
@@ -61,7 +69,7 @@ func (rb *RingBuffer) init(manager *Manager) error {
 	}
 
 	// Initialize the underlying map structure
-	if err := rb.Map.init(manager); err != nil {
+	if err := rb.Map.init(); err != nil {
 		return err
 	}
 	return nil

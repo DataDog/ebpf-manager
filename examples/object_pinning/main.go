@@ -83,7 +83,7 @@ func run() error {
 	if kill {
 		log.Println("=> Stopping the program without cleanup, the pinned map should show up in /sys/fs/bpf/")
 		log.Println("=> Restart without --kill to load the pinned object from the bpf file system and properly remove them")
-		return m.Stop(manager.CleanInternalNotPinned | manager.CleanExternal)
+		return m.Stop(manager.CleanInternalNotPinned)
 	}
 	return m.Stop(manager.CleanAll)
 }

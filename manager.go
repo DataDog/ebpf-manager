@@ -722,14 +722,6 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 		}
 	}
 
-	// newEditor program maps
-	if len(options.MapEditors) > 0 {
-		if err = m.editMaps(options.MapEditors); err != nil {
-			resetManager(m)
-			return err
-		}
-	}
-
 	// Patch instructions
 	if m.InstructionPatcher != nil {
 		if err := m.InstructionPatcher(m); err != nil {
@@ -950,7 +942,7 @@ func (m *Manager) stop(cleanup MapCleanupType) error {
 
 // NewMap - Create a new map using the provided parameters. The map is added to the list of maps managed by the manager.
 // Use a MapRoute to make this map available to the programs of the manager.
-func (m *Manager) NewMap(spec ebpf.MapSpec, options MapOptions) (*ebpf.Map, error) {
+func (m *Manager) NewMap(spec *ebpf.MapSpec, options MapOptions) (*ebpf.Map, error) {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
 	if m.collection == nil || m.state < initialized {
@@ -970,7 +962,7 @@ func (m *Manager) NewMap(spec ebpf.MapSpec, options MapOptions) (*ebpf.Map, erro
 	}
 
 	// init map
-	if err := managerMap.init(m); err != nil {
+	if err := managerMap.init(); err != nil {
 		// Clean up
 		_ = managerMap.Close(CleanInternal)
 		return nil, err
@@ -996,12 +988,12 @@ func (m *Manager) CloneMap(name string, newName string, options MapOptions) (*eb
 	// Duplicate spec and create a new map
 	spec := oldSpec.Copy()
 	spec.Name = newName
-	return m.NewMap(*spec, options)
+	return m.NewMap(spec, options)
 }
 
 // NewPerfRing - Creates a new perf ring and start listening for events.
 // Use a MapRoute to make this map available to the programs of the manager.
-func (m *Manager) NewPerfRing(spec ebpf.MapSpec, options MapOptions, perfMapOptions PerfMapOptions) (*ebpf.Map, error) {
+func (m *Manager) NewPerfRing(spec *ebpf.MapSpec, options MapOptions, perfMapOptions PerfMapOptions) (*ebpf.Map, error) {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
 	if m.state < initialized {
@@ -1052,12 +1044,12 @@ func (m *Manager) ClonePerfRing(name string, newName string, options MapOptions,
 	// Duplicate spec and create a new map
 	spec := oldSpec.Copy()
 	spec.Name = newName
-	return m.NewPerfRing(*spec, options, perfMapOptions)
+	return m.NewPerfRing(spec, options, perfMapOptions)
 }
 
 // NewRingBuffer - Creates a new ring buffer and start listening for events.
 // Use a MapRoute to make this map available to the programs of the manager.
-func (m *Manager) NewRingBuffer(spec ebpf.MapSpec, options MapOptions, ringBufferOptions RingBufferOptions) (*ebpf.Map, error) {
+func (m *Manager) NewRingBuffer(spec *ebpf.MapSpec, options MapOptions, ringBufferOptions RingBufferOptions) (*ebpf.Map, error) {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
 	if m.state < initialized {
@@ -1491,12 +1483,15 @@ func (m *Manager) matchBPFObjects() error {
 
 	// Match maps
 	for _, managerMap := range m.Maps {
-		if managerMap.externalMap {
-			continue
-		}
 		arr, ok := m.collection.Maps[managerMap.Name]
 		if !ok {
 			return fmt.Errorf("couldn't find map at maps/%s: %w", managerMap.Name, ErrUnknownSection)
+		}
+		// the `*ebpf.Map` reference may already be populated if pinned
+		if managerMap.array != nil {
+			// we don't need multiple references, so `Close` the new one
+			_ = arr.Close()
+			continue
 		}
 		managerMap.array = arr
 	}
@@ -1507,6 +1502,12 @@ func (m *Manager) matchBPFObjects() error {
 		if !ok {
 			return fmt.Errorf("couldn't find map at maps/%s: %w", perfMap.Name, ErrUnknownSection)
 		}
+		// the `*ebpf.Map` reference may already be populated if pinned
+		if perfMap.array != nil {
+			// we don't need multiple references, so `Close` the new one
+			_ = arr.Close()
+			continue
+		}
 		perfMap.array = arr
 	}
 
@@ -1515,6 +1516,12 @@ func (m *Manager) matchBPFObjects() error {
 		arr, ok := m.collection.Maps[ringBuffer.Name]
 		if !ok {
 			return fmt.Errorf("couldn't find map at maps/%s: %w", ringBuffer.Name, ErrUnknownSection)
+		}
+		// the `*ebpf.Map` reference may already be populated if pinned
+		if ringBuffer.array != nil {
+			// we don't need multiple references, so `Close` the new one
+			_ = arr.Close()
+			continue
 		}
 		ringBuffer.array = arr
 	}
@@ -1735,64 +1742,6 @@ func (m *Manager) rewriteMaps(program *ebpf.ProgramSpec, eBPFMaps map[string]*eb
 	return nil
 }
 
-// editMaps - RewriteMaps replaces all references to specific maps.
-func (m *Manager) editMaps(maps map[string]*ebpf.Map) error {
-	// Rewrite maps
-	for name, toRewrite := range maps {
-		// ignore deprecated usage
-		//nolint:staticcheck
-		//lint:ignore SA1019 using MapReplacements would require significant refactor
-		if err := m.collectionSpec.RewriteMaps(map[string]*ebpf.Map{name: toRewrite}); err != nil {
-			if m.options.MapEditorsIgnoreMissingMaps {
-				// make sure the map is removed from the collectionSpec
-				delete(m.collectionSpec.Maps, name)
-			} else {
-				return err
-			}
-		}
-	}
-
-	// The rewrite operation removed the original maps from the CollectionSpec and will therefore not appear in the
-	// Collection, make the mapping with the Manager.Maps now
-	found := false
-	for name, rwMap := range maps {
-		for _, managerMap := range m.Maps {
-			if managerMap.Name == name {
-				managerMap.array = rwMap
-				managerMap.externalMap = true
-				managerMap.editedMap = true
-				found = true
-			}
-		}
-		for _, perfRing := range m.PerfMaps {
-			if perfRing.Name == name {
-				perfRing.array = rwMap
-				perfRing.externalMap = true
-				perfRing.editedMap = true
-				found = true
-			}
-		}
-		for _, ringBuffer := range m.RingBuffers {
-			if ringBuffer.Name == name {
-				ringBuffer.array = rwMap
-				ringBuffer.externalMap = true
-				ringBuffer.editedMap = true
-				found = true
-			}
-		}
-		if !found && !m.options.MapEditorsIgnoreMissingMaps {
-			// Create a new entry
-			m.Maps = append(m.Maps, &Map{
-				array:       rwMap,
-				externalMap: true,
-				editedMap:   true,
-				Name:        name,
-			})
-		}
-	}
-	return nil
-}
-
 // editInnerOuterMapSpecs - Update the inner maps of the maps of maps in the collection spec
 func (m *Manager) editInnerOuterMapSpec(spec InnerOuterMapSpec) error {
 	// find the outer map
@@ -1820,8 +1769,18 @@ func (m *Manager) editInnerOuterMapSpec(spec InnerOuterMapSpec) error {
 // loadCollection - Load the eBPF maps and programs in the CollectionSpec. Programs and Maps are pinned when requested.
 func (m *Manager) loadCollection() error {
 	var err error
-	// Load collection
-	m.collection, err = ebpf.NewCollectionWithOptions(m.collectionSpec, m.options.VerifierOptions)
+
+	opts := m.options.VerifierOptions
+	// map references replaced this way will get a cloned reference to the *ebpf.Map upon collection load
+	opts.MapReplacements = maps.Clone(m.options.MapEditors)
+	for name := range opts.MapReplacements {
+		if _, ok := m.collectionSpec.Maps[name]; !ok && m.options.MapEditorsIgnoreMissingMaps {
+			// prevent error for missing map by removing the editor
+			delete(opts.MapReplacements, name)
+		}
+	}
+
+	m.collection, err = ebpf.NewCollectionWithOptions(m.collectionSpec, opts)
 	if err != nil {
 		var ve *ebpf.VerifierError
 		if errors.As(err, &ve) {
@@ -1838,7 +1797,7 @@ func (m *Manager) loadCollection() error {
 
 	// Initialize Maps
 	for _, managerMap := range m.Maps {
-		if err := managerMap.init(m); err != nil {
+		if err := managerMap.init(); err != nil {
 			return err
 		}
 	}
@@ -1937,12 +1896,8 @@ func (m *Manager) loadPinnedMap(managerMap *Map) error {
 		return fmt.Errorf("couldn't load map %s from %s: %w", managerMap.Name, managerMap.PinPath, err)
 	}
 
-	// Replace map in CollectionSpec
-	if err := m.editMaps(map[string]*ebpf.Map{managerMap.Name: pinnedMap}); err != nil {
-		return err
-	}
+	m.options.MapEditors[managerMap.Name] = pinnedMap
 	managerMap.array = pinnedMap
-	managerMap.externalMap = true
 	return nil
 }
 
