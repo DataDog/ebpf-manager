@@ -617,6 +617,7 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	if m.options.RLimit != nil {
 		err := unix.Setrlimit(unix.RLIMIT_MEMLOCK, m.options.RLimit)
 		if err != nil {
+			m.stateLock.Unlock()
 			return fmt.Errorf("couldn't adjust RLIMIT_MEMLOCK: %w", err)
 		}
 	}
