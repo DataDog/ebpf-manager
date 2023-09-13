@@ -43,7 +43,16 @@ const (
 )
 
 // availableFilterFunctions - cache of the list of available kernel functions.
-var availableFilterFunctions []string
+var availableFilterFunctions struct {
+	sync.Mutex
+	cache []string
+}
+
+func clearAvailableFilterFunctionsCache() {
+	availableFilterFunctions.Lock()
+	defer availableFilterFunctions.Unlock()
+	availableFilterFunctions.cache = nil
+}
 
 func FindFilterFunction(funcName string) (string, error) {
 	// Prepare matching pattern
@@ -52,26 +61,29 @@ func FindFilterFunction(funcName string) (string, error) {
 		return "", err
 	}
 
+	availableFilterFunctions.Lock()
+	defer availableFilterFunctions.Unlock()
+
 	// Cache available filter functions if necessary
-	if len(availableFilterFunctions) == 0 {
+	if len(availableFilterFunctions.cache) == 0 {
 		funcs, err := tracefs.ReadFile("available_filter_functions")
 		if err != nil {
 			return "", err
 		}
-		availableFilterFunctions = strings.Split(string(funcs), "\n")
-		for i, name := range availableFilterFunctions {
+		availableFilterFunctions.cache = strings.Split(string(funcs), "\n")
+		for i, name := range availableFilterFunctions.cache {
 			splittedName := strings.Split(name, " ")
 			name = splittedName[0]
 			splittedName = strings.Split(name, "\t")
 			name = splittedName[0]
-			availableFilterFunctions[i] = name
+			availableFilterFunctions.cache[i] = name
 		}
-		sort.Strings(availableFilterFunctions)
+		sort.Strings(availableFilterFunctions.cache)
 	}
 
 	// Match function name
 	var potentialMatches []string
-	for _, f := range availableFilterFunctions {
+	for _, f := range availableFilterFunctions.cache {
 		if searchedName.MatchString(f) {
 			potentialMatches = append(potentialMatches, f)
 		}
