@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -72,13 +71,10 @@ func FindFilterFunction(funcName string) (string, error) {
 		}
 		availableFilterFunctions.cache = strings.Split(string(funcs), "\n")
 		for i, name := range availableFilterFunctions.cache {
-			splittedName := strings.Split(name, " ")
-			name = splittedName[0]
-			splittedName = strings.Split(name, "\t")
-			name = splittedName[0]
+			name, _, _ = strings.Cut(name, " ")
+			name, _, _ = strings.Cut(name, "\t")
 			availableFilterFunctions.cache[i] = name
 		}
-		sort.Strings(availableFilterFunctions.cache)
 	}
 
 	// Match function name
