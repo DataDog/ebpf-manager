@@ -44,7 +44,8 @@ const (
 // availableFilterFunctions - cache of the list of available kernel functions.
 var availableFilterFunctions struct {
 	sync.Mutex
-	cache []string
+	cache     []string
+	cacheSize int
 }
 
 func clearAvailableFilterFunctionsCache() {
@@ -71,6 +72,10 @@ func FindFilterFunction(funcName string) (string, error) {
 		}
 		defer funcsReader.Close()
 
+		if availableFilterFunctions.cacheSize != 0 {
+			availableFilterFunctions.cache = make([]string, 0, availableFilterFunctions.cacheSize)
+		}
+
 		funcs := bufio.NewScanner(funcsReader)
 		funcs.Split(bufio.ScanLines)
 
@@ -83,6 +88,7 @@ func FindFilterFunction(funcName string) (string, error) {
 		if err := funcs.Err(); err != nil {
 			return "", err
 		}
+		availableFilterFunctions.cacheSize = len(availableFilterFunctions.cache)
 	}
 
 	// Match function name
