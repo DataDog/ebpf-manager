@@ -65,15 +65,23 @@ func FindFilterFunction(funcName string) (string, error) {
 
 	// Cache available filter functions if necessary
 	if len(availableFilterFunctions.cache) == 0 {
-		funcs, err := tracefs.ReadFile("available_filter_functions")
+		funcsReader, err := tracefs.Open("available_filter_functions")
 		if err != nil {
 			return "", err
 		}
-		availableFilterFunctions.cache = strings.Split(string(funcs), "\n")
-		for i, name := range availableFilterFunctions.cache {
+		defer funcsReader.Close()
+
+		funcs := bufio.NewScanner(funcsReader)
+		funcs.Split(bufio.ScanLines)
+
+		for funcs.Scan() {
+			name := funcs.Text()
 			name, _, _ = strings.Cut(name, " ")
 			name, _, _ = strings.Cut(name, "\t")
-			availableFilterFunctions.cache[i] = name
+			availableFilterFunctions.cache = append(availableFilterFunctions.cache, name)
+		}
+		if err := funcs.Err(); err != nil {
+			return "", err
 		}
 	}
 
