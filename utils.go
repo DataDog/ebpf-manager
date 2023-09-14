@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 
 	"github.com/cilium/ebpf"
@@ -42,17 +41,12 @@ const (
 	maxBPFClassifierNameLen = 256
 )
 
-// availableFilterFunctionsCacheSize - caches the number of lines in available_filter_functions file
-var availableFilterFunctionsCacheSize atomic.Int64
-
 func FindFilterFunction(funcName string) (string, error) {
 	// Prepare matching pattern
 	searchedName, err := regexp.Compile(funcName)
 	if err != nil {
 		return "", err
 	}
-
-	availableFilterFunctions := make([]string, 0, availableFilterFunctionsCacheSize.Load())
 
 	funcsReader, err := tracefs.Open("available_filter_functions")
 	if err != nil {
@@ -63,27 +57,23 @@ func FindFilterFunction(funcName string) (string, error) {
 	funcs := bufio.NewScanner(funcsReader)
 	funcs.Split(bufio.ScanLines)
 
+	var potentialMatches []string
 	for funcs.Scan() {
 		name := funcs.Text()
 		name, _, _ = strings.Cut(name, " ")
 		name, _, _ = strings.Cut(name, "\t")
-		availableFilterFunctions = append(availableFilterFunctions, name)
+
+		if searchedName.MatchString(name) {
+			potentialMatches = append(potentialMatches, name)
+		}
+		if name == funcName {
+			return name, nil
+		}
 	}
 	if err := funcs.Err(); err != nil {
 		return "", err
 	}
-	availableFilterFunctionsCacheSize.Store(int64(len(availableFilterFunctions)))
 
-	// Match function name
-	var potentialMatches []string
-	for _, f := range availableFilterFunctions {
-		if searchedName.MatchString(f) {
-			potentialMatches = append(potentialMatches, f)
-		}
-		if f == funcName {
-			return f, nil
-		}
-	}
 	if len(potentialMatches) > 0 {
 		return potentialMatches[0], nil
 	}
