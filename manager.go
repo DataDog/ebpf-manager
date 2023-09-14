@@ -1824,7 +1824,6 @@ func (m *Manager) loadCollection() error {
 			return err
 		}
 	}
-
 	return nil
 }
 

@@ -42,7 +42,7 @@ const (
 	maxBPFClassifierNameLen = 256
 )
 
-// availableFilterFunctionsCacheSize
+// availableFilterFunctionsCacheSize - caches the number of lines in available_filter_functions file
 var availableFilterFunctionsCacheSize atomic.Int64
 
 func FindFilterFunction(funcName string) (string, error) {
