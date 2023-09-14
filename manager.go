@@ -1626,8 +1626,6 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 		return fmt.Errorf("probes activation validation failed: %w", validationErrs)
 	}
 
-	clearAvailableFilterFunctionsCache()
-
 	return nil
 }
 
@@ -1826,8 +1824,6 @@ func (m *Manager) loadCollection() error {
 			return err
 		}
 	}
-
-	clearAvailableFilterFunctionsCache()
 
 	return nil
 }

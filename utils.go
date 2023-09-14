@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/cilium/ebpf"
@@ -41,18 +42,8 @@ const (
 	maxBPFClassifierNameLen = 256
 )
 
-// availableFilterFunctions - cache of the list of available kernel functions.
-var availableFilterFunctions struct {
-	sync.Mutex
-	cache     []string
-	cacheSize int
-}
-
-func clearAvailableFilterFunctionsCache() {
-	availableFilterFunctions.Lock()
-	defer availableFilterFunctions.Unlock()
-	availableFilterFunctions.cache = nil
-}
+// availableFilterFunctionsCacheSize
+var availableFilterFunctionsCacheSize atomic.Int64
 
 func FindFilterFunction(funcName string) (string, error) {
 	// Prepare matching pattern
@@ -61,39 +52,31 @@ func FindFilterFunction(funcName string) (string, error) {
 		return "", err
 	}
 
-	availableFilterFunctions.Lock()
-	defer availableFilterFunctions.Unlock()
+	availableFilterFunctions := make([]string, 0, availableFilterFunctionsCacheSize.Load())
 
-	// Cache available filter functions if necessary
-	if len(availableFilterFunctions.cache) == 0 {
-		funcsReader, err := tracefs.Open("available_filter_functions")
-		if err != nil {
-			return "", err
-		}
-		defer funcsReader.Close()
-
-		if availableFilterFunctions.cacheSize != 0 {
-			availableFilterFunctions.cache = make([]string, 0, availableFilterFunctions.cacheSize)
-		}
-
-		funcs := bufio.NewScanner(funcsReader)
-		funcs.Split(bufio.ScanLines)
-
-		for funcs.Scan() {
-			name := funcs.Text()
-			name, _, _ = strings.Cut(name, " ")
-			name, _, _ = strings.Cut(name, "\t")
-			availableFilterFunctions.cache = append(availableFilterFunctions.cache, name)
-		}
-		if err := funcs.Err(); err != nil {
-			return "", err
-		}
-		availableFilterFunctions.cacheSize = len(availableFilterFunctions.cache)
+	funcsReader, err := tracefs.Open("available_filter_functions")
+	if err != nil {
+		return "", err
 	}
+	defer funcsReader.Close()
+
+	funcs := bufio.NewScanner(funcsReader)
+	funcs.Split(bufio.ScanLines)
+
+	for funcs.Scan() {
+		name := funcs.Text()
+		name, _, _ = strings.Cut(name, " ")
+		name, _, _ = strings.Cut(name, "\t")
+		availableFilterFunctions = append(availableFilterFunctions, name)
+	}
+	if err := funcs.Err(); err != nil {
+		return "", err
+	}
+	availableFilterFunctionsCacheSize.Store(int64(len(availableFilterFunctions)))
 
 	// Match function name
 	var potentialMatches []string
-	for _, f := range availableFilterFunctions.cache {
+	for _, f := range availableFilterFunctions {
 		if searchedName.MatchString(f) {
 			potentialMatches = append(potentialMatches, f)
 		}

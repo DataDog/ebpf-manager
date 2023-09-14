@@ -123,6 +123,5 @@ func BenchmarkFindFilterFunction(b *testing.B) {
 		if err != nil {
 			b.Error(err)
 		}
-		clearAvailableFilterFunctionsCache()
 	}
 }
