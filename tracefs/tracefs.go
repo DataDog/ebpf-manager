@@ -68,7 +68,12 @@ func ReadFile(relname string) ([]byte, error) {
 	return os.ReadFile(filepath.Join(root, relname))
 }
 
-// OpenFile opens the relative path provided, using the detected root of tracefs or debugfs
+// Open opens the relative path provided (similar to os.Open), using the detected root of tracefs or debugfs
+func Open(relname string) (*os.File, error) {
+	return OpenFile(relname, os.O_RDONLY, 0)
+}
+
+// OpenFile opens the relative path provided (similar to os.OpenFile), using the detected root of tracefs or debugfs
 func OpenFile(relname string, flag int, perm os.FileMode) (*os.File, error) {
 	root, err := getRoot()
 	if err != nil {
