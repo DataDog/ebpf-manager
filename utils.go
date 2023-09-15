@@ -59,15 +59,15 @@ func FindFilterFunction(funcName string) (string, error) {
 
 	var potentialMatches []string
 	for funcs.Scan() {
-		name := funcs.Text()
-		name, _, _ = strings.Cut(name, " ")
-		name, _, _ = strings.Cut(name, "\t")
+		name := funcs.Bytes()
+		name, _, _ = bytes.Cut(name, []byte(" "))
+		name, _, _ = bytes.Cut(name, []byte("\t"))
 
-		if searchedName.MatchString(name) {
-			potentialMatches = append(potentialMatches, name)
+		if string(name) == funcName {
+			return funcName, nil
 		}
-		if name == funcName {
-			return name, nil
+		if searchedName.Match(name) {
+			potentialMatches = append(potentialMatches, string(name))
 		}
 	}
 	if err := funcs.Err(); err != nil {
