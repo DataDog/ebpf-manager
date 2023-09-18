@@ -27,6 +27,8 @@ jobs:
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
+        with:
+          skip-pkg-cache: true
       - name: staticcheck
         uses: dominikh/staticcheck-action@v1.3.0
         with:

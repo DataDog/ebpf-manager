@@ -4,37 +4,15 @@ import (
 	"bufio"
 	"bytes"
 	_ "embed"
-	"encoding/binary"
 	"fmt"
 	"log"
 	"os"
-	"unsafe"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
-
-// ByteOrder - host byte order
-var ByteOrder binary.ByteOrder
-
-func init() {
-	ByteOrder = getHostByteOrder()
-}
-
-// getHostByteOrder - Returns the host byte order
-func getHostByteOrder() binary.ByteOrder {
-	var i int32 = 0x01020304
-	u := unsafe.Pointer(&i)
-	pb := (*byte)(u)
-	b := *pb
-	if b == 0x04 {
-		return binary.LittleEndian
-	}
-
-	return binary.BigEndian
-}
 
 //go:embed ebpf/bin/main.o
 var Probe []byte
