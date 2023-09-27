@@ -291,6 +291,7 @@ func (p *Probe) Benchmark(in []byte, repeat int, reset func()) (uint32, time.Dur
 // initWithOptions - Initializes a probe with options
 func (p *Probe) initWithOptions(manager *Manager, manualLoadNeeded bool, checkPin bool) error {
 	if !p.Enabled {
+		p.cleanupProgramSpec()
 		return nil
 	}
 
@@ -304,6 +305,7 @@ func (p *Probe) initWithOptions(manager *Manager, manualLoadNeeded bool, checkPi
 // init - Initialize a probe
 func (p *Probe) init(manager *Manager) error {
 	if !p.Enabled {
+		p.cleanupProgramSpec()
 		return nil
 	}
 	p.stateLock.Lock()
@@ -461,6 +463,7 @@ func (p *Probe) internalInit(manager *Manager) error {
 
 	// update probe state
 	p.state = initialized
+	p.cleanupProgramSpec()
 	return nil
 }
 
@@ -545,9 +548,6 @@ func (p *Probe) attach() error {
 	// update probe state
 	p.state = running
 	p.attachRetryAttempt = p.getRetryAttemptCount()
-
-	// cleanup ProgramSpec to free up some memory
-	p.cleanupProgramSpec()
 	return nil
 }
 

@@ -565,7 +565,7 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	// Load eBPF program with the provided verifier options
 	if err = m.loadCollection(); err != nil {
 		if m.collection != nil {
-			_ = m.collection.Close
+			m.collection.Close()
 		}
 		resetManager(m)
 		return err
