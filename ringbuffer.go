@@ -6,7 +6,8 @@ import (
 	"sync"
 
 	"github.com/cilium/ebpf"
-	"github.com/cilium/ebpf/ringbuf"
+
+	"github.com/DataDog/ebpf-manager/ringbuf"
 )
 
 type RingBufferOptions struct {

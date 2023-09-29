@@ -6,7 +6,8 @@ import (
 	"sync"
 
 	"github.com/cilium/ebpf"
-	"github.com/cilium/ebpf/perf"
+
+	"github.com/DataDog/ebpf-manager/perf"
 )
 
 // PerfMapOptions - Perf map specific options
