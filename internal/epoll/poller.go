@@ -217,9 +217,3 @@ func (efd *eventFd) add(n uint64) error {
 	_, err := efd.file.Write(buf[:])
 	return err
 }
-
-func (efd *eventFd) read() (uint64, error) {
-	var buf [8]byte
-	_, err := efd.file.Read(buf[:])
-	return internal.NativeEndian.Uint64(buf[:]), err
-}
