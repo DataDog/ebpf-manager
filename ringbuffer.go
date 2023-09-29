@@ -17,6 +17,10 @@ type RingBufferOptions struct {
 	// ErrChan - Reader error channel
 	ErrChan chan error
 
+	// RecordHandler - Callback function called when a new record was retrieved from the perf
+	// ring buffer.
+	RecordHandler func(record *ringbuf.Record, ringBuffer *RingBuffer, manager *Manager)
+
 	// DataHandler - Callback function called when a new sample was retrieved from the perf
 	// ring buffer.
 	DataHandler func(CPU int, data []byte, ringBuffer *RingBuffer, manager *Manager)
@@ -110,7 +114,11 @@ func (rb *RingBuffer) Start() error {
 				}
 				continue
 			}
-			rb.DataHandler(0, record.RawSample, rb, rb.manager)
+			if rb.RecordHandler != nil {
+				rb.RecordHandler(&record, rb, rb.manager)
+			} else if rb.DataHandler != nil {
+				rb.DataHandler(0, record.RawSample, rb, rb.manager)
+			}
 		}
 	}()
 
