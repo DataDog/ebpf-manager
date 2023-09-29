@@ -439,12 +439,12 @@ func (pr *Reader) readRecordFromRing(rec *Record, ring *perfEventRing) error {
 	defer ring.writeTail()
 
 	rec.CPU = ring.cpu
-	rec.Size = ring.size()
-	rec.Count = ring.count()
 	err := readRecord(ring, rec, pr.eventHeader, pr.overwritable)
 	if pr.overwritable && (errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)) {
 		return errEOR
 	}
+	rec.Size = ring.size()
+	rec.Count = ring.count()
 	return err
 }
 

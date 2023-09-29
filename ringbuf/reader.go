@@ -54,8 +54,6 @@ type Record struct {
 // buf must be at least ringbufHeaderSize bytes long.
 func readRecord(rd *ringbufEventRing, rec *Record, buf []byte) error {
 	rd.loadConsumer()
-	rec.Size = rd.size()
-	rec.Count = rd.count()
 
 	buf = buf[:ringbufHeaderSize]
 	if _, err := io.ReadFull(rd, buf); err == io.EOF {
@@ -103,6 +101,8 @@ func readRecord(rd *ringbufEventRing, rec *Record, buf []byte) error {
 
 	rd.storeConsumer()
 	rec.RawSample = rec.RawSample[:header.dataLen()]
+	rec.Size = rd.size()
+	rec.Count = rd.count()
 	return nil
 }
 
