@@ -64,8 +64,8 @@ func loadNewRingBuffer(spec *ebpf.MapSpec, options MapOptions, ringBufferOptions
 func (rb *RingBuffer) init(manager *Manager) error {
 	rb.manager = manager
 
-	if rb.DataHandler == nil {
-		return fmt.Errorf("no DataHandler set for %s", rb.Name)
+	if rb.DataHandler == nil && rb.RecordHandler == nil {
+		return fmt.Errorf("no DataHandler/RecordHandler set for %s", rb.Name)
 	}
 
 	// Set default values if not already set
