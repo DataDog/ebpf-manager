@@ -122,11 +122,11 @@ func (m *Manager) CleanupNetworkNamespace(nsID uint32) error {
 			continue
 		}
 
-		// disable probe
-		probe.Enabled = false
-
 		// stop the probe
 		errs = append(errs, probe.Stop())
+
+		// disable probe
+		probe.Enabled = false
 
 		// append probe to delete (biggest indexes first)
 		toDelete = append([]int{i}, toDelete...)
