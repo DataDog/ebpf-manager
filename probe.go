@@ -259,10 +259,7 @@ func (p *Probe) GetLastError() error {
 func (p *Probe) ID() uint32 {
 	p.stateLock.RLock()
 	defer p.stateLock.RUnlock()
-	if p.state >= initialized {
-		return uint32(p.systemWideID)
-	}
-	return 0
+	return uint32(p.systemWideID)
 }
 
 // IsRunning - Returns true if the probe was successfully initialized, started and is currently running or paused.
