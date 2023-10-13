@@ -257,6 +257,8 @@ func (p *Probe) GetLastError() error {
 
 // ID returns the system-wide unique ID for this program
 func (p *Probe) ID() uint32 {
+	p.stateLock.RLock()
+	defer p.stateLock.RUnlock()
 	return uint32(p.systemWideID)
 }
 
