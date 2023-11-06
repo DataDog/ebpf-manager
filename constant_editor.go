@@ -70,22 +70,36 @@ func (m *Manager) editConstants() error {
 				return fmt.Errorf("couldn't edit %s in %v: %w", constantEditor.Name, id, err)
 			}
 		}
+	}
 
-		// Apply to all programs if no section was provided
-		if len(constantEditor.ProbeIdentificationPairs) == 0 {
-			for section, prog := range m.collectionSpec.Programs {
-				if err := m.editConstant(prog, constantEditor); err != nil {
-					return fmt.Errorf("couldn't edit %s in %s: %w", constantEditor.Name, section, err)
-				}
+	// Apply to all programs if no section was provided
+	for section, prog := range m.collectionSpec.Programs {
+		edit := newEditor(&prog.Instructions)
+		for _, constantEditor := range m.options.ConstantEditors {
+			if constantEditor.BTFGlobalConstant {
+				continue
+			}
+
+			if len(constantEditor.ProbeIdentificationPairs) != 0 {
+				continue
+			}
+
+			if err := m.editConstantWithEditor(edit, constantEditor); err != nil {
+				return fmt.Errorf("couldn't edit %s in %s: %w", constantEditor.Name, section, err)
 			}
 		}
 	}
+
 	return nil
 }
 
 // editConstant - newEditor the provided program with the provided constant using the asm method.
 func (m *Manager) editConstant(prog *ebpf.ProgramSpec, editor ConstantEditor) error {
 	edit := newEditor(&prog.Instructions)
+	return m.editConstantWithEditor(edit, editor)
+}
+
+func (m *Manager) editConstantWithEditor(edit *editor, editor ConstantEditor) error {
 	data, ok := (editor.Value).(uint64)
 	if !ok {
 		return fmt.Errorf("with the asm method, the constant value has to be of type uint64")
