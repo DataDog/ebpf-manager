@@ -74,7 +74,7 @@ func (m *Manager) editConstants() error {
 
 	// Apply to all programs if no section was provided
 	for section, prog := range m.collectionSpec.Programs {
-		edit := newEditor(&prog.Instructions)
+		var edit *editor
 		for _, constantEditor := range m.options.ConstantEditors {
 			if constantEditor.BTFGlobalConstant {
 				continue
@@ -82,6 +82,10 @@ func (m *Manager) editConstants() error {
 
 			if len(constantEditor.ProbeIdentificationPairs) != 0 {
 				continue
+			}
+
+			if edit == nil {
+				edit = newEditor(&prog.Instructions)
 			}
 
 			if err := m.editConstantWithEditor(edit, constantEditor); err != nil {
