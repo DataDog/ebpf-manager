@@ -19,6 +19,13 @@ type RingBufferOptions struct {
 	// DataHandler - Callback function called when a new sample was retrieved from the perf
 	// ring buffer.
 	DataHandler func(CPU int, data []byte, ringBuffer *RingBuffer, manager *Manager)
+
+	// RecordHandler - Callback function called when a new record was retrieved from the perf
+	// ring buffer.
+	RecordHandler func(record *ringbuf.Record, ringBuffer *RingBuffer, manager *Manager)
+
+	// RecordGetter - if specified this getter will be used to get a new record
+	RecordGetter func() *ringbuf.Record
 }
 
 type RingBuffer struct {
@@ -59,8 +66,8 @@ func loadNewRingBuffer(spec *ebpf.MapSpec, options MapOptions, ringBufferOptions
 func (rb *RingBuffer) init(manager *Manager) error {
 	rb.manager = manager
 
-	if rb.DataHandler == nil {
-		return fmt.Errorf("no DataHandler set for %s", rb.Name)
+	if rb.DataHandler == nil && rb.RecordHandler == nil {
+		return fmt.Errorf("no DataHandler/RecordHandler set for %s", rb.Name)
 	}
 
 	// Set default values if not already set
@@ -95,11 +102,17 @@ func (rb *RingBuffer) Start() error {
 	rb.wgReader.Add(1)
 
 	go func() {
-		var record ringbuf.Record
+		var record *ringbuf.Record
 		var err error
 
 		for {
-			if err = rb.ringReader.ReadInto(&record); err != nil {
+			if rb.RingBufferOptions.RecordGetter != nil {
+				record = rb.RingBufferOptions.RecordGetter()
+			} else if rb.DataHandler != nil {
+				record = new(ringbuf.Record)
+			}
+
+			if err = rb.ringReader.ReadInto(record); err != nil {
 				if isRingBufferClosed(err) {
 					rb.wgReader.Done()
 					return
@@ -110,6 +123,12 @@ func (rb *RingBuffer) Start() error {
 				continue
 			}
 			rb.DataHandler(0, record.RawSample, rb, rb.manager)
+
+			if rb.RecordHandler != nil {
+				rb.RecordHandler(record, rb, rb.manager)
+			} else if rb.DataHandler != nil {
+				rb.DataHandler(0, record.RawSample, rb, rb.manager)
+			}
 		}
 	}()
 
