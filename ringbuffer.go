@@ -122,7 +122,6 @@ func (rb *RingBuffer) Start() error {
 				}
 				continue
 			}
-			rb.DataHandler(0, record.RawSample, rb, rb.manager)
 
 			if rb.RecordHandler != nil {
 				rb.RecordHandler(record, rb, rb.manager)
