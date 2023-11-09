@@ -213,6 +213,14 @@ func (m *PerfMap) Resume() error {
 	return nil
 }
 
+// BufferSize is the size in bytes of each per-CPU buffer
+func (m *PerfMap) BufferSize() int {
+	if m.perfReader == nil {
+		return 0
+	}
+	return m.perfReader.BufferSize()
+}
+
 func isPerfClosed(err error) bool {
 	return errors.Is(err, perf.ErrClosed)
 }

@@ -143,6 +143,14 @@ func (rb *RingBuffer) Stop(cleanup MapCleanupType) error {
 	return err
 }
 
+// BufferSize returns the size in bytes of the ring buffer
+func (rb *RingBuffer) BufferSize() int {
+	if rb.ringReader == nil {
+		return 0
+	}
+	return rb.ringReader.BufferSize()
+}
+
 func isRingBufferClosed(err error) bool {
 	return errors.Is(err, ringbuf.ErrClosed)
 }
