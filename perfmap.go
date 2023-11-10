@@ -42,6 +42,7 @@ type PerfMap struct {
 	manager    *Manager
 	perfReader *perf.Reader
 	wgReader   sync.WaitGroup
+	bufferSize int
 
 	// Map - A PerfMap has the same features as a normal Map
 	Map
@@ -114,6 +115,7 @@ func (m *PerfMap) Start() error {
 	if m.perfReader, err = perf.NewReaderWithOptions(m.array, m.PerfRingBufferSize, opt); err != nil {
 		return err
 	}
+	m.bufferSize = m.perfReader.BufferSize()
 
 	m.wgReader.Add(1)
 
@@ -215,10 +217,7 @@ func (m *PerfMap) Resume() error {
 
 // BufferSize is the size in bytes of each per-CPU buffer
 func (m *PerfMap) BufferSize() int {
-	if m.perfReader == nil {
-		return 0
-	}
-	return m.perfReader.BufferSize()
+	return m.bufferSize
 }
 
 func isPerfClosed(err error) bool {

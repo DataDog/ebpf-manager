@@ -32,6 +32,7 @@ type RingBuffer struct {
 	manager    *Manager
 	ringReader *ringbuf.Reader
 	wgReader   sync.WaitGroup
+	bufferSize int
 
 	// Map - A PerfMap has the same features as a normal Map
 	Map
@@ -98,6 +99,7 @@ func (rb *RingBuffer) Start() error {
 	if rb.ringReader, err = ringbuf.NewReader(rb.array); err != nil {
 		return err
 	}
+	rb.bufferSize = rb.ringReader.BufferSize()
 	// Start listening for data
 	rb.wgReader.Add(1)
 
@@ -163,10 +165,7 @@ func (rb *RingBuffer) Stop(cleanup MapCleanupType) error {
 
 // BufferSize returns the size in bytes of the ring buffer
 func (rb *RingBuffer) BufferSize() int {
-	if rb.ringReader == nil {
-		return 0
-	}
-	return rb.ringReader.BufferSize()
+	return rb.bufferSize
 }
 
 func isRingBufferClosed(err error) bool {
