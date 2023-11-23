@@ -88,6 +88,9 @@ func (nsc *netlinkSocketCache) cleanup() {
 }
 
 func (nsc *netlinkSocketCache) remove(nsID uint32) {
+	nsc.Lock()
+	defer nsc.Unlock()
+
 	s, ok := nsc.cache[nsID]
 	if ok {
 		delete(nsc.cache, nsID)
