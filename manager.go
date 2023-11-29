@@ -354,6 +354,17 @@ func (m *Manager) GetPrograms() (map[string]*ebpf.Program, error) {
 	return maps.Clone(m.collection.Programs), nil
 }
 
+// GetProgramSpecs - Return the list of eBPF program specs in the manager
+func (m *Manager) GetProgramSpecs() (map[string]*ebpf.ProgramSpec, error) {
+	m.stateLock.RLock()
+	defer m.stateLock.RUnlock()
+	if m.collectionSpec == nil || m.state < initialized {
+		return nil, ErrManagerNotInitialized
+	}
+
+	return maps.Clone(m.collectionSpec.Programs), nil
+}
+
 // getProgramSpec - Thread unsafe version of GetProgramSpec
 func (m *Manager) getProgramSpec(id ProbeIdentificationPair) ([]*ebpf.ProgramSpec, bool, error) {
 	var programs []*ebpf.ProgramSpec
