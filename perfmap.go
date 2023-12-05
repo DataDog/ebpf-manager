@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/perf"
@@ -35,14 +36,19 @@ type PerfMapOptions struct {
 
 	// RecordGetter - if specified this getter will be used to get a new record
 	RecordGetter func() *perf.Record
+
+	// TelemetryEnabled turns on telemetry about the usage of the perf ring buffer
+	TelemetryEnabled bool
 }
 
 // PerfMap - Perf ring buffer reader wrapper
 type PerfMap struct {
-	manager    *Manager
-	perfReader *perf.Reader
-	wgReader   sync.WaitGroup
-	bufferSize int
+	manager        *Manager
+	perfReader     *perf.Reader
+	wgReader       sync.WaitGroup
+	bufferSize     int
+	usageTelemetry []*atomic.Uint64
+	lostTelemetry  []*atomic.Uint64
 
 	// Map - A PerfMap has the same features as a normal Map
 	Map
@@ -70,6 +76,17 @@ func loadNewPerfMap(spec *ebpf.MapSpec, options MapOptions, perfOptions PerfMapO
 			return nil, fmt.Errorf("couldn't pin map %s at %s: %w", perfMap.Name, perfMap.PinPath, err)
 		}
 	}
+
+	if perfOptions.TelemetryEnabled {
+		nCPU := perfMap.array.MaxEntries()
+		perfMap.usageTelemetry = make([]*atomic.Uint64, nCPU)
+		perfMap.lostTelemetry = make([]*atomic.Uint64, nCPU)
+		for cpu := range perfMap.usageTelemetry {
+			perfMap.usageTelemetry[cpu] = &atomic.Uint64{}
+			perfMap.lostTelemetry[cpu] = &atomic.Uint64{}
+		}
+	}
+
 	return &perfMap, nil
 }
 
@@ -143,12 +160,18 @@ func (m *PerfMap) Start() error {
 			}
 
 			if record.LostSamples > 0 {
+				if m.lostTelemetry != nil && record.CPU < len(m.lostTelemetry) {
+					m.lostTelemetry[record.CPU].Add(record.LostSamples)
+				}
 				if m.LostHandler != nil {
 					m.LostHandler(record.CPU, record.LostSamples, m, m.manager)
 				}
 				continue
 			}
 
+			if m.usageTelemetry != nil && record.CPU < len(m.usageTelemetry) {
+				updateMaxTelemetry(m.usageTelemetry[record.CPU], uint64(record.Remaining))
+			}
 			if m.RecordHandler != nil {
 				m.RecordHandler(record, m, m.manager)
 			} else if m.DataHandler != nil {
@@ -220,6 +243,33 @@ func (m *PerfMap) BufferSize() int {
 	return m.bufferSize
 }
 
+// Telemetry returns the usage and lost telemetry
+func (m *PerfMap) Telemetry() (usage []uint64, lost []uint64) {
+	if m.usageTelemetry == nil || m.lostTelemetry == nil {
+		return nil, nil
+	}
+	usage = make([]uint64, len(m.usageTelemetry))
+	lost = make([]uint64, len(m.lostTelemetry))
+	for cpu := range m.usageTelemetry {
+		// reset to zero, so we return the max value between each collection
+		usage[cpu] = m.usageTelemetry[cpu].Swap(0)
+		lost[cpu] = m.lostTelemetry[cpu].Load()
+	}
+	return
+}
+
 func isPerfClosed(err error) bool {
 	return errors.Is(err, perf.ErrClosed)
+}
+
+func updateMaxTelemetry(a *atomic.Uint64, val uint64) {
+	for {
+		oldVal := a.Load()
+		if val <= oldVal {
+			return
+		}
+		if a.CompareAndSwap(oldVal, val) {
+			return
+		}
+	}
 }

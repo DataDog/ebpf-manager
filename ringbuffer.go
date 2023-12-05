@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/ringbuf"
@@ -26,13 +27,17 @@ type RingBufferOptions struct {
 
 	// RecordGetter - if specified this getter will be used to get a new record
 	RecordGetter func() *ringbuf.Record
+
+	// TelemetryEnabled turns on telemetry about the usage of the ring buffer
+	TelemetryEnabled bool
 }
 
 type RingBuffer struct {
-	manager    *Manager
-	ringReader *ringbuf.Reader
-	wgReader   sync.WaitGroup
-	bufferSize int
+	manager        *Manager
+	ringReader     *ringbuf.Reader
+	wgReader       sync.WaitGroup
+	bufferSize     int
+	usageTelemetry *atomic.Uint64
 
 	// Map - A PerfMap has the same features as a normal Map
 	Map
@@ -59,6 +64,10 @@ func loadNewRingBuffer(spec *ebpf.MapSpec, options MapOptions, ringBufferOptions
 		if err = ringBuffer.array.Pin(ringBuffer.PinPath); err != nil {
 			return nil, fmt.Errorf("couldn't pin map %s at %s: %w", ringBuffer.Name, ringBuffer.PinPath, err)
 		}
+	}
+
+	if ringBufferOptions.TelemetryEnabled {
+		ringBuffer.usageTelemetry = &atomic.Uint64{}
 	}
 	return &ringBuffer, nil
 }
@@ -125,6 +134,9 @@ func (rb *RingBuffer) Start() error {
 				continue
 			}
 
+			if rb.usageTelemetry != nil {
+				updateMaxTelemetry(rb.usageTelemetry, uint64(record.Remaining))
+			}
 			if rb.RecordHandler != nil {
 				rb.RecordHandler(record, rb, rb.manager)
 			} else if rb.DataHandler != nil {
@@ -166,6 +178,15 @@ func (rb *RingBuffer) Stop(cleanup MapCleanupType) error {
 // BufferSize returns the size in bytes of the ring buffer
 func (rb *RingBuffer) BufferSize() int {
 	return rb.bufferSize
+}
+
+// Telemetry returns the usage telemetry
+func (rb *RingBuffer) Telemetry() (usage uint64, ok bool) {
+	if rb.usageTelemetry == nil {
+		return 0, false
+	}
+	// reset to zero, so we return the max value between each collection
+	return rb.usageTelemetry.Swap(0), true
 }
 
 func isRingBufferClosed(err error) bool {
