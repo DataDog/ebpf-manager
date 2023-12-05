@@ -162,6 +162,8 @@ func (m *PerfMap) Start() error {
 			if record.LostSamples > 0 {
 				if m.lostTelemetry != nil && record.CPU < len(m.lostTelemetry) {
 					m.lostTelemetry[record.CPU].Add(record.LostSamples)
+					// force usage to max because a sample was lost
+					updateMaxTelemetry(m.usageTelemetry[record.CPU], uint64(m.bufferSize))
 				}
 				if m.LostHandler != nil {
 					m.LostHandler(record.CPU, record.LostSamples, m, m.manager)
