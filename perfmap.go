@@ -77,16 +77,6 @@ func loadNewPerfMap(spec *ebpf.MapSpec, options MapOptions, perfOptions PerfMapO
 		}
 	}
 
-	if perfOptions.TelemetryEnabled {
-		nCPU := perfMap.array.MaxEntries()
-		perfMap.usageTelemetry = make([]*atomic.Uint64, nCPU)
-		perfMap.lostTelemetry = make([]*atomic.Uint64, nCPU)
-		for cpu := range perfMap.usageTelemetry {
-			perfMap.usageTelemetry[cpu] = &atomic.Uint64{}
-			perfMap.lostTelemetry[cpu] = &atomic.Uint64{}
-		}
-	}
-
 	return &perfMap, nil
 }
 
@@ -104,6 +94,16 @@ func (m *PerfMap) init(manager *Manager) error {
 	}
 	if m.Watermark == 0 {
 		m.Watermark = manager.options.DefaultWatermark
+	}
+
+	if m.TelemetryEnabled {
+		nCPU := m.array.MaxEntries()
+		m.usageTelemetry = make([]*atomic.Uint64, nCPU)
+		m.lostTelemetry = make([]*atomic.Uint64, nCPU)
+		for cpu := range m.usageTelemetry {
+			m.usageTelemetry[cpu] = &atomic.Uint64{}
+			m.lostTelemetry[cpu] = &atomic.Uint64{}
+		}
 	}
 
 	// Initialize the underlying map structure

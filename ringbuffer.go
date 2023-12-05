@@ -66,9 +66,6 @@ func loadNewRingBuffer(spec *ebpf.MapSpec, options MapOptions, ringBufferOptions
 		}
 	}
 
-	if ringBufferOptions.TelemetryEnabled {
-		ringBuffer.usageTelemetry = &atomic.Uint64{}
-	}
 	return &ringBuffer, nil
 }
 
@@ -83,6 +80,10 @@ func (rb *RingBuffer) init(manager *Manager) error {
 	// Set default values if not already set
 	if rb.RingBufferSize == 0 {
 		rb.RingBufferSize = manager.options.DefaultRingBufferSize
+	}
+
+	if rb.TelemetryEnabled {
+		rb.usageTelemetry = &atomic.Uint64{}
 	}
 
 	// Initialize the underlying map structure
