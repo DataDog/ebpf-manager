@@ -255,7 +255,7 @@ func (m *PerfMap) Telemetry() (usage []uint64, lost []uint64) {
 	for cpu := range m.usageTelemetry {
 		// reset to zero, so we return the max value between each collection
 		usage[cpu] = m.usageTelemetry[cpu].Swap(0)
-		lost[cpu] = m.lostTelemetry[cpu].Load()
+		lost[cpu] = m.lostTelemetry[cpu].Swap(0)
 	}
 	return
 }
