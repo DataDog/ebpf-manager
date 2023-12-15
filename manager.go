@@ -148,7 +148,7 @@ type Manager struct {
 
 	// DumpHandler - Callback function called when manager.DumpMaps() is called
 	// and dump the current state (human-readable)
-	DumpHandler func(manager *Manager, mapName string, currentMap *ebpf.Map, w io.Writer)
+	DumpHandler func(w io.Writer, manager *Manager, mapName string, currentMap *ebpf.Map)
 
 	// InstructionPatcher - Callback function called before loading probes, to
 	// provide user the ability to perform last minute instruction patching.
@@ -187,7 +187,7 @@ func (m *Manager) DumpMaps(w io.Writer, maps ...string) error {
 	// Look in the list of maps
 	for mapName, currentMap := range m.collection.Maps {
 		if needDump(mapName) {
-			m.DumpHandler(m, mapName, currentMap, w)
+			m.DumpHandler(w, m, mapName, currentMap)
 		}
 	}
 	return nil
