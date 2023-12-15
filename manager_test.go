@@ -172,10 +172,6 @@ func TestDumpMaps(t *testing.T) {
 	}
 
 	opts := Options{
-		RLimit: &unix.Rlimit{
-			Cur: math.MaxUint64,
-			Max: math.MaxUint64,
-		},
 		ExcludedFunctions: []string{"access_map_two"},
 	}
 
@@ -186,7 +182,6 @@ func TestDumpMaps(t *testing.T) {
 	t.Cleanup(func() { _ = f.Close() })
 
 	err = m.InitWithOptions(f, opts)
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +194,6 @@ func TestDumpMaps(t *testing.T) {
 
 	var output bytes.Buffer
 	err = m.DumpMaps(&output, "map_one")
-
 	if err != nil {
 		t.Fatal(err)
 	}
