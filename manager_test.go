@@ -194,7 +194,7 @@ func TestDumpMaps(t *testing.T) {
 	dumpContents := "mapdump"
 
 	m.DumpHandler = func(_ *Manager, mapName string, currentMap *ebpf.Map, w io.Writer) {
-		io.WriteString(w, dumpContents)
+		_, _ = io.WriteString(w, dumpContents)
 	}
 
 	var output bytes.Buffer
