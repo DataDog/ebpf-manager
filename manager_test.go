@@ -12,7 +12,6 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/rlimit"
-	"github.com/stretchr/testify/assert"
 	"golang.org/x/sys/unix"
 )
 
@@ -198,5 +197,7 @@ func TestDumpMaps(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assert.Equal(t, dumpContents, output.String())
+	if dumpContents != output.String() {
+		t.Errorf("expected %s, got %s", dumpContents, output.String())
+	}
 }
