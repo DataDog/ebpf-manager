@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -149,24 +148,24 @@ type Manager struct {
 
 	// DumpHandler - Callback function called when manager.DumpMaps() is called
 	// and dump the current state (human-readable)
-	DumpHandler func(manager *Manager, mapName string, currentMap *ebpf.Map) string
+	DumpHandler func(w io.Writer, manager *Manager, mapName string, currentMap *ebpf.Map)
 
 	// InstructionPatcher - Callback function called before loading probes, to
 	// provide user the ability to perform last minute instruction patching.
 	InstructionPatcher func(m *Manager) error
 }
 
-// DumpMaps - Return a string containing human-readable info about eBPF maps
+// DumpMaps - Write in the w writer argument human-readable info about eBPF maps
 // Dumps the set of maps provided, otherwise dumping all maps with a DumpHandler set.
-func (m *Manager) DumpMaps(maps ...string) (string, error) {
+func (m *Manager) DumpMaps(w io.Writer, maps ...string) error {
 	m.stateLock.RLock()
 	defer m.stateLock.RUnlock()
 	if m.collection == nil || m.state < initialized {
-		return "", ErrManagerNotInitialized
+		return ErrManagerNotInitialized
 	}
 
 	if m.DumpHandler == nil {
-		return "", nil
+		return nil
 	}
 
 	var mapsToDump map[string]struct{}
@@ -185,14 +184,13 @@ func (m *Manager) DumpMaps(maps ...string) (string, error) {
 		return found
 	}
 
-	var output strings.Builder
 	// Look in the list of maps
 	for mapName, currentMap := range m.collection.Maps {
 		if needDump(mapName) {
-			output.WriteString(m.DumpHandler(m, mapName, currentMap))
+			m.DumpHandler(w, m, mapName, currentMap)
 		}
 	}
-	return output.String(), nil
+	return nil
 }
 
 // getMap - Thread unsafe version of GetMap

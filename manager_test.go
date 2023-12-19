@@ -1,7 +1,9 @@
 package manager
 
 import (
+	"bytes"
 	"errors"
+	"io"
 	"math"
 	"os"
 	"strings"
@@ -150,5 +152,52 @@ func TestManager_getTracefsRegex(t *testing.T) {
 				t.Fatalf("expected: %s, got: %s", tt.expectedRegex, res.String())
 			}
 		})
+	}
+}
+
+func TestDumpMaps(t *testing.T) {
+	err := rlimit.RemoveMemlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	m := &Manager{
+		Probes: []*Probe{
+			{ProbeIdentificationPair: ProbeIdentificationPair{EBPFFuncName: "access_map_one"}},
+		},
+		Maps: []*Map{
+			{Name: "map_one"},
+		},
+	}
+
+	opts := Options{
+		ExcludedFunctions: []string{"access_map_two"},
+	}
+
+	f, err := os.Open("testdata/exclude.elf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.Close() })
+
+	err = m.InitWithOptions(f, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dumpContents := "mapdump"
+
+	m.DumpHandler = func(w io.Writer, _ *Manager, mapName string, currentMap *ebpf.Map) {
+		_, _ = io.WriteString(w, dumpContents)
+	}
+
+	var output bytes.Buffer
+	err = m.DumpMaps(&output, "map_one")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if dumpContents != output.String() {
+		t.Errorf("expected %s, got %s", dumpContents, output.String())
 	}
 }
