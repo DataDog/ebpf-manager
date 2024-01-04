@@ -61,9 +61,9 @@ func (p *Probe) attachKprobe() error {
 			}
 		}
 	} else if p.KprobeAttachMethod == AttachKprobeWithPerfEventOpen {
-		if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", isKRetProbe, 0); err != nil {
+		if p.perfEventFD, err1 = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", isKRetProbe, 0); err1 != nil {
 			if err = p.attachWithKprobeEvents(); err != nil {
-				return err
+				return fmt.Errorf("Failed to attach with perf event: %w, and kprobe events: %w", err1, err)
 			}
 		}
 	} else if p.KprobeAttachMethod == AttachKprobeWithKprobeEvents {
