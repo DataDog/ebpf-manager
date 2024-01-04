@@ -41,6 +41,7 @@ func (p *Probe) GetKprobeType() string {
 // attachKprobe - Attaches the probe to its kprobe
 func (p *Probe) attachKprobe() error {
 	var err error
+	var err1 error
 
 	if len(p.HookFuncName) == 0 {
 		return errors.New("HookFuncName, MatchFuncName or SyscallFuncName is required")
