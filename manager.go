@@ -561,12 +561,10 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	}
 
 	// Patch instructions
-	if m.InstructionPatchers != nil {
-		for _, patcher := range m.InstructionPatchers {
-			if err := patcher(m); err != nil {
-				resetManager(m)
-				return err
-			}
+	for _, patcher := range m.InstructionPatchers {
+		if err := patcher(m); err != nil {
+			resetManager(m)
+			return err
 		}
 	}
 
