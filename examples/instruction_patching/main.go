@@ -25,7 +25,7 @@ var m1 = &manager.Manager{
 			},
 		},
 	},
-	InstructionPatcher: patchBPFTelemetry,
+	InstructionPatchers: []manager.InstructionPatcherFunc{patchBPFTelemetry},
 }
 
 const BPFTelemetryPatchCall = -1

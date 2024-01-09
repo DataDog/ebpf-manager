@@ -124,6 +124,9 @@ type Options struct {
 	SkipRingbufferReaderStartup map[string]bool
 }
 
+// InstructionPatcherFunc - A function that patches the instructions of a program
+type InstructionPatcherFunc func(m *Manager) error
+
 // Manager - Helper structure that manages multiple eBPF programs and maps
 type Manager struct {
 	collectionSpec     *ebpf.CollectionSpec
@@ -150,9 +153,9 @@ type Manager struct {
 	// and dump the current state (human-readable)
 	DumpHandler func(w io.Writer, manager *Manager, mapName string, currentMap *ebpf.Map)
 
-	// InstructionPatcher - Callback function called before loading probes, to
+	// InstructionPatchers - Callback functions called before loading probes, to
 	// provide user the ability to perform last minute instruction patching.
-	InstructionPatcher func(m *Manager) error
+	InstructionPatchers []InstructionPatcherFunc
 }
 
 // DumpMaps - Write in the w writer argument human-readable info about eBPF maps
@@ -558,10 +561,12 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	}
 
 	// Patch instructions
-	if m.InstructionPatcher != nil {
-		if err := m.InstructionPatcher(m); err != nil {
-			resetManager(m)
-			return err
+	if m.InstructionPatchers != nil {
+		for _, patcher := range m.InstructionPatchers {
+			if err := patcher(m); err != nil {
+				resetManager(m)
+				return err
+			}
 		}
 	}
 
