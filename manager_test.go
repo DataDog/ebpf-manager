@@ -201,3 +201,63 @@ func TestDumpMaps(t *testing.T) {
 		t.Errorf("expected %s, got %s", dumpContents, output.String())
 	}
 }
+
+func TestInstructionPatching(t *testing.T) {
+	err := rlimit.RemoveMemlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// We want to test multiple patchers, so we'll use a generic one
+	// and call it twice with different constants.
+	// The patching.c program contains two invalid calls, with constants
+	// -1 and -2. We just replace them with a movimm instruction.
+	genericPatcher := func(m *Manager, constant int64) error {
+		specs, err := m.GetProgramSpecs()
+		if err != nil {
+			return err
+		}
+		for _, spec := range specs {
+			if spec == nil {
+				continue
+			}
+			iter := spec.Instructions.Iterate()
+			for iter.Next() {
+				ins := iter.Ins
+
+				if !ins.IsBuiltinCall() {
+					continue
+				}
+
+				if ins.Constant == constant {
+					*ins = asm.Mov.Imm(asm.R1, int32(0xff)).WithMetadata(ins.Metadata)
+				}
+			}
+		}
+		return nil
+	}
+
+	m := &Manager{
+		Probes: []*Probe{
+			{ProbeIdentificationPair: ProbeIdentificationPair{EBPFFuncName: "patching_test"}},
+		},
+		InstructionPatchers: []InstructionPatcherFunc{
+			func(m *Manager) error { return genericPatcher(m, -1) },
+			func(m *Manager) error { return genericPatcher(m, -2) },
+		},
+	}
+
+	f, err := os.Open("testdata/patching.elf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.Close() })
+
+	// If any of the patchers fail, they will leave an invalid call instruction
+	// in the program, which will cause the verifier to fail. This allows us
+	// to not do any extra validation.
+	err = m.InitWithOptions(f, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
