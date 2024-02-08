@@ -1,6 +1,6 @@
 module github.com/DataDog/ebpf-manager
 
-go 1.20
+go 1.21
 
 require (
 	github.com/cilium/ebpf v0.12.3
