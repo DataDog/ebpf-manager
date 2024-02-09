@@ -36,4 +36,4 @@ jobs:
           install-go: false
           cache-key: ${{ matrix.go }}
 
-      - run: "sudo go test ./..."
+      - run: "go test -exec sudo ./..."
