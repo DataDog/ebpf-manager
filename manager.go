@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/btf"
 	"golang.org/x/sys/unix"
 )
 
@@ -109,7 +110,7 @@ type Options struct {
 	// `RLIMIT_MEMLOCK` If a limit is provided here it will be applied when the manager is initialized.
 	RLimit *unix.Rlimit
 
-	// KeepKernelBTF - Defines if the kernel types defined in VerifierOptions.Programs.KernelTypes should be cleaned up
+	// KeepKernelBTF - Defines if the kernel types defined in VerifierOptions.Programs.KernelTypes and KernelModuleTypes should be cleaned up
 	// once the manager is done using them. By default, the manager will clean them up to save up space. DISCLAIMER: if
 	// your program uses "manager.CloneProgram", you might want to enable "KeepKernelBTF". As a workaround, you can also
 	// try to strip as much as possible the content of "KernelTypes" to reduce the memory overhead.
@@ -122,6 +123,9 @@ type Options struct {
 	// SkipRingbufferReaderStartup - Ringbuffer maps whose name is set to true with this option will not have their reader goroutine started when calling the manager.Start() function.
 	// RingBuffer.Start() can then be used to start reading events from the corresponding RingBuffer.
 	SkipRingbufferReaderStartup map[string]bool
+
+	// KernelModuleBTFLoadFunc is a function to provide custom loading of BTF for kernel modules on-demand as programs are loaded
+	KernelModuleBTFLoadFunc func(kmodName string) (*btf.Spec, error)
 }
 
 // InstructionPatcherFunc - A function that patches the instructions of a program
@@ -568,6 +572,35 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 		}
 	}
 
+	if options.KernelModuleBTFLoadFunc != nil {
+		for _, p := range m.collectionSpec.Programs {
+			mod, err := p.KernelModule()
+			if err != nil {
+				resetManager(m)
+				return fmt.Errorf("kernel module search for %s: %w", p.AttachTo, err)
+			}
+			if mod == "" {
+				continue
+			}
+
+			if options.VerifierOptions.Programs.KernelModuleTypes == nil {
+				options.VerifierOptions.Programs.KernelModuleTypes = make(map[string]*btf.Spec)
+			}
+
+			// try default BTF first
+			modBTF, err := btf.LoadKernelModuleSpec(mod)
+			if err != nil {
+				// try callback function next
+				modBTF, err = options.KernelModuleBTFLoadFunc(mod)
+				if err != nil {
+					resetManager(m)
+					return fmt.Errorf("kernel module BTF load for %s: %w", mod, err)
+				}
+			}
+			options.VerifierOptions.Programs.KernelModuleTypes[mod] = modBTF
+		}
+	}
+
 	// Load pinned maps and pinned programs to avoid loading them twice
 	if err = m.loadPinnedObjects(); err != nil {
 		resetManager(m)
@@ -600,6 +633,7 @@ func (m *Manager) Start() error {
 	if !m.options.KeepKernelBTF {
 		// release kernel BTF. It should no longer be needed
 		m.options.VerifierOptions.Programs.KernelTypes = nil
+		m.options.VerifierOptions.Programs.KernelModuleTypes = nil
 	}
 
 	// clean up tracefs
