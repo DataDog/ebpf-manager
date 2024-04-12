@@ -17,3 +17,11 @@ func (p *Probe) attachTracing() error {
 	}
 	return nil
 }
+
+func (p *Probe) attachSkSKB() error {
+	return link.RawAttachProgram(link.RawAttachProgramOptions{
+		Target:  p.SockMap.FD(),
+		Program: p.program,
+		Attach:  p.programSpec.AttachType,
+	})
+}

@@ -55,6 +55,8 @@ type Probe struct {
 	bypassIndex             uint32
 	bypassMap               *Map
 
+	SockMap *ebpf.Map
+
 	// lastError - stores the last error that the probe encountered, it is used to surface a more useful error message
 	// when one of the validators (see Options.ActivatedProbes) fails.
 	lastError error
@@ -546,7 +548,7 @@ func (p *Probe) attach() error {
 		err = p.attachTracepoint()
 	case ebpf.RawTracepoint, ebpf.RawTracepointWritable:
 		err = p.attachRawTracepoint()
-	case ebpf.CGroupDevice, ebpf.CGroupSKB, ebpf.CGroupSock, ebpf.CGroupSockAddr, ebpf.CGroupSockopt, ebpf.CGroupSysctl:
+	case ebpf.CGroupDevice, ebpf.CGroupSKB, ebpf.CGroupSock, ebpf.CGroupSockAddr, ebpf.CGroupSockopt, ebpf.CGroupSysctl, ebpf.SockOps:
 		err = p.attachCGroup()
 	case ebpf.SocketFilter:
 		err = p.attachSocket()
@@ -560,6 +562,8 @@ func (p *Probe) attach() error {
 		err = p.attachPerfEvent()
 	case ebpf.Tracing:
 		err = p.attachTracing()
+	case ebpf.SkSKB, ebpf.SkMsg:
+		err = p.attachSkSKB()
 	default:
 		err = fmt.Errorf("program type %s not implemented yet", p.programSpec.Type)
 	}
