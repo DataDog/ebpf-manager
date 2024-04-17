@@ -133,6 +133,9 @@ type Probe struct {
 	// before they reach user space. The probe will be bound to the provided file descriptor
 	SocketFD int
 
+	// SockMapFD - (sk skb)
+	SockMapFD int
+
 	// IfIndex - (TC classifier & XDP) Interface index used to identify the interface on which the probe will be
 	// attached. If not set, fall back to `IfName`.
 	IfIndex int
@@ -537,6 +540,8 @@ func (p *Probe) attach() error {
 		err = p.attachPerfEvent()
 	case ebpf.Tracing:
 		err = p.attachTracing()
+	case ebpf.SkSKB:
+		err = p.attachSkSKB()
 	default:
 		err = fmt.Errorf("program type %s not implemented yet", p.programSpec.Type)
 	}
@@ -659,6 +664,8 @@ func (p *Probe) detach() error {
 		err = errors.Join(err, p.detachKprobe())
 	case ebpf.SocketFilter:
 		err = errors.Join(err, p.detachSocket())
+	case ebpf.SkSKB:
+		err = errors.Join(err, p.detachSkSKB())
 	case ebpf.SchedCLS:
 		err = errors.Join(err, p.detachTCCLS())
 	case ebpf.PerfEvent:
