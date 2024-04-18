@@ -19,6 +19,11 @@ type PerfMapOptions struct {
 	// exceed this value. Must be smaller than PerfRingBufferSize. Defaults to the manager value if not set.
 	Watermark int
 
+	// The number of events required in any per CPU buffer before
+	// Read will process data. This is mutually exclusive with Watermark.
+	// The default is zero, which means Watermark will take precedence.
+	WakeupEvents int
+
 	// PerfErrChan - Perf reader error channel
 	PerfErrChan chan error
 
@@ -92,7 +97,7 @@ func (m *PerfMap) init(manager *Manager) error {
 	if m.PerfRingBufferSize == 0 {
 		m.PerfRingBufferSize = manager.options.DefaultPerfRingBufferSize
 	}
-	if m.Watermark == 0 {
+	if m.WakeupEvents == 0 && m.Watermark == 0 {
 		m.Watermark = manager.options.DefaultWatermark
 	}
 
@@ -127,7 +132,8 @@ func (m *PerfMap) Start() error {
 	// Create and start the perf map
 	var err error
 	opt := perf.ReaderOptions{
-		Watermark: m.Watermark,
+		Watermark:    m.Watermark,
+		WakeupEvents: m.WakeupEvents,
 	}
 	if m.perfReader, err = perf.NewReaderWithOptions(m.array, m.PerfRingBufferSize, opt); err != nil {
 		return err
@@ -149,14 +155,19 @@ func (m *PerfMap) Start() error {
 			}
 
 			if err = m.perfReader.ReadInto(record); err != nil {
-				if isPerfClosed(err) {
+				if errors.Is(err, perf.ErrClosed) {
 					m.wgReader.Done()
 					return
 				}
-				if m.PerfErrChan != nil {
-					m.PerfErrChan <- err
+				// all records post-wakeup have been read, send sentinel empty record
+				if errors.Is(err, perf.ErrFlushed) {
+					record.RawSample = record.RawSample[:0]
+				} else {
+					if m.PerfErrChan != nil {
+						m.PerfErrChan <- err
+					}
+					continue
 				}
-				continue
 			}
 
 			if record.LostSamples > 0 {
@@ -184,6 +195,17 @@ func (m *PerfMap) Start() error {
 
 	m.state = running
 	return nil
+}
+
+// Flush unblocks the underlying reader and will cause the pending samples to be read
+func (m *PerfMap) Flush() {
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
+	if m.state != running {
+		return
+	}
+
+	_ = m.perfReader.Flush()
 }
 
 // Stop - Stops the perf ring buffer
@@ -260,10 +282,6 @@ func (m *PerfMap) Telemetry() (usage []uint64, lost []uint64) {
 		lost[cpu] = m.lostTelemetry[cpu].Swap(0)
 	}
 	return
-}
-
-func isPerfClosed(err error) bool {
-	return errors.Is(err, perf.ErrClosed)
 }
 
 func updateMaxTelemetry(a *atomic.Uint64, val uint64) {
