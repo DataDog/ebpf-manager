@@ -46,10 +46,10 @@ func OpenAndListSymbols(path string) (*elf.File, []elf.Symbol, error) {
 	if len(syms) == 0 {
 		var err error
 		if errSyms != nil {
-			err = fmt.Errorf("failed to list symbols: %w", err)
+			err = fmt.Errorf("failed to list symbols: %v", errSyms)
 		}
 		if errDynSyms != nil {
-			err = fmt.Errorf("failed to list dynamic symbols: %w", err)
+			err = fmt.Errorf("failed to list dynamic symbols: %v", errDynSyms)
 		}
 		if err != nil {
 			return nil, nil, err
