@@ -183,7 +183,9 @@ func (rb *RingBuffer) BufferSize() int {
 
 // Telemetry returns the usage telemetry
 func (rb *RingBuffer) Telemetry() (usage uint64, ok bool) {
-	if rb.usageTelemetry == nil {
+	rb.stateLock.Lock()
+	defer rb.stateLock.Unlock()
+	if rb.state < initialized || rb.usageTelemetry == nil {
 		return 0, false
 	}
 	// reset to zero, so we return the max value between each collection
