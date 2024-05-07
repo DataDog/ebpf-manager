@@ -247,7 +247,9 @@ func (m *PerfMap) BufferSize() int {
 
 // Telemetry returns the usage and lost telemetry
 func (m *PerfMap) Telemetry() (usage []uint64, lost []uint64) {
-	if m.usageTelemetry == nil || m.lostTelemetry == nil {
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
+	if m.state < initialized || m.usageTelemetry == nil || m.lostTelemetry == nil {
 		return nil, nil
 	}
 	usage = make([]uint64, len(m.usageTelemetry))
