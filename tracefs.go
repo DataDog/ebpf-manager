@@ -175,7 +175,7 @@ func getKernelGeneratedEventName(probeType, funcName string) string {
 }
 
 func unregisterTraceFSEvent(eventsFile string, name string) error {
-	f, err := tracefs.OpenFile(eventsFile, os.O_APPEND|os.O_WRONLY, 0)
+	f, err := tracefs.OpenFile(eventsFile, os.O_APPEND|os.O_WRONLY, 0666)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", eventsFile, err)
 	}

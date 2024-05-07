@@ -81,25 +81,11 @@ func findSymbolOffsets(path string, pattern *regexp.Regexp) ([]elf.Symbol, error
 	return matches, nil
 }
 
-// GetUprobeType - Identifies the probe type of the provided Uprobe section
-func (p *Probe) GetUprobeType() string {
-	if len(p.kprobeType) == 0 {
-		if strings.HasPrefix(p.programSpec.SectionName, "uretprobe/") {
-			p.kprobeType = RetProbeType
-		} else if strings.HasPrefix(p.programSpec.SectionName, "uprobe/") {
-			p.kprobeType = ProbeType
-		} else {
-			p.kprobeType = UnknownProbeType
-		}
-	}
-	return p.kprobeType
-}
-
 // attachWithUprobeEvents attaches the uprobe using the uprobes_events ABI
 func (p *Probe) attachWithUprobeEvents() error {
 	// fallback to debugfs
 	var uprobeID int
-	uprobeID, err := registerUprobeEvent(p.GetUprobeType(), p.HookFuncName, p.BinaryPath, p.UID, p.attachPID, p.UprobeOffset)
+	uprobeID, err := registerUprobeEvent(p.prefix(), p.HookFuncName, p.BinaryPath, p.UID, p.attachPID, p.UprobeOffset)
 	if err != nil {
 		return fmt.Errorf("couldn't enable uprobe %s: %w", p.ProbeIdentificationPair, err)
 	}
@@ -116,12 +102,6 @@ func (p *Probe) attachWithUprobeEvents() error {
 // attachUprobe - Attaches the probe to its Uprobe
 func (p *Probe) attachUprobe() error {
 	var err error
-
-	// Prepare uprobe_events line parameters
-	if p.GetUprobeType() == UnknownProbeType {
-		// unknown type
-		return fmt.Errorf("program type unrecognized in %s: %w", p.ProbeIdentificationPair, ErrSectionFormat)
-	}
 
 	// compute the offset if it was not provided
 	if p.UprobeOffset == 0 {
@@ -147,16 +127,15 @@ func (p *Probe) attachUprobe() error {
 		p.HookFuncName = offsets[0].Name
 	}
 
-	isURetProbe := p.GetUprobeType() == "r"
 	if p.UprobeAttachMethod == AttachWithPerfEventOpen {
-		if p.perfEventFD, err = perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffset), p.PerfEventPID, "uprobe", isURetProbe, 0); err != nil {
+		if p.perfEventFD, err = perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffset), p.PerfEventPID, "uprobe", p.isReturnProbe, 0); err != nil {
 			if err = p.attachWithUprobeEvents(); err != nil {
 				return err
 			}
 		}
 	} else if p.UprobeAttachMethod == AttachWithProbeEvents {
 		if err = p.attachWithUprobeEvents(); err != nil {
-			if p.perfEventFD, err = perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffset), p.PerfEventPID, "uprobe", isURetProbe, 0); err != nil {
+			if p.perfEventFD, err = perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffset), p.PerfEventPID, "uprobe", p.isReturnProbe, 0); err != nil {
 				return err
 			}
 		}
@@ -181,14 +160,8 @@ func (p *Probe) detachUprobe() error {
 		return nil
 	}
 
-	// Prepare uprobe_events line parameters
-	if p.GetUprobeType() == UnknownProbeType {
-		// unknown type
-		return fmt.Errorf("program type unrecognized in section %v: %w", p.ProbeIdentificationPair, ErrSectionFormat)
-	}
-
 	// Write uprobe_events line to remove hook point
-	return unregisterUprobeEvent(p.GetUprobeType(), p.HookFuncName, p.UID, p.attachPID)
+	return unregisterUprobeEvent(p.prefix(), p.HookFuncName, p.UID, p.attachPID)
 }
 
 // registerUprobeEvent - Writes a new Uprobe in uprobe_events with the provided parameters. Call DisableUprobeEvent
@@ -209,7 +182,6 @@ func registerUprobeEvent(probeType string, funcName, path, UID string, uprobeAtt
 	defer f.Close()
 
 	cmd := fmt.Sprintf("%s:%s %s:%#x\n", probeType, eventName, path, offset)
-
 	if _, err = f.WriteString(cmd); err != nil && !os.IsExist(err) {
 		return -1, fmt.Errorf("cannot write %q to uprobe_events: %w", cmd, err)
 	}
