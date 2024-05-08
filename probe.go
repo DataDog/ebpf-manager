@@ -36,7 +36,6 @@ type Probe struct {
 	checkPin                bool
 	attachPID               int
 	attachRetryAttempt      uint
-	attachedWithDebugFS     bool
 	kprobeHookPointNotExist bool
 	systemWideID            int
 	programTag              string
@@ -657,13 +656,6 @@ func (p *Probe) detach() error {
 	case ebpf.UnspecifiedProgram:
 		// nothing to do
 		break
-	case ebpf.Kprobe:
-		switch p.kprobeType {
-		case kprobe:
-			err = errors.Join(err, p.detachKprobe())
-		case uprobe:
-			err = errors.Join(err, p.detachUprobe())
-		}
 	case ebpf.SchedCLS:
 		err = errors.Join(err, p.detachTCCLS())
 	default:
@@ -722,7 +714,6 @@ func (p *Probe) reset() {
 	p.checkPin = false
 	p.attachPID = 0
 	p.attachRetryAttempt = 0
-	p.attachedWithDebugFS = false
 	p.kprobeHookPointNotExist = false
 	p.systemWideID = 0
 	p.programTag = ""

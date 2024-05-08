@@ -23,6 +23,24 @@ const (
 	minFunctionNameLen = 10
 )
 
+type probeType uint8
+
+const (
+	kprobe probeType = iota
+	uprobe
+)
+
+func (p probeType) eventsFilename() string {
+	switch p {
+	case kprobe:
+		return "kprobe_events"
+	case uprobe:
+		return "uprobe_events"
+	default:
+		return ""
+	}
+}
+
 // getUIDSet - Returns the list of UIDs used by this manager.
 func (m *Manager) getUIDSet() []string {
 	var uidSet []string
@@ -207,4 +225,18 @@ func GetTracepointID(category, name string) (int, error) {
 		return -1, fmt.Errorf("invalid tracepoint id: %w", err)
 	}
 	return tracepointID, nil
+}
+
+type tracefsLink struct {
+	*perfEventLink
+	Type      probeType
+	EventName string
+}
+
+func (l *tracefsLink) Close() error {
+	err := l.perfEventLink.Close()
+	if l.EventName != "" {
+		err = errors.Join(err, unregisterTraceFSEvent(l.Type.eventsFilename(), l.EventName))
+	}
+	return err
 }
