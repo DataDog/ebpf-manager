@@ -4,10 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
-	"strings"
-
-	"github.com/DataDog/ebpf-manager/tracefs"
 )
 
 type KprobeAttachMethod = AttachMethod
@@ -19,10 +15,7 @@ const (
 )
 
 func (p *Probe) prefix() string {
-	if p.isReturnProbe {
-		return "r"
-	}
-	return "p"
+	return tracefsPrefix(p.isReturnProbe)
 }
 
 type attachFunc func() (*tracefsLink, error)
@@ -70,23 +63,24 @@ func (p *Probe) attachWithKprobeEvents() (*tracefsLink, error) {
 		return nil, ErrKProbeHookPointNotExist
 	}
 
-	// Prepare kprobe_events line parameters
-	var maxActiveStr string
-	if p.isReturnProbe {
-		if p.KProbeMaxActive > 0 {
-			maxActiveStr = fmt.Sprintf("%d", p.KProbeMaxActive)
-		}
+	args := traceFsEventArgs{
+		Type:         kprobe,
+		ReturnProbe:  p.isReturnProbe,
+		Symbol:       p.HookFuncName,
+		UID:          p.UID,
+		MaxActive:    p.KProbeMaxActive,
+		AttachingPID: p.attachPID,
 	}
 
-	// Fallback to debugfs, write kprobe_events line to register kprobe
 	var kprobeID int
 	var eventName string
-	kprobeID, eventName, err := registerKprobeEvent(p.prefix(), p.HookFuncName, p.UID, maxActiveStr, p.attachPID)
-	if errors.Is(err, ErrKprobeIDNotExist) {
+	kprobeID, eventName, err := registerTraceFSEvent(args)
+	if errors.Is(err, ErrProbeIDNotExist) {
 		// The probe might have been loaded under a kernel generated event name. Clean up just in case.
-		_ = unregisterTraceFSEvent("kprobe_events", getKernelGeneratedEventName(p.prefix(), p.HookFuncName))
+		_ = unregisterTraceFSEvent(kprobe.eventsFilename(), getKernelGeneratedEventName(p.prefix(), p.HookFuncName))
 		// fallback without KProbeMaxActive
-		kprobeID, eventName, err = registerKprobeEvent(p.prefix(), p.HookFuncName, p.UID, "", p.attachPID)
+		args.MaxActive = 0
+		kprobeID, eventName, err = registerTraceFSEvent(args)
 	}
 
 	if err != nil {
@@ -102,41 +96,4 @@ func (p *Probe) attachWithKprobeEvents() (*tracefsLink, error) {
 		return nil, fmt.Errorf("couldn't open perf event fd for %s: %w", p.ProbeIdentificationPair, err)
 	}
 	return &tracefsLink{perfEventLink: newPerfEventLink(pfd), Type: kprobe, EventName: eventName}, nil
-}
-
-// registerKprobeEvent - Writes a new kprobe in kprobe_events with the provided parameters. Call DisableKprobeEvent
-// to remove the kprobe.
-func registerKprobeEvent(probeType, funcName, UID, maxActiveStr string, kprobeAttachPID int) (int, string, error) {
-	// Generate event name
-	eventName, err := generateEventName(probeType, funcName, UID, kprobeAttachPID)
-	if err != nil {
-		return -1, "", err
-	}
-
-	// Write line to kprobe_events
-	f, err := tracefs.OpenFile("kprobe_events", os.O_APPEND|os.O_WRONLY, 0666)
-	if err != nil {
-		return -1, "", fmt.Errorf("cannot open kprobe_events: %w", err)
-	}
-	defer f.Close()
-	cmd := fmt.Sprintf("%s%s:%s %s\n", probeType, maxActiveStr, eventName, funcName)
-	if _, err = f.WriteString(cmd); err != nil && !os.IsExist(err) {
-		return -1, "", fmt.Errorf("cannot write %q to kprobe_events: %w", cmd, err)
-	}
-
-	// Retrieve kprobe ID
-	kprobeIDFile := fmt.Sprintf("events/kprobes/%s/id", eventName)
-	kprobeIDBytes, err := tracefs.ReadFile(kprobeIDFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return -1, "", ErrKprobeIDNotExist
-		}
-		return -1, "", fmt.Errorf("cannot read kprobe id: %w", err)
-	}
-	id := strings.TrimSpace(string(kprobeIDBytes))
-	kprobeID, err := strconv.Atoi(id)
-	if err != nil {
-		return -1, "", fmt.Errorf("invalid kprobe id: '%s': %w", id, err)
-	}
-	return kprobeID, eventName, nil
 }

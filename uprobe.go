@@ -3,12 +3,7 @@ package manager
 import (
 	"debug/elf"
 	"fmt"
-	"os"
 	"regexp"
-	"strconv"
-	"strings"
-
-	"github.com/DataDog/ebpf-manager/tracefs"
 )
 
 // SanitizeUprobeAddresses - sanitizes the addresses of the provided symbols
@@ -83,9 +78,19 @@ func findSymbolOffsets(path string, pattern *regexp.Regexp) ([]elf.Symbol, error
 
 // attachWithUprobeEvents attaches the uprobe using the uprobes_events ABI
 func (p *Probe) attachWithUprobeEvents() (*tracefsLink, error) {
+	args := traceFsEventArgs{
+		Type:         uprobe,
+		ReturnProbe:  p.isReturnProbe,
+		Symbol:       p.HookFuncName, // only used for event naming
+		Path:         p.BinaryPath,
+		Offset:       p.UprobeOffset,
+		UID:          p.UID,
+		AttachingPID: p.attachPID,
+	}
+
 	var uprobeID int
 	var eventName string
-	uprobeID, eventName, err := registerUprobeEvent(p.prefix(), p.HookFuncName, p.BinaryPath, p.UID, p.attachPID, p.UprobeOffset)
+	uprobeID, eventName, err := registerTraceFSEvent(args)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't enable uprobe %s: %w", p.ProbeIdentificationPair, err)
 	}
@@ -151,43 +156,4 @@ func (p *Probe) attachUprobe() error {
 	}
 	p.progLink = tl
 	return nil
-}
-
-// registerUprobeEvent - Writes a new Uprobe in uprobe_events with the provided parameters. Call DisableUprobeEvent
-// to remove the kprobe.
-func registerUprobeEvent(probeType string, funcName, path, UID string, uprobeAttachPID int, offset uint64) (int, string, error) {
-	// Generate event name
-	eventName, err := generateEventName(probeType, funcName, UID, uprobeAttachPID)
-	if err != nil {
-		return -1, "", err
-	}
-
-	// Write line to uprobe_events, only eventName is tested to max MAX_EVENT_NAME_LEN (linux/kernel/trace/trace.h)
-
-	f, err := tracefs.OpenFile("uprobe_events", os.O_APPEND|os.O_WRONLY, 0666)
-	if err != nil {
-		return -1, "", fmt.Errorf("cannot open uprobe_events: %w", err)
-	}
-	defer f.Close()
-
-	cmd := fmt.Sprintf("%s:%s %s:%#x\n", probeType, eventName, path, offset)
-	if _, err = f.WriteString(cmd); err != nil && !os.IsExist(err) {
-		return -1, "", fmt.Errorf("cannot write %q to uprobe_events: %w", cmd, err)
-	}
-
-	// Retrieve Uprobe ID
-	uprobeIDFile := fmt.Sprintf("events/uprobes/%s/id", eventName)
-	uprobeIDBytes, err := tracefs.ReadFile(uprobeIDFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return -1, "", ErrUprobeIDNotExist
-		}
-		return -1, "", fmt.Errorf("cannot read uprobe id: %w", err)
-	}
-	uprobeID, err := strconv.Atoi(strings.TrimSpace(string(uprobeIDBytes)))
-	if err != nil {
-		return -1, "", fmt.Errorf("invalid uprobe id: %w", err)
-	}
-
-	return uprobeID, eventName, nil
 }

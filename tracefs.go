@@ -30,6 +30,17 @@ const (
 	uprobe
 )
 
+func (p probeType) String() string {
+	switch p {
+	case kprobe:
+		return "kprobe"
+	case uprobe:
+		return "uprobe"
+	default:
+		return ""
+	}
+}
+
 func (p probeType) eventsFilename() string {
 	switch p {
 	case kprobe:
@@ -94,7 +105,7 @@ func (m *Manager) cleanupTraceFS() error {
 
 	var cleanUpErrors error
 	pidMask := map[int]bool{Getpid(): true}
-	eventFiles := []string{"kprobe_events", "uprobe_events"}
+	eventFiles := []string{kprobe.eventsFilename(), uprobe.eventsFilename()}
 	for _, eventFile := range eventFiles {
 		events, err := tracefs.ReadFile(eventFile)
 		if err != nil {
@@ -190,6 +201,86 @@ func generateEventName(probeType, funcName, UID string, attachPID int) (string, 
 // The library doesn't support loading a [k|u]probe with an address directly, so only one pattern applies here.
 func getKernelGeneratedEventName(probeType, funcName string) string {
 	return fmt.Sprintf("%s_%s_0", probeType, funcName)
+}
+
+type traceFsEventArgs struct {
+	Type         probeType
+	ReturnProbe  bool
+	Symbol, Path string
+	Offset       uint64
+	UID          string
+	MaxActive    int
+	AttachingPID int
+}
+
+func tracefsPrefix(ret bool) string {
+	if ret {
+		return "r"
+	}
+	return "p"
+}
+
+func registerTraceFSEvent(args traceFsEventArgs) (int, string, error) {
+	prefix := tracefsPrefix(args.ReturnProbe)
+	eventName, err := generateEventName(prefix, args.Symbol, args.UID, args.AttachingPID)
+	if err != nil {
+		return -1, "", err
+	}
+
+	f, err := tracefs.OpenFile(args.Type.eventsFilename(), os.O_APPEND|os.O_WRONLY, 0666)
+	if err != nil {
+		return -1, "", fmt.Errorf("cannot open %s: %w", args.Type.eventsFilename(), err)
+	}
+	defer f.Close()
+	// precompute strings of unknown length
+	maxActiveStr := strconv.Itoa(args.MaxActive)
+	offsetStr := fmt.Sprintf("%#x", args.Offset)
+	token := args.Symbol
+	if args.Type == uprobe {
+		token = args.Path
+	}
+
+	var sb strings.Builder
+	// may be larger than necessary, but never smaller
+	sb.Grow(len(prefix) + len(maxActiveStr) + 1 + len(eventName) + 1 + len(token) + 1 + len(offsetStr) + 1)
+	sb.WriteString(prefix)
+	if args.Type == kprobe && args.ReturnProbe && args.MaxActive > 0 {
+		sb.WriteString(maxActiveStr)
+	}
+	sb.WriteRune(':')
+	sb.WriteString(eventName)
+	sb.WriteRune(' ')
+	sb.WriteString(token)
+	if args.Type == kprobe {
+		if args.Offset > 0 {
+			sb.WriteRune('+')
+			sb.WriteString(offsetStr)
+		}
+	} else if args.Type == uprobe {
+		sb.WriteRune(':')
+		sb.WriteString(offsetStr)
+	}
+	sb.WriteRune('\n')
+	cmd := sb.String()
+	if _, err = f.WriteString(cmd); err != nil && !os.IsExist(err) {
+		return -1, "", fmt.Errorf("cannot write %q to %s: %w", cmd, args.Type.eventsFilename(), err)
+	}
+
+	// Retrieve probe ID
+	probeIDFile := fmt.Sprintf("events/%ss/%s/id", args.Type.String(), eventName)
+	probeIDBytes, err := tracefs.ReadFile(probeIDFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return -1, "", ErrProbeIDNotExist
+		}
+		return -1, "", fmt.Errorf("cannot read probe id: %w", err)
+	}
+	id := strings.TrimSpace(string(probeIDBytes))
+	probeID, err := strconv.Atoi(id)
+	if err != nil {
+		return -1, "", fmt.Errorf("invalid probe id: '%s': %w", id, err)
+	}
+	return probeID, eventName, nil
 }
 
 func unregisterTraceFSEvent(eventsFile string, name string) error {
