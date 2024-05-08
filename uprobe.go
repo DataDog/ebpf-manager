@@ -130,7 +130,7 @@ func (p *Probe) attachUprobe() error {
 
 	var eventsFunc attachFunc = p.attachWithUprobeEvents
 	var pmuFunc attachFunc = func() (*tracefsLink, error) {
-		pfd, err := perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffset), p.PerfEventPID, "uprobe", p.isReturnProbe, 0)
+		pfd, err := perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffset), p.PerfEventPID, uprobe, p.isReturnProbe, 0)
 		if err != nil {
 			return nil, err
 		}

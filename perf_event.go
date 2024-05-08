@@ -106,7 +106,7 @@ func attachPerfEvent(pe *perfEventLink, prog *ebpf.Program) error {
 // perfEventOpenPMU - Kernel API with e12f03d ("perf/core: Implement the 'perf_kprobe' PMU") allows
 // creating [k,u]probe with perf_event_open, which makes it easier to clean up
 // the [k,u]probe. This function tries to create pfd with the perf_kprobe PMU.
-func perfEventOpenPMU(name string, offset, pid int, eventType string, retProbe bool, referenceCounterOffset uint64) (*fd, error) {
+func perfEventOpenPMU(name string, offset, pid int, eventType probeType, retProbe bool, referenceCounterOffset uint64) (*fd, error) {
 	var err error
 	var attr unix.PerfEventAttr
 
@@ -137,10 +137,10 @@ func perfEventOpenPMU(name string, offset, pid int, eventType string, retProbe b
 	}
 
 	switch eventType {
-	case "kprobe":
+	case kprobe:
 		attr.Ext1 = uint64(uintptr(unsafe.Pointer(namePtr))) // Kernel symbol to trace
 		pid = 0
-	case "uprobe":
+	case uprobe:
 		// The minimum size required for PMU uprobes is PERF_ATTR_SIZE_VER1,
 		// since it added the config2 (Ext2) field. The Size field controls the
 		// size of the internal buffer the kernel allocates for reading the

@@ -24,7 +24,7 @@ var (
 	}{}
 )
 
-func parsePMUEventType(eventType string) (uint32, error) {
+func parsePMUEventType(eventType probeType) (uint32, error) {
 	PMUTypeFile := fmt.Sprintf("/sys/bus/event_source/devices/%s/type", eventType)
 	f, err := os.Open(PMUTypeFile)
 	if err != nil {
@@ -44,14 +44,14 @@ func parsePMUEventType(eventType string) (uint32, error) {
 
 // getPMUEventType reads a Performance Monitoring Unit's type (numeric identifier)
 // from /sys/bus/event_source/devices/<pmu>/type.
-func getPMUEventType(eventType string) (uint32, error) {
+func getPMUEventType(eventType probeType) (uint32, error) {
 	switch eventType {
-	case "kprobe":
+	case kprobe:
 		kprobePMUType.once.Do(func() {
 			kprobePMUType.value, kprobePMUType.err = parsePMUEventType(eventType)
 		})
 		return kprobePMUType.value, kprobePMUType.err
-	case "uprobe":
+	case uprobe:
 		uprobePMUType.once.Do(func() {
 			uprobePMUType.value, uprobePMUType.err = parsePMUEventType(eventType)
 		})
@@ -78,8 +78,8 @@ var (
 
 // parseRetProbeBit reads a Performance Monitoring Unit's retprobe bit
 // from /sys/bus/event_source/devices/<pmu>/format/retprobe.
-func parseRetProbeBit(eventType string) (uint64, error) {
-	p := filepath.Join("/sys/bus/event_source/devices/", eventType, "/format/retprobe")
+func parseRetProbeBit(eventType probeType) (uint64, error) {
+	p := filepath.Join("/sys/bus/event_source/devices/", eventType.String(), "/format/retprobe")
 
 	data, err := os.ReadFile(p)
 	if err != nil {
@@ -98,14 +98,14 @@ func parseRetProbeBit(eventType string) (uint64, error) {
 	return rp, nil
 }
 
-func getRetProbeBit(eventType string) (uint64, error) {
+func getRetProbeBit(eventType probeType) (uint64, error) {
 	switch eventType {
-	case "kprobe":
+	case kprobe:
 		kprobeRetProbeBit.once.Do(func() {
 			kprobeRetProbeBit.value, kprobeRetProbeBit.err = parseRetProbeBit(eventType)
 		})
 		return kprobeRetProbeBit.value, kprobeRetProbeBit.err
-	case "uprobe":
+	case uprobe:
 		uprobeRetProbeBit.once.Do(func() {
 			uprobeRetProbeBit.value, uprobeRetProbeBit.err = parseRetProbeBit(eventType)
 		})

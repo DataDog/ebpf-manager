@@ -28,7 +28,7 @@ func (p *Probe) attachKprobe() error {
 
 	var eventsFunc attachFunc = p.attachWithKprobeEvents
 	var pmuFunc attachFunc = func() (*tracefsLink, error) {
-		pfd, err := perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", p.isReturnProbe, 0)
+		pfd, err := perfEventOpenPMU(p.HookFuncName, 0, -1, kprobe, p.isReturnProbe, 0)
 		if err != nil {
 			return nil, err
 		}
