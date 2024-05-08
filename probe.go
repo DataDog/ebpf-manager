@@ -200,9 +200,6 @@ type Probe struct {
 	// runtime.NumCPU(). Disclaimer: in containerized environment and depending on the CPU affinity of the program
 	// holding the manager, runtime.NumCPU might not return the real CPU count of the host.
 	PerfEventCPUCount int
-
-	// perfEventCPUFDs - (Perf event) holds the fd of the perf_event program per CPU
-	perfEventCPUFDs []*perfEventLink
 }
 
 // GetEBPFFuncName - Returns EBPFFuncName with the UID as a postfix if the Probe was copied
