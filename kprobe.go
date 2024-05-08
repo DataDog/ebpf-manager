@@ -41,11 +41,11 @@ func (p *Probe) attachKprobe() error {
 		startFunc, fallbackFunc = eventsFunc, pmuFunc
 	}
 
-	var err error
+	var startErr, fallbackErr error
 	var tl *tracefsLink
-	if tl, err = startFunc(); err != nil {
-		if tl, err = fallbackFunc(); err != nil {
-			return err
+	if tl, startErr = startFunc(); startErr != nil {
+		if tl, fallbackErr = fallbackFunc(); fallbackErr != nil {
+			return errors.Join(startErr, fallbackErr)
 		}
 	}
 
