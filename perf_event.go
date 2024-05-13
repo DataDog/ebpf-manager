@@ -139,7 +139,7 @@ func perfEventOpenPMU(name string, offset, pid int, eventType probeType, retProb
 	switch eventType {
 	case kprobe:
 		attr.Ext1 = uint64(uintptr(unsafe.Pointer(namePtr))) // Kernel symbol to trace
-		pid = 0
+		pid = -1
 	case uprobe:
 		// The minimum size required for PMU uprobes is PERF_ATTR_SIZE_VER1,
 		// since it added the config2 (Ext2) field. The Size field controls the
@@ -154,8 +154,12 @@ func perfEventOpenPMU(name string, offset, pid int, eventType probeType, retProb
 		}
 	}
 
+	cpu := 0
+	if pid != -1 {
+		cpu = -1
+	}
 	var efd int
-	efd, err = unix.PerfEventOpen(&attr, pid, 0, -1, unix.PERF_FLAG_FD_CLOEXEC)
+	efd, err = unix.PerfEventOpen(&attr, pid, cpu, -1, unix.PERF_FLAG_FD_CLOEXEC)
 
 	// Since commit 97c753e62e6c, ENOENT is correctly returned instead of EINVAL
 	// when trying to create a kretprobe for a missing symbol. Make sure ENOENT
@@ -177,6 +181,10 @@ func perfEventOpenTracingEvent(probeID int, pid int) (*fd, error) {
 	if pid <= 0 {
 		pid = -1
 	}
+	cpu := 0
+	if pid != -1 {
+		cpu = -1
+	}
 	attr := unix.PerfEventAttr{
 		Type:        unix.PERF_TYPE_TRACEPOINT,
 		Sample_type: unix.PERF_SAMPLE_RAW,
@@ -185,7 +193,7 @@ func perfEventOpenTracingEvent(probeID int, pid int) (*fd, error) {
 		Config:      uint64(probeID),
 	}
 	attr.Size = uint32(unsafe.Sizeof(attr))
-	return perfEventOpenRaw(&attr, pid, 0, -1, unix.PERF_FLAG_FD_CLOEXEC)
+	return perfEventOpenRaw(&attr, pid, cpu, -1, unix.PERF_FLAG_FD_CLOEXEC)
 }
 
 func perfEventOpenRaw(attr *unix.PerfEventAttr, pid int, cpu int, groupFd int, flags int) (*fd, error) {
