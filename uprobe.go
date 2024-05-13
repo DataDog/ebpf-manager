@@ -2,13 +2,9 @@ package manager
 
 import (
 	"debug/elf"
+	"errors"
 	"fmt"
-	"os"
 	"regexp"
-	"strconv"
-	"strings"
-
-	"github.com/DataDog/ebpf-manager/tracefs"
 )
 
 // SanitizeUprobeAddresses - sanitizes the addresses of the provided symbols
@@ -82,27 +78,33 @@ func findSymbolOffsets(path string, pattern *regexp.Regexp) ([]elf.Symbol, error
 }
 
 // attachWithUprobeEvents attaches the uprobe using the uprobes_events ABI
-func (p *Probe) attachWithUprobeEvents() error {
-	// fallback to debugfs
-	var uprobeID int
-	uprobeID, err := registerUprobeEvent(p.prefix(), p.HookFuncName, p.BinaryPath, p.UID, p.attachPID, p.UprobeOffset)
-	if err != nil {
-		return fmt.Errorf("couldn't enable uprobe %s: %w", p.ProbeIdentificationPair, err)
+func (p *Probe) attachWithUprobeEvents() (*tracefsLink, error) {
+	args := traceFsEventArgs{
+		Type:         uprobe,
+		ReturnProbe:  p.isReturnProbe,
+		Symbol:       p.HookFuncName, // only used for event naming
+		Path:         p.BinaryPath,
+		Offset:       p.UprobeOffset,
+		UID:          p.UID,
+		AttachingPID: p.attachPID,
 	}
 
-	// Activate perf event
-	p.perfEventFD, err = perfEventOpenTracingEvent(uprobeID, p.PerfEventPID)
+	var uprobeID int
+	var eventName string
+	uprobeID, eventName, err := registerTraceFSEvent(args)
 	if err != nil {
-		return fmt.Errorf("couldn't open perf event fd for %s: %w", p.ProbeIdentificationPair, err)
+		return nil, fmt.Errorf("couldn't enable uprobe %s: %w", p.ProbeIdentificationPair, err)
 	}
-	p.attachedWithDebugFS = true
-	return nil
+
+	pfd, err := perfEventOpenTracingEvent(uprobeID, p.PerfEventPID)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't open perf event fd for %s: %w", p.ProbeIdentificationPair, err)
+	}
+	return &tracefsLink{perfEventLink: newPerfEventLink(pfd), Type: uprobe, EventName: eventName}, nil
 }
 
 // attachUprobe - Attaches the probe to its Uprobe
 func (p *Probe) attachUprobe() error {
-	var err error
-
 	// compute the offset if it was not provided
 	if p.UprobeOffset == 0 {
 		var funcPattern string
@@ -127,88 +129,32 @@ func (p *Probe) attachUprobe() error {
 		p.HookFuncName = offsets[0].Name
 	}
 
-	if p.UprobeAttachMethod == AttachWithPerfEventOpen {
-		if p.perfEventFD, err = perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffset), p.PerfEventPID, "uprobe", p.isReturnProbe, 0); err != nil {
-			if err = p.attachWithUprobeEvents(); err != nil {
-				return err
-			}
+	var eventsFunc attachFunc = p.attachWithUprobeEvents
+	var pmuFunc attachFunc = func() (*tracefsLink, error) {
+		pfd, err := perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffset), p.PerfEventPID, uprobe, p.isReturnProbe, 0)
+		if err != nil {
+			return nil, err
 		}
-	} else if p.UprobeAttachMethod == AttachWithProbeEvents {
-		if err = p.attachWithUprobeEvents(); err != nil {
-			if p.perfEventFD, err = perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffset), p.PerfEventPID, "uprobe", p.isReturnProbe, 0); err != nil {
-				return err
-			}
-		}
-	} else {
-		return fmt.Errorf("invalid uprobe attach method: %d", p.UprobeAttachMethod)
+		return &tracefsLink{perfEventLink: newPerfEventLink(pfd), Type: uprobe}, nil
 	}
 
-	// enable perf event
-	if err = ioctlPerfEventSetBPF(p.perfEventFD, p.program.FD()); err != nil {
-		return fmt.Errorf("couldn't set perf event bpf %s: %w", p.ProbeIdentificationPair, err)
+	startFunc, fallbackFunc := pmuFunc, eventsFunc
+	if p.UprobeAttachMethod == AttachWithProbeEvents {
+		startFunc, fallbackFunc = eventsFunc, pmuFunc
 	}
-	if err = ioctlPerfEventEnable(p.perfEventFD); err != nil {
-		return fmt.Errorf("couldn't enable perf event %s: %w", p.ProbeIdentificationPair, err)
+
+	var startErr, fallbackErr error
+	var tl *tracefsLink
+	if tl, startErr = startFunc(); startErr != nil {
+		if tl, fallbackErr = fallbackFunc(); fallbackErr != nil {
+			return errors.Join(startErr, fallbackErr)
+		}
 	}
+
+	if err := attachPerfEvent(tl.perfEventLink, p.program); err != nil {
+		_ = tl.Close()
+		return fmt.Errorf("attach %s: %w", p.ProbeIdentificationPair, err)
+	}
+	p.progLink = tl
 	return nil
-}
-
-// detachUprobe - Detaches the probe from its Uprobe
-func (p *Probe) detachUprobe() error {
-	if !p.attachedWithDebugFS {
-		// nothing to do
-		return nil
-	}
-
-	// Write uprobe_events line to remove hook point
-	return unregisterUprobeEvent(p.prefix(), p.HookFuncName, p.UID, p.attachPID)
-}
-
-// registerUprobeEvent - Writes a new Uprobe in uprobe_events with the provided parameters. Call DisableUprobeEvent
-// to remove the kprobe.
-func registerUprobeEvent(probeType string, funcName, path, UID string, uprobeAttachPID int, offset uint64) (int, error) {
-	// Generate event name
-	eventName, err := generateEventName(probeType, funcName, UID, uprobeAttachPID)
-	if err != nil {
-		return -1, err
-	}
-
-	// Write line to uprobe_events, only eventName is tested to max MAX_EVENT_NAME_LEN (linux/kernel/trace/trace.h)
-
-	f, err := tracefs.OpenFile("uprobe_events", os.O_APPEND|os.O_WRONLY, 0666)
-	if err != nil {
-		return -1, fmt.Errorf("cannot open uprobe_events: %w", err)
-	}
-	defer f.Close()
-
-	cmd := fmt.Sprintf("%s:%s %s:%#x\n", probeType, eventName, path, offset)
-	if _, err = f.WriteString(cmd); err != nil && !os.IsExist(err) {
-		return -1, fmt.Errorf("cannot write %q to uprobe_events: %w", cmd, err)
-	}
-
-	// Retrieve Uprobe ID
-	uprobeIDFile := fmt.Sprintf("events/uprobes/%s/id", eventName)
-	uprobeIDBytes, err := tracefs.ReadFile(uprobeIDFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return -1, ErrUprobeIDNotExist
-		}
-		return -1, fmt.Errorf("cannot read uprobe id: %w", err)
-	}
-	uprobeID, err := strconv.Atoi(strings.TrimSpace(string(uprobeIDBytes)))
-	if err != nil {
-		return -1, fmt.Errorf("invalid uprobe id: %w", err)
-	}
-
-	return uprobeID, nil
-}
-
-// unregisterUprobeEvent - Removes a uprobe from uprobe_events
-func unregisterUprobeEvent(probeType string, funcName string, UID string, uprobeAttachPID int) error {
-	// Generate event name
-	eventName, err := generateEventName(probeType, funcName, UID, uprobeAttachPID)
-	if err != nil {
-		return err
-	}
-	return unregisterTraceFSEvent("uprobe_events", eventName)
 }

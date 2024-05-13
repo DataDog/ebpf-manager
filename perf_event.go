@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/cilium/ebpf"
 	"golang.org/x/sys/unix"
 )
 
@@ -37,37 +38,75 @@ func (p *Probe) attachPerfEvent() error {
 		pid = -1
 	}
 
+	link := &perfEventProgLink{
+		perfEventCPUFDs: make([]*perfEventLink, 0, p.PerfEventCPUCount),
+	}
 	for cpu := 0; cpu < p.PerfEventCPUCount; cpu++ {
 		fd, err := perfEventOpenRaw(&attr, pid, cpu, -1, 0)
 		if err != nil {
 			return fmt.Errorf("couldn't attach perf_event program %s on pid %d and CPU %d: %v", p.ProbeIdentificationPair, pid, cpu, err)
 		}
-		p.perfEventCPUFDs = append(p.perfEventCPUFDs, fd)
-
-		if err = ioctlPerfEventSetBPF(fd, p.program.FD()); err != nil {
-			return fmt.Errorf("couldn't set perf event bpf %s: %w", p.ProbeIdentificationPair, err)
-		}
-		if err = ioctlPerfEventEnable(fd); err != nil {
-			return fmt.Errorf("couldn't enable perf event %s for pid %d and CPU %d: %w", p.ProbeIdentificationPair, pid, cpu, err)
+		pfd := newPerfEventLink(fd)
+		link.perfEventCPUFDs = append(link.perfEventCPUFDs, pfd)
+		if err := attachPerfEvent(pfd, p.program); err != nil {
+			_ = link.Close()
+			return fmt.Errorf("attach: %w", err)
 		}
 	}
+	p.progLink = link
 	return nil
 }
 
-// detachPerfEvent - Detaches the perf_event program
-func (p *Probe) detachPerfEvent() error {
+type perfEventProgLink struct {
+	perfEventCPUFDs []*perfEventLink
+}
+
+func (p *perfEventProgLink) Close() error {
 	var errs []error
 	for _, fd := range p.perfEventCPUFDs {
 		errs = append(errs, fd.Close())
 	}
-	p.perfEventCPUFDs = []*fd{}
+	p.perfEventCPUFDs = []*perfEventLink{}
 	return errors.Join(errs...)
+}
+
+type perfEventLink struct {
+	fd *fd
+}
+
+func newPerfEventLink(fd *fd) *perfEventLink {
+	pe := &perfEventLink{fd}
+	runtime.SetFinalizer(pe, (*perfEventLink).Close)
+	return pe
+}
+
+func (pe *perfEventLink) Close() error {
+	runtime.SetFinalizer(pe, nil)
+	return pe.fd.Close()
+}
+
+func (pe *perfEventLink) Pause() error {
+	return ioctlPerfEventDisable(pe.fd)
+}
+
+func (pe *perfEventLink) Resume() error {
+	return ioctlPerfEventEnable(pe.fd)
+}
+
+func attachPerfEvent(pe *perfEventLink, prog *ebpf.Program) error {
+	if err := ioctlPerfEventSetBPF(pe.fd, prog.FD()); err != nil {
+		return fmt.Errorf("set perf event bpf: %w", err)
+	}
+	if err := ioctlPerfEventEnable(pe.fd); err != nil {
+		return fmt.Errorf("enable perf event: %w", err)
+	}
+	return nil
 }
 
 // perfEventOpenPMU - Kernel API with e12f03d ("perf/core: Implement the 'perf_kprobe' PMU") allows
 // creating [k,u]probe with perf_event_open, which makes it easier to clean up
 // the [k,u]probe. This function tries to create pfd with the perf_kprobe PMU.
-func perfEventOpenPMU(name string, offset, pid int, eventType string, retProbe bool, referenceCounterOffset uint64) (*fd, error) {
+func perfEventOpenPMU(name string, offset, pid int, eventType probeType, retProbe bool, referenceCounterOffset uint64) (*fd, error) {
 	var err error
 	var attr unix.PerfEventAttr
 
@@ -98,10 +137,10 @@ func perfEventOpenPMU(name string, offset, pid int, eventType string, retProbe b
 	}
 
 	switch eventType {
-	case "kprobe":
+	case kprobe:
 		attr.Ext1 = uint64(uintptr(unsafe.Pointer(namePtr))) // Kernel symbol to trace
-		pid = 0
-	case "uprobe":
+		pid = -1
+	case uprobe:
 		// The minimum size required for PMU uprobes is PERF_ATTR_SIZE_VER1,
 		// since it added the config2 (Ext2) field. The Size field controls the
 		// size of the internal buffer the kernel allocates for reading the
@@ -115,8 +154,12 @@ func perfEventOpenPMU(name string, offset, pid int, eventType string, retProbe b
 		}
 	}
 
+	cpu := 0
+	if pid != -1 {
+		cpu = -1
+	}
 	var efd int
-	efd, err = unix.PerfEventOpen(&attr, pid, 0, -1, unix.PERF_FLAG_FD_CLOEXEC)
+	efd, err = unix.PerfEventOpen(&attr, pid, cpu, -1, unix.PERF_FLAG_FD_CLOEXEC)
 
 	// Since commit 97c753e62e6c, ENOENT is correctly returned instead of EINVAL
 	// when trying to create a kretprobe for a missing symbol. Make sure ENOENT
@@ -138,6 +181,10 @@ func perfEventOpenTracingEvent(probeID int, pid int) (*fd, error) {
 	if pid <= 0 {
 		pid = -1
 	}
+	cpu := 0
+	if pid != -1 {
+		cpu = -1
+	}
 	attr := unix.PerfEventAttr{
 		Type:        unix.PERF_TYPE_TRACEPOINT,
 		Sample_type: unix.PERF_SAMPLE_RAW,
@@ -146,7 +193,7 @@ func perfEventOpenTracingEvent(probeID int, pid int) (*fd, error) {
 		Config:      uint64(probeID),
 	}
 	attr.Size = uint32(unsafe.Sizeof(attr))
-	return perfEventOpenRaw(&attr, pid, 0, -1, unix.PERF_FLAG_FD_CLOEXEC)
+	return perfEventOpenRaw(&attr, pid, cpu, -1, unix.PERF_FLAG_FD_CLOEXEC)
 }
 
 func perfEventOpenRaw(attr *unix.PerfEventAttr, pid int, cpu int, groupFd int, flags int) (*fd, error) {
