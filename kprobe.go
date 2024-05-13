@@ -10,10 +10,11 @@ import (
 	"github.com/DataDog/ebpf-manager/tracefs"
 )
 
+type probeType uint8
+
 const (
-	UnknownProbeType = ""
-	ProbeType        = "p"
-	RetProbeType     = "r"
+	kprobe probeType = iota
+	uprobe
 )
 
 type KprobeAttachMethod = AttachMethod
@@ -24,18 +25,11 @@ const (
 	AttachKprobeWithKprobeEvents  = AttachWithProbeEvents
 )
 
-// GetKprobeType - Identifies the probe type of the provided KProbe section
-func (p *Probe) GetKprobeType() string {
-	if len(p.kprobeType) == 0 {
-		if strings.HasPrefix(p.programSpec.SectionName, "kretprobe/") {
-			p.kprobeType = RetProbeType
-		} else if strings.HasPrefix(p.programSpec.SectionName, "kprobe/") {
-			p.kprobeType = ProbeType
-		} else {
-			p.kprobeType = UnknownProbeType
-		}
+func (p *Probe) prefix() string {
+	if p.isReturnProbe {
+		return "r"
 	}
-	return p.kprobeType
+	return "p"
 }
 
 // attachKprobe - Attaches the probe to its kprobe
@@ -46,29 +40,22 @@ func (p *Probe) attachKprobe() error {
 		return errors.New("HookFuncName, MatchFuncName or SyscallFuncName is required")
 	}
 
-	if p.GetKprobeType() == UnknownProbeType {
-		// this might actually be a UProbe
-		return p.attachUprobe()
-	}
-
-	isKRetProbe := p.GetKprobeType() == RetProbeType
-
 	// currently the perf event open ABI doesn't allow to specify the max active parameter
-	if p.KProbeMaxActive > 0 && isKRetProbe {
+	if p.KProbeMaxActive > 0 && p.isReturnProbe {
 		if err = p.attachWithKprobeEvents(); err != nil {
-			if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", isKRetProbe, 0); err != nil {
+			if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", p.isReturnProbe, 0); err != nil {
 				return err
 			}
 		}
 	} else if p.KprobeAttachMethod == AttachKprobeWithPerfEventOpen {
-		if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", isKRetProbe, 0); err != nil {
+		if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", p.isReturnProbe, 0); err != nil {
 			if err = p.attachWithKprobeEvents(); err != nil {
 				return err
 			}
 		}
 	} else if p.KprobeAttachMethod == AttachKprobeWithKprobeEvents {
 		if err = p.attachWithKprobeEvents(); err != nil {
-			if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", isKRetProbe, 0); err != nil {
+			if p.perfEventFD, err = perfEventOpenPMU(p.HookFuncName, 0, -1, "kprobe", p.isReturnProbe, 0); err != nil {
 				return err
 			}
 		}
@@ -94,7 +81,7 @@ func (p *Probe) attachWithKprobeEvents() error {
 
 	// Prepare kprobe_events line parameters
 	var maxActiveStr string
-	if p.GetKprobeType() == RetProbeType {
+	if p.isReturnProbe {
 		if p.KProbeMaxActive > 0 {
 			maxActiveStr = fmt.Sprintf("%d", p.KProbeMaxActive)
 		}
@@ -102,12 +89,12 @@ func (p *Probe) attachWithKprobeEvents() error {
 
 	// Fallback to debugfs, write kprobe_events line to register kprobe
 	var kprobeID int
-	kprobeID, err := registerKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, maxActiveStr, p.attachPID)
+	kprobeID, err := registerKprobeEvent(p.prefix(), p.HookFuncName, p.UID, maxActiveStr, p.attachPID)
 	if errors.Is(err, ErrKprobeIDNotExist) {
 		// The probe might have been loaded under a kernel generated event name. Clean up just in case.
-		_ = unregisterTraceFSEvent("kprobe_events", getKernelGeneratedEventName(p.GetKprobeType(), p.HookFuncName))
+		_ = unregisterTraceFSEvent("kprobe_events", getKernelGeneratedEventName(p.prefix(), p.HookFuncName))
 		// fallback without KProbeMaxActive
-		kprobeID, err = registerKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, "", p.attachPID)
+		kprobeID, err = registerKprobeEvent(p.prefix(), p.HookFuncName, p.UID, "", p.attachPID)
 	}
 
 	if err != nil {
@@ -129,19 +116,13 @@ func (p *Probe) attachWithKprobeEvents() error {
 
 // detachKprobe - Detaches the probe from its kprobe
 func (p *Probe) detachKprobe() error {
-	// Prepare kprobe_events line parameters
-	if p.GetKprobeType() == UnknownProbeType {
-		// this might be a `uprobe`
-		return p.detachUprobe()
-	}
-
 	if !p.attachedWithDebugFS {
 		// nothing to do
 		return nil
 	}
 
 	// Write kprobe_events line to remove hook point
-	return unregisterKprobeEvent(p.GetKprobeType(), p.HookFuncName, p.UID, p.attachPID)
+	return unregisterKprobeEvent(p.prefix(), p.HookFuncName, p.UID, p.attachPID)
 }
 
 func (p *Probe) pauseKprobe() error {

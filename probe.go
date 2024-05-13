@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -40,7 +41,8 @@ type Probe struct {
 	kprobeHookPointNotExist bool
 	systemWideID            int
 	programTag              string
-	kprobeType              string
+	kprobeType              probeType
+	isReturnProbe           bool
 	link                    netlink.Link
 	tcFilter                netlink.BpfFilter
 	tcClsActQdisc           netlink.Qdisc
@@ -383,15 +385,31 @@ func (p *Probe) internalInit(manager *Manager) error {
 		}
 	}
 
-	// Find function name match if required
-	if p.MatchFuncName != "" && len(p.HookFuncName) == 0 {
-		// if this is a kprobe or a kretprobe, look for the symbol now
-		if p.GetKprobeType() != UnknownProbeType {
-			var err error
-			p.HookFuncName, err = FindFilterFunction(p.MatchFuncName)
-			if err != nil {
-				p.lastError = err
-				return err
+	if p.programSpec.Type == ebpf.Kprobe {
+		progType, _, _ := strings.Cut(p.programSpec.SectionName, "/")
+		switch progType {
+		case "kprobe":
+			p.kprobeType = kprobe
+		case "kretprobe":
+			p.kprobeType = kprobe
+			p.isReturnProbe = true
+		case "uprobe":
+			p.kprobeType = uprobe
+		case "uretprobe":
+			p.kprobeType = uprobe
+			p.isReturnProbe = true
+		}
+
+		// Find function name match if required
+		if p.MatchFuncName != "" && len(p.HookFuncName) == 0 {
+			// if this is a kprobe or a kretprobe, look for the symbol now
+			if p.kprobeType == kprobe {
+				var err error
+				p.HookFuncName, err = FindFilterFunction(p.MatchFuncName)
+				if err != nil {
+					p.lastError = err
+					return err
+				}
 			}
 		}
 	}
@@ -518,7 +536,12 @@ func (p *Probe) attach() error {
 	case ebpf.UnspecifiedProgram:
 		err = fmt.Errorf("invalid program type, make sure to use the right section prefix: %w", ErrSectionFormat)
 	case ebpf.Kprobe:
-		err = p.attachKprobe()
+		switch p.kprobeType {
+		case kprobe:
+			err = p.attachKprobe()
+		case uprobe:
+			err = p.attachUprobe()
+		}
 	case ebpf.TracePoint:
 		err = p.attachTracepoint()
 	case ebpf.RawTracepoint, ebpf.RawTracepointWritable:
@@ -656,7 +679,12 @@ func (p *Probe) detach() error {
 		// nothing to do
 		break
 	case ebpf.Kprobe:
-		err = errors.Join(err, p.detachKprobe())
+		switch p.kprobeType {
+		case kprobe:
+			err = errors.Join(err, p.detachKprobe())
+		case uprobe:
+			err = errors.Join(err, p.detachUprobe())
+		}
 	case ebpf.SocketFilter:
 		err = errors.Join(err, p.detachSocket())
 	case ebpf.SchedCLS:
@@ -708,7 +736,8 @@ func (p *Probe) stop(saveStopError bool) error {
 
 // reset - Cleans up the internal fields of the probe
 func (p *Probe) reset() {
-	p.kprobeType = ""
+	p.kprobeType = kprobe
+	p.isReturnProbe = false
 	p.netlinkSocketCache = nil
 	p.program = nil
 	p.programSpec = nil
