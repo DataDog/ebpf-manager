@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/btf"
+	"github.com/cilium/ebpf/features"
 	"golang.org/x/sys/unix"
 )
 
@@ -126,6 +128,9 @@ type Options struct {
 
 	// KernelModuleBTFLoadFunc is a function to provide custom loading of BTF for kernel modules on-demand as programs are loaded
 	KernelModuleBTFLoadFunc func(kmodName string) (*btf.Spec, error)
+
+	// BypassEnabled controls whether program bypass is enabled for this manager
+	BypassEnabled bool
 }
 
 // InstructionPatcherFunc - A function that patches the instructions of a program
@@ -139,6 +144,8 @@ type Manager struct {
 	netlinkSocketCache *netlinkSocketCache
 	state              state
 	stateLock          sync.RWMutex
+	bypassIndexes      map[string]uint32
+	maxBypassIndex     uint32
 
 	// Probes - List of probes handled by the manager
 	Probes []*Probe
@@ -510,6 +517,14 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 			i++
 		}
 	}
+
+	// must run before map exclusion in case bypass is disabled
+	bypassMap, err := m.setupBypass()
+	if err != nil {
+		m.stateLock.Unlock()
+		return err
+	}
+
 	// Remove excluded maps
 	for _, excludeMapName := range m.options.ExcludedMaps {
 		delete(m.collectionSpec.Maps, excludeMapName)
@@ -530,6 +545,18 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 
 	// Configure activated probes
 	m.activateProbes()
+
+	// populate bypass indexes on Probe objects
+	// this must run after matchSpecs due to CopyProgram handling
+	if bypassMap != nil {
+		for _, mProbe := range m.Probes {
+			if idx, ok := m.bypassIndexes[mProbe.GetEBPFFuncName()]; ok {
+				mProbe.bypassIndex = idx
+				mProbe.bypassMap = bypassMap
+			}
+		}
+	}
+
 	m.state = initialized
 	m.stateLock.Unlock()
 	resetManager := func(m *Manager) {
@@ -616,6 +643,125 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 		return err
 	}
 	return nil
+}
+
+func (m *Manager) setupBypass() (*Map, error) {
+	_, hasBypassMapSpec := m.collectionSpec.Maps[bypassMapName]
+	if !hasBypassMapSpec {
+		return nil, nil
+	}
+	if !m.options.BypassEnabled {
+		m.options.ExcludedMaps = append(m.options.ExcludedMaps, bypassMapName)
+		return nil, nil
+	}
+	// start with 1, so we know if programs even have a valid index set
+	m.maxBypassIndex = 1
+
+	const stackOffset = -8
+	// place a limit on how far we will inject from the start of a program
+	// otherwise we aren't sure what register we need to save/restore, and it could inflate the number of instructions.
+	const maxInstructionOffsetFromProgramStart = 5
+	// setup bypass constants for all programs
+	m.bypassIndexes = make(map[string]uint32, len(m.collectionSpec.Programs))
+	for name, p := range m.collectionSpec.Programs {
+		for i := 0; i < len(p.Instructions); i++ {
+			ins := p.Instructions[i]
+			if ins.Reference() != bypassOptInReference {
+				continue
+			}
+			// return error here to ensure we only error on programs that do have a bypass reference
+			if i > maxInstructionOffsetFromProgramStart {
+				return nil, fmt.Errorf("unable to inject bypass instructions into program %s: bypass reference occurs too late in program", name)
+			}
+
+			m.bypassIndexes[name] = m.maxBypassIndex
+			newInsns := append([]asm.Instruction{
+				asm.Mov.Reg(asm.R6, asm.R1),
+				// save bypass index to stack
+				asm.StoreImm(asm.RFP, stackOffset, int64(m.maxBypassIndex), asm.Word),
+				// store pointer to bypass index
+				asm.Mov.Reg(asm.R2, asm.RFP),
+				asm.Add.Imm(asm.R2, stackOffset),
+				// load map reference
+				asm.LoadMapPtr(asm.R1, 0).WithReference(bypassMapName),
+				// bpf_map_lookup_elem
+				asm.FnMapLookupElem.Call(),
+				// if ret == 0, jump to `return 0`
+				{
+					OpCode:   asm.JEq.Op(asm.ImmSource),
+					Dst:      asm.R0,
+					Offset:   3, // jump TO return
+					Constant: int64(0),
+				},
+				// pointer indirection of result from map lookup
+				asm.LoadMem(asm.R1, asm.R0, 0, asm.Word),
+				// if bypass NOT enabled, jump over return
+				{
+					OpCode:   asm.JEq.Op(asm.ImmSource),
+					Dst:      asm.R1,
+					Offset:   2, // jump over return on next instruction
+					Constant: int64(0),
+				},
+				asm.Return(),
+				// zero out used stack slot
+				asm.StoreImm(asm.RFP, stackOffset, 0, asm.Word),
+				asm.Mov.Reg(asm.R1, asm.R6),
+			}, p.Instructions[i+1:]...)
+			// necessary to keep kernel happy about source information for start of program
+			newInsns[0] = newInsns[0].WithSource(ins.Source())
+			p.Instructions = append(p.Instructions[:i], newInsns...)
+			m.maxBypassIndex += 1
+			break
+		}
+	}
+	// no programs modified
+	if m.maxBypassIndex == 1 {
+		m.options.ExcludedMaps = append(m.options.ExcludedMaps, bypassMapName)
+		return nil, nil
+	}
+
+	hasPerCPU := false
+	if err := features.HaveMapType(ebpf.PerCPUArray); err == nil {
+		hasPerCPU = true
+	}
+
+	bypassMap := &Map{Name: bypassMapName}
+	m.Maps = append(m.Maps, bypassMap)
+
+	if m.options.MapSpecEditors == nil {
+		m.options.MapSpecEditors = make(map[string]MapSpecEditor)
+	}
+	m.options.MapSpecEditors[bypassMapName] = MapSpecEditor{
+		MaxEntries: m.maxBypassIndex + 1,
+		EditorFlag: EditMaxEntries,
+	}
+
+	if !hasPerCPU {
+		// use scalar value for bypass/enable
+		bypassValue = 1
+		enableValue = 0
+		return bypassMap, nil
+	}
+
+	// upgrade map type to per-cpu, if available
+	specEditor := m.options.MapSpecEditors[bypassMapName]
+	specEditor.Type = ebpf.PerCPUArray
+	specEditor.EditorFlag |= EditType
+	m.options.MapSpecEditors[bypassMapName] = specEditor
+
+	// allocate per-cpu slices used for bypass/enable
+	cpus, err := ebpf.PossibleCPU()
+	if err != nil {
+		return nil, err
+	}
+	if bypassValue == nil {
+		bypassValue = makeAndSet(cpus, uint32(1))
+	}
+	if enableValue == nil {
+		enableValue = makeAndSet(cpus, uint32(0))
+	}
+
+	return bypassMap, nil
 }
 
 // Start - Attach eBPF programs, start perf ring readers and apply maps and tail calls routing.
@@ -716,6 +862,10 @@ func (m *Manager) Pause() error {
 	if m.state <= initialized {
 		return ErrManagerNotStarted
 	}
+	if !m.options.BypassEnabled {
+		return nil
+	}
+
 	for _, probe := range m.Probes {
 		if err := probe.Pause(); err != nil {
 			return err
@@ -734,6 +884,10 @@ func (m *Manager) Resume() error {
 	if m.state <= initialized {
 		return ErrManagerNotStarted
 	}
+	if !m.options.BypassEnabled {
+		return nil
+	}
+
 	for _, probe := range m.Probes {
 		if err := probe.Resume(); err != nil {
 			return err
@@ -907,6 +1061,19 @@ func (m *Manager) AddHook(UID string, newProbe *Probe) error {
 	}
 	newProbe.program = clonedProg
 	newProbe.programSpec = progSpec
+
+	var bypassMap *Map
+	for _, mp := range m.Maps {
+		if mp.Name == bypassMapName {
+			bypassMap = mp
+			break
+		}
+	}
+	bypassIndex, ok := m.bypassIndexes[newProbe.EBPFFuncName]
+	if ok && bypassMap != nil {
+		newProbe.bypassIndex = bypassIndex
+		newProbe.bypassMap = bypassMap
+	}
 
 	// init program
 	if err = newProbe.init(m); err != nil {

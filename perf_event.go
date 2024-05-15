@@ -85,14 +85,6 @@ func (pe *perfEventLink) Close() error {
 	return pe.fd.Close()
 }
 
-func (pe *perfEventLink) Pause() error {
-	return ioctlPerfEventDisable(pe.fd)
-}
-
-func (pe *perfEventLink) Resume() error {
-	return ioctlPerfEventEnable(pe.fd)
-}
-
 func attachPerfEvent(pe *perfEventLink, prog *ebpf.Program) error {
 	if err := ioctlPerfEventSetBPF(pe.fd, prog.FD()); err != nil {
 		return fmt.Errorf("set perf event bpf: %w", err)
@@ -210,8 +202,4 @@ func ioctlPerfEventSetBPF(perfEventOpenFD *fd, progFD int) error {
 
 func ioctlPerfEventEnable(perfEventOpenFD *fd) error {
 	return unix.IoctlSetInt(int(perfEventOpenFD.raw), unix.PERF_EVENT_IOC_ENABLE, 0)
-}
-
-func ioctlPerfEventDisable(perfEventOpenFD *fd) error {
-	return unix.IoctlSetInt(int(perfEventOpenFD.raw), unix.PERF_EVENT_IOC_DISABLE, 0)
 }
