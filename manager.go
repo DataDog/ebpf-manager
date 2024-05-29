@@ -660,7 +660,7 @@ func (m *Manager) setupBypass() (*Map, error) {
 	const stackOffset = -8
 	// place a limit on how far we will inject from the start of a program
 	// otherwise we aren't sure what register we need to save/restore, and it could inflate the number of instructions.
-	const maxInstructionOffsetFromProgramStart = 5
+	const maxInstructionOffsetFromProgramStart = 1
 	// setup bypass constants for all programs
 	m.bypassIndexes = make(map[string]uint32, len(m.collectionSpec.Programs))
 	for name, p := range m.collectionSpec.Programs {
