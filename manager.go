@@ -673,6 +673,9 @@ func (m *Manager) setupBypass() (*Map, error) {
 			if i > maxInstructionOffsetFromProgramStart {
 				return nil, fmt.Errorf("unable to inject bypass instructions into program %s: bypass reference occurs too late in program", name)
 			}
+			if i > 0 && p.Instructions[i-1].Src != asm.R1 {
+				return nil, fmt.Errorf("unable to inject bypass instructions into program %s: register other than r1 used before injection point", name)
+			}
 
 			m.bypassIndexes[name] = m.maxBypassIndex
 			newInsns := append([]asm.Instruction{
