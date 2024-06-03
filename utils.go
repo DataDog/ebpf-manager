@@ -51,3 +51,12 @@ func cleanupProgramSpec(spec *ebpf.ProgramSpec) {
 		spec.Instructions = nil
 	}
 }
+
+// create slice of length n and fill with fillVal
+func makeAndSet[E any](n int, fillVal E) []E {
+	s := make([]E, n)
+	for i := range s {
+		s[i] = fillVal
+	}
+	return s
+}

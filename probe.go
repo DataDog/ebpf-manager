@@ -24,6 +24,13 @@ const (
 	AttachWithProbeEvents
 )
 
+const bypassMapName = "program_bypassed"
+const bypassOptInReference = "bypass_program"
+
+// values used for map update to bypass/enable programs
+var bypassValue any
+var enableValue any
+
 // Probe - Main eBPF probe wrapper. This structure is used to store the required data to attach a loaded eBPF
 // program to its hook point.
 type Probe struct {
@@ -45,6 +52,8 @@ type Probe struct {
 	tcFilter                netlink.BpfFilter
 	tcClsActQdisc           netlink.Qdisc
 	progLink                io.Closer
+	bypassIndex             uint32
+	bypassMap               *Map
 
 	// lastError - stores the last error that the probe encountered, it is used to surface a more useful error message
 	// when one of the validators (see Options.ActivatedProbes) fails.
@@ -583,16 +592,22 @@ func (p *Probe) pause() error {
 	}
 
 	v, ok := p.progLink.(pauser)
-	if !ok {
-		return fmt.Errorf("pause not supported for program type %s", p.programSpec.Type)
+	if ok {
+		if err := v.Pause(); err != nil {
+			p.lastError = err
+			return fmt.Errorf("error pausing probe %s: %w", p.ProbeIdentificationPair, err)
+		}
+		p.state = paused
+		return nil
 	}
 
-	if err := v.Pause(); err != nil {
-		p.lastError = err
-		return fmt.Errorf("error pausing probe %s: %w", p.ProbeIdentificationPair, err)
+	if p.bypassIndex > 0 && p.bypassMap != nil {
+		if err := p.bypassMap.array.Update(p.bypassIndex, bypassValue, ebpf.UpdateExist); err != nil {
+			return err
+		}
+		p.state = paused
+		return nil
 	}
-
-	p.state = paused
 	return nil
 }
 
@@ -604,16 +619,22 @@ func (p *Probe) resume() error {
 	}
 
 	v, ok := p.progLink.(pauser)
-	if !ok {
-		return fmt.Errorf("resume not supported for program type %s", p.programSpec.Type)
+	if ok {
+		if err := v.Resume(); err != nil {
+			p.lastError = err
+			return fmt.Errorf("error resuming probe %s: %w", p.ProbeIdentificationPair, err)
+		}
+		p.state = running
+		return nil
 	}
 
-	if err := v.Resume(); err != nil {
-		p.lastError = err
-		return fmt.Errorf("error resuming probe %s: %w", p.ProbeIdentificationPair, err)
+	if p.bypassIndex > 0 && p.bypassMap != nil {
+		if err := p.bypassMap.array.Update(p.bypassIndex, enableValue, ebpf.UpdateExist); err != nil {
+			return err
+		}
+		p.state = running
+		return nil
 	}
-
-	p.state = running
 	return nil
 }
 
