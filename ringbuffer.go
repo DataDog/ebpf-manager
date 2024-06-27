@@ -11,9 +11,6 @@ import (
 )
 
 type RingBufferOptions struct {
-	// RingBufferSize - Size in bytes of the ring buffer. Defaults to the manager value if not set.
-	RingBufferSize int
-
 	// ErrChan - Reader error channel
 	ErrChan chan error
 
@@ -75,11 +72,6 @@ func (rb *RingBuffer) init(manager *Manager) error {
 
 	if rb.DataHandler == nil && rb.RecordHandler == nil {
 		return fmt.Errorf("no DataHandler/RecordHandler set for %s", rb.Name)
-	}
-
-	// Set default values if not already set
-	if rb.RingBufferSize == 0 {
-		rb.RingBufferSize = manager.options.DefaultRingBufferSize
 	}
 
 	if rb.TelemetryEnabled {
