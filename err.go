@@ -5,6 +5,8 @@ import "errors"
 var (
 	ErrManagerNotInitialized    = errors.New("the manager must be initialized first")
 	ErrManagerNotStarted        = errors.New("the manager must be started first")
+	ErrManagerNotELFLoaded      = errors.New("the manager has not loaded the ELF data")
+	ErrManagerELFLoaded         = errors.New("the manager has already loaded the ELF data")
 	ErrManagerRunning           = errors.New("the manager is already running")
 	ErrUnknownSection           = errors.New("unknown section")
 	ErrUnknownSectionOrFuncName = errors.New("unknown section or eBPF function name")
