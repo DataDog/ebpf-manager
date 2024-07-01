@@ -279,8 +279,8 @@ func (m *Manager) getMapSpec(name string) (*ebpf.MapSpec, bool, error) {
 func (m *Manager) GetMapSpec(name string) (*ebpf.MapSpec, bool, error) {
 	m.stateLock.RLock()
 	defer m.stateLock.RUnlock()
-	if m.collectionSpec == nil || m.state < initialized {
-		return nil, false, ErrManagerNotInitialized
+	if m.collectionSpec == nil || m.state < elfLoaded {
+		return nil, false, ErrManagerNotELFLoaded
 	}
 	return m.getMapSpec(name)
 }
@@ -370,8 +370,8 @@ func (m *Manager) GetPrograms() (map[string]*ebpf.Program, error) {
 func (m *Manager) GetProgramSpecs() (map[string]*ebpf.ProgramSpec, error) {
 	m.stateLock.RLock()
 	defer m.stateLock.RUnlock()
-	if m.collectionSpec == nil || m.state < initialized {
-		return nil, ErrManagerNotInitialized
+	if m.collectionSpec == nil || m.state < elfLoaded {
+		return nil, ErrManagerNotELFLoaded
 	}
 
 	return maps.Clone(m.collectionSpec.Programs), nil
@@ -407,8 +407,8 @@ func (m *Manager) getProgramSpec(id ProbeIdentificationPair) ([]*ebpf.ProgramSpe
 func (m *Manager) GetProgramSpec(id ProbeIdentificationPair) ([]*ebpf.ProgramSpec, bool, error) {
 	m.stateLock.RLock()
 	defer m.stateLock.RUnlock()
-	if m.collectionSpec == nil || m.state < initialized {
-		return nil, false, ErrManagerNotInitialized
+	if m.collectionSpec == nil || m.state < elfLoaded {
+		return nil, false, ErrManagerNotELFLoaded
 	}
 	return m.getProgramSpec(id)
 }
@@ -430,14 +430,35 @@ func (m *Manager) GetProbe(id ProbeIdentificationPair) (*Probe, bool) {
 	return m.getProbe(id)
 }
 
+// LoadELF loads the collection spec from the provided ELF reader
+func (m *Manager) LoadELF(elf io.ReaderAt) error {
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
+	if m.state > elfLoaded {
+		return ErrManagerELFLoaded
+	}
+	return m.loadELF(elf)
+}
+
+func (m *Manager) loadELF(elf io.ReaderAt) error {
+	// Load the provided elf buffer
+	var err error
+	m.collectionSpec, err = ebpf.LoadCollectionSpecFromReader(elf)
+	if err != nil {
+		return err
+	}
+	m.state = elfLoaded
+	return nil
+}
+
 // Init - Initialize the manager.
-// elf: reader containing the eBPF bytecode
+// elf: reader containing the eBPF bytecode, must be nil if LoadELF already called
 func (m *Manager) Init(elf io.ReaderAt) error {
 	return m.InitWithOptions(elf, Options{})
 }
 
 // InitWithOptions - Initialize the manager.
-// elf: reader containing the eBPF bytecode
+// elf: reader containing the eBPF bytecode, must be nil if LoadELF already called
 // options: options provided to the manager to configure its initialization
 func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	m.stateLock.Lock()
@@ -470,12 +491,19 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 		}
 	}
 
-	// Load the provided elf buffer
-	var err error
-	m.collectionSpec, err = ebpf.LoadCollectionSpecFromReader(elf)
-	if err != nil {
+	if m.state < elfLoaded {
+		if elf == nil {
+			m.stateLock.Unlock()
+			return fmt.Errorf("nil ELF reader")
+		}
+
+		if err := m.loadELF(elf); err != nil {
+			m.stateLock.Unlock()
+			return err
+		}
+	} else if elf != nil {
 		m.stateLock.Unlock()
-		return err
+		return ErrManagerELFLoaded
 	}
 
 	if m.options.AdditionalExcludedFunctionCollector != nil {
