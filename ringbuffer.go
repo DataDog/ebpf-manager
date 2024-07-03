@@ -117,14 +117,18 @@ func (rb *RingBuffer) Start() error {
 			}
 
 			if err = rb.ringReader.ReadInto(record); err != nil {
-				if isRingBufferClosed(err) {
+				if errors.Is(err, ringbuf.ErrClosed) {
 					rb.wgReader.Done()
 					return
 				}
-				if rb.ErrChan != nil {
-					rb.ErrChan <- err
+				if errors.Is(err, ringbuf.ErrFlushed) {
+					record.RawSample = record.RawSample[:0]
+				} else {
+					if rb.ErrChan != nil {
+						rb.ErrChan <- err
+					}
+					continue
 				}
-				continue
 			}
 
 			if rb.usageTelemetry != nil {
@@ -140,6 +144,17 @@ func (rb *RingBuffer) Start() error {
 
 	rb.state = running
 	return nil
+}
+
+// Flush unblocks the underlying reader and will cause the pending samples to be read
+func (rb *RingBuffer) Flush() {
+	rb.stateLock.Lock()
+	defer rb.stateLock.Unlock()
+	if rb.state != running {
+		return
+	}
+
+	_ = rb.ringReader.Flush()
 }
 
 // Stop - Stops the perf ring buffer
@@ -182,8 +197,4 @@ func (rb *RingBuffer) Telemetry() (usage uint64, ok bool) {
 	}
 	// reset to zero, so we return the max value between each collection
 	return rb.usageTelemetry.Swap(0), true
-}
-
-func isRingBufferClosed(err error) bool {
-	return errors.Is(err, ringbuf.ErrClosed)
 }
