@@ -84,6 +84,10 @@ type Options struct {
 	// on the system. See PerfMap.PerfRingBuffer for more.
 	DefaultPerfRingBufferSize int
 
+	// RingBufferSize - Manager-level default value for the ring buffers. Defaults to the size of 1 page
+	// on the system.
+	DefaultRingBufferSize int
+
 	// Watermark - Manager-level default value for the watermarks of the perf ring buffers.
 	// See PerfMap.Watermark for more.
 	DefaultWatermark int
@@ -467,6 +471,9 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	m.netlinkSocketCache = newNetlinkSocketCache()
 	if m.options.DefaultPerfRingBufferSize == 0 {
 		m.options.DefaultPerfRingBufferSize = os.Getpagesize()
+	}
+	if m.options.DefaultRingBufferSize == 0 {
+		m.options.DefaultRingBufferSize = os.Getpagesize() * 16
 	}
 
 	// perform a quick sanity check on the provided probes and maps
