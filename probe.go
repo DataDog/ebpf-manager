@@ -628,12 +628,16 @@ func (p *Probe) resume() error {
 		return nil
 	}
 
+	if err := p.disableBypass(); err != nil {
+		return err
+	}
+	p.state = running
+	return nil
+}
+
+func (p *Probe) disableBypass() error {
 	if p.bypassIndex > 0 && p.bypassMap != nil {
-		if err := p.bypassMap.array.Update(p.bypassIndex, enableValue, ebpf.UpdateExist); err != nil {
-			return err
-		}
-		p.state = running
-		return nil
+		return p.bypassMap.array.Update(p.bypassIndex, enableValue, ebpf.UpdateExist)
 	}
 	return nil
 }
@@ -657,6 +661,7 @@ func (p *Probe) Detach() error {
 		p.state = initialized
 	}
 
+	_ = p.disableBypass()
 	return err
 }
 
