@@ -1,5 +1,5 @@
-github.com/cilium/ebpf v0.15.1-0.20240624161703-13a828e0263f h1:YfPXxzRUOSu7LcYmeU6m880yr1u5ekFyGvEnkCu2L0s=
-github.com/cilium/ebpf v0.15.1-0.20240624161703-13a828e0263f/go.mod h1:L7u2Blt2jMM/vLAVgjxluxtBKlz3/GWjB0dMOEngfwE=
+github.com/cilium/ebpf v0.15.1-0.20240709101333-5976561b28aa h1:b4/gKHzwOL8b2p1y6yICwS2kUgaZgJs9qpcYmJS9+NE=
+github.com/cilium/ebpf v0.15.1-0.20240709101333-5976561b28aa/go.mod h1:L7u2Blt2jMM/vLAVgjxluxtBKlz3/GWjB0dMOEngfwE=
 github.com/go-quicktest/qt v1.101.0 h1:O1K29Txy5P2OK0dGo59b7b0LR6wKfIhttaAhHUyn7eI=
 github.com/go-quicktest/qt v1.101.0/go.mod h1:14Bz/f7NwaXPtdYEgzsx46kqSxVwTbzVZsDC26tQJow=
 github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
