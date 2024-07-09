@@ -1176,6 +1176,12 @@ func (m *Manager) DetachHook(id ProbeIdentificationPair) error {
 // using a MapEditor. The original program is selected using the provided UID and the section provided in the new probe.
 // Note that the BTF based constant edition will not work with this method.
 func (m *Manager) CloneProgram(UID string, newProbe *Probe, constantsEditors []ConstantEditor, mapEditors map[string]*ebpf.Map) error {
+	return m.CloneProgramWithSpecEditor(UID, newProbe, constantsEditors, mapEditors, nil)
+}
+
+// CloneProgramWithSpecEditor - does the same thing as CloneProgram, but allows to intercept the new program spec before the probe
+// is initialized. This is useful for example to clone an fentry probe, and edit the AttachTo field before the init of the new probe.
+func (m *Manager) CloneProgramWithSpecEditor(UID string, newProbe *Probe, constantsEditors []ConstantEditor, mapEditors map[string]*ebpf.Map, specEditor func(spec *ebpf.ProgramSpec)) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
 	if m.collection == nil || m.state < initialized {
@@ -1220,6 +1226,9 @@ func (m *Manager) CloneProgram(UID string, newProbe *Probe, constantsEditors []C
 
 	// Clone the program
 	clonedSpec := oldProgramSpec.Copy()
+	if specEditor != nil {
+		specEditor(clonedSpec)
+	}
 	newProbe.programSpec = clonedSpec
 
 	// newEditor constants
