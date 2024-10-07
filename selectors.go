@@ -2,6 +2,7 @@ package manager
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -198,4 +199,95 @@ func (be *BestEffort) EditProbeIdentificationPair(old ProbeIdentificationPair, n
 	for _, selector := range be.Selectors {
 		selector.EditProbeIdentificationPair(old, new)
 	}
+}
+
+type ProbesSelectorBuilder struct {
+	selectors []ProbesSelector
+	currSelectorSlice *[]ProbesSelector
+}
+
+func NewProbesSelectorBuilder() *ProbesSelectorBuilder {
+	b := &ProbesSelectorBuilder{
+		selectors: make([]ProbesSelector, 0),
+	}
+
+	b.currSelectorSlice = &b.selectors
+	return b
+}
+
+type ProbeSelectorLocation int
+const (
+	ProbeSelectorLocationRoot ProbeSelectorLocation = iota
+	ProbeSelectorLocationNested
+)
+
+func (b *ProbesSelectorBuilder) AllOf(location ProbeSelectorLocation) *ProbesSelectorBuilder {
+	allof := &AllOf{}
+	if location == ProbeSelectorLocationRoot {
+		b.selectors = append(b.selectors, allof)
+	} else {
+		*b.currSelectorSlice = append(*b.currSelectorSlice, allof)
+	}
+	b.currSelectorSlice = &allof.Selectors
+
+	return b
+}
+
+func (b *ProbesSelectorBuilder) OneOf(location ProbeSelectorLocation) *ProbesSelectorBuilder {
+	oneof := &OneOf{}
+	if location == ProbeSelectorLocationRoot {
+		b.selectors = append(b.selectors, oneof)
+	} else {
+		*b.currSelectorSlice = append(*b.currSelectorSlice, oneof)
+	}
+	b.currSelectorSlice = &oneof.Selectors
+
+	return b
+}
+
+func (b *ProbesSelectorBuilder) BestEffort(location ProbeSelectorLocation) *ProbesSelectorBuilder {
+	be := &BestEffort{}
+	if location == ProbeSelectorLocationRoot {
+		b.selectors = append(b.selectors, be)
+	} else {
+		*b.currSelectorSlice = append(*b.currSelectorSlice, be)
+	}
+	b.currSelectorSlice = &be.Selectors
+
+	return b
+}
+
+type ProbeIdOptions int
+
+const (
+	ProbeIdAddRetprobe ProbeIdOptions = iota
+)
+
+var addRetRegex = regexp.MustCompile(`^(k|u)probe`)
+
+func (b *ProbesSelectorBuilder) ProbeID(funcName string, opts ...ProbeIdOptions) *ProbesSelectorBuilder {
+	pi := &ProbeIdentificationPair{
+		EBPFFuncName: funcName,
+	}
+
+	*b.currSelectorSlice = append(*b.currSelectorSlice, &ProbeSelector{ProbeIdentificationPair: *pi})
+
+	for _, opt := range opts {
+		switch opt {
+		case ProbeIdAddRetprobe:
+			modified := addRetRegex.ReplaceAllString(funcName, "${1}retprobe")
+
+			if modified == funcName {
+				panic("ProbeIdAddRetprobe can only be used with kprobe or uprobe")
+			}
+
+			b.ProbeID(modified)
+		}
+	}
+
+	return b
+}
+
+func (b *ProbesSelectorBuilder) Build() []ProbesSelector {
+	return b.selectors
 }
