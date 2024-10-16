@@ -261,3 +261,20 @@ func TestInstructionPatching(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestLoadELF(t *testing.T) {
+	f, err := os.Open("testdata/patching.elf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.Close() })
+	m := &Manager{
+		state: reset,
+	}
+	if err = m.LoadELF(f); err != nil {
+		t.Errorf("LoadELF() error = %v, wantErr %v", err, nil)
+	}
+	if err = m.LoadELF(f); errors.Is(err, ErrManagerELFLoaded) {
+		t.Errorf("LoadELF() error = %v, wantErr %v", err, ErrManagerELFLoaded)
+	}
+}
