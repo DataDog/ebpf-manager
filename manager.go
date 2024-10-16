@@ -430,7 +430,7 @@ func (m *Manager) GetProbe(id ProbeIdentificationPair) (*Probe, bool) {
 func (m *Manager) LoadELF(elf io.ReaderAt) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
-	if m.state > elfLoaded {
+	if m.state >= elfLoaded {
 		return ErrManagerELFLoaded
 	}
 	return m.loadELF(elf)
