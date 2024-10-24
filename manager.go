@@ -362,6 +362,17 @@ func (m *Manager) GetPrograms() (map[string]*ebpf.Program, error) {
 	return maps.Clone(m.collection.Programs), nil
 }
 
+// GetMapSpecs - Return the list of eBPF map specs in the manager
+func (m *Manager) GetMapSpecs() (map[string]*ebpf.MapSpec, error) {
+	m.stateLock.RLock()
+	defer m.stateLock.RUnlock()
+	if m.collectionSpec == nil || m.state < elfLoaded {
+		return nil, ErrManagerNotELFLoaded
+	}
+
+	return maps.Clone(m.collectionSpec.Maps), nil
+}
+
 // GetProgramSpecs - Return the list of eBPF program specs in the manager
 func (m *Manager) GetProgramSpecs() (map[string]*ebpf.ProgramSpec, error) {
 	m.stateLock.RLock()
