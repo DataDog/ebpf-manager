@@ -6,7 +6,7 @@ require (
 	github.com/cilium/ebpf v0.16.0
 	github.com/vishvananda/netlink v1.3.0
 	github.com/vishvananda/netns v0.0.5
-	golang.org/x/sys v0.27.0
+	golang.org/x/sys v0.28.0
 )
 
 require golang.org/x/exp v0.0.0-20230817173708-d852ddb80c63 // indirect
