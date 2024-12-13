@@ -268,11 +268,11 @@ func (m *PerfMap) BufferSize() int {
 }
 
 // Telemetry returns the usage and lost telemetry
-func (m *PerfMap) Telemetry() (usage []uint64, lost []uint64) {
+func (m *PerfMap) Telemetry() (usage []uint64, lost []uint64, wakeupCount uint64) {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
 	if m.state < initialized || m.usageTelemetry == nil || m.lostTelemetry == nil {
-		return nil, nil
+		return nil, nil, 0
 	}
 	usage = make([]uint64, len(m.usageTelemetry))
 	lost = make([]uint64, len(m.lostTelemetry))
@@ -280,6 +280,9 @@ func (m *PerfMap) Telemetry() (usage []uint64, lost []uint64) {
 		// reset to zero, so we return the max value between each collection
 		usage[cpu] = m.usageTelemetry[cpu].Swap(0)
 		lost[cpu] = m.lostTelemetry[cpu].Swap(0)
+	}
+	if m.perfReader != nil {
+		wakeupCount = m.perfReader.WakeupCount()
 	}
 	return
 }
