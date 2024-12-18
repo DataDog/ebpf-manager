@@ -722,24 +722,15 @@ func (m *Manager) setupBypass() (*Map, error) {
 				// bpf_map_lookup_elem
 				asm.FnMapLookupElem.Call(),
 				// if ret == 0, jump to `return 0`
-				{
-					OpCode:   asm.JEq.Op(asm.ImmSource),
-					Dst:      asm.R0,
-					Offset:   3, // jump TO return
-					Constant: int64(0),
-				},
+				asm.JEq.Imm(asm.R0, 0, "bypass_return"),
 				// pointer indirection of result from map lookup
 				asm.LoadMem(asm.R1, asm.R0, 0, asm.Word),
 				// if bypass NOT enabled, jump over return
-				{
-					OpCode:   asm.JEq.Op(asm.ImmSource),
-					Dst:      asm.R1,
-					Offset:   2, // jump over return on next instruction
-					Constant: int64(0),
-				},
+				asm.JEq.Imm(asm.R1, 0, "bypass_continue"),
+				asm.Mov.Imm(asm.R0, 0).WithSymbol("bypass_return"),
 				asm.Return(),
 				// zero out used stack slot
-				asm.StoreImm(asm.RFP, stackOffset, 0, asm.Word),
+				asm.StoreImm(asm.RFP, stackOffset, 0, asm.Word).WithSymbol("bypass_continue"),
 				asm.Mov.Reg(asm.R1, asm.R6),
 			}, p.Instructions[i+1:]...)
 			// necessary to keep kernel happy about source information for start of program
