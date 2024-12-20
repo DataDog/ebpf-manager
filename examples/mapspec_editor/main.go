@@ -5,10 +5,8 @@ import (
 	_ "embed"
 	"fmt"
 	"log"
-	"math"
 
 	"github.com/cilium/ebpf"
-	"golang.org/x/sys/unix"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
@@ -33,10 +31,7 @@ func run() error {
 				EditorFlag: manager.EditMaxEntries | manager.EditType,
 			},
 		},
-		RLimit: &unix.Rlimit{
-			Cur: math.MaxUint64,
-			Max: math.MaxUint64,
-		},
+		RemoveRlimit: true,
 	}
 
 	if err := m.InitWithOptions(bytes.NewReader(Probe), options); err != nil {

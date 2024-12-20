@@ -14,7 +14,6 @@ import (
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/ebpf/features"
-	"golang.org/x/sys/unix"
 )
 
 // FunctionExcluder - An interface for types that can be used for `AdditionalExcludedFunctionCollector`
@@ -104,9 +103,9 @@ type Options struct {
 	// ProbeRetryDelay - Defines the delay to wait before a probe should retry to attach / detach on error.
 	DefaultProbeRetryDelay time.Duration
 
-	// RLimit - The maps & programs provided to the manager might exceed the maximum allowed memory lock.
+	// RemoveRlimit - The maps & programs provided to the manager might exceed the maximum allowed memory lock.
 	// `RLIMIT_MEMLOCK` If a limit is provided here it will be applied when the manager is initialized.
-	RLimit *unix.Rlimit
+	RemoveRlimit bool
 
 	// KeepKernelBTF - Defines if the kernel types defined in VerifierOptions.Programs.KernelTypes and KernelModuleTypes should be cleaned up
 	// once the manager is done using them. By default, the manager will clean them up to save up space. DISCLAIMER: if
@@ -487,9 +486,8 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	}
 
 	// set resource limit if requested
-	if m.options.RLimit != nil {
-		err := unix.Setrlimit(unix.RLIMIT_MEMLOCK, m.options.RLimit)
-		if err != nil {
+	if m.options.RemoveRlimit {
+		if err := ebpf.RemoveMemlock(); err != nil {
 			m.stateLock.Unlock()
 			return fmt.Errorf("couldn't adjust RLIMIT_MEMLOCK: %w", err)
 		}
