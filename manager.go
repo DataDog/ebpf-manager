@@ -14,6 +14,7 @@ import (
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/ebpf/features"
+	"github.com/cilium/ebpf/rlimit"
 )
 
 // FunctionExcluder - An interface for types that can be used for `AdditionalExcludedFunctionCollector`
@@ -487,7 +488,7 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 
 	// set resource limit if requested
 	if m.options.RemoveRlimit {
-		if err := ebpf.RemoveMemlock(); err != nil {
+		if err := rlimit.RemoveMemlock(); err != nil {
 			m.stateLock.Unlock()
 			return fmt.Errorf("couldn't adjust RLIMIT_MEMLOCK: %w", err)
 		}
