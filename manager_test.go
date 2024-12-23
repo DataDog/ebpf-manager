@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"math"
 	"os"
 	"strings"
 	"testing"
@@ -12,7 +11,6 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/rlimit"
-	"golang.org/x/sys/unix"
 )
 
 func TestVerifierError(t *testing.T) {
@@ -60,10 +58,7 @@ func TestExclude(t *testing.T) {
 		},
 	}
 	opts := Options{
-		RLimit: &unix.Rlimit{
-			Cur: math.MaxUint64,
-			Max: math.MaxUint64,
-		},
+		RemoveRlimit: true,
 		ExcludedMaps: []string{"map_two"},
 	}
 
