@@ -119,7 +119,7 @@ func (m *Manager) editConstantWithEditor(prog *ebpf.ProgramSpec, edit *editor, e
 		return fmt.Errorf("with the asm method, the constant value has to be of type uint64")
 	}
 	if err := edit.RewriteConstant(editor.Name, data); err != nil {
-		if isUnreferencedSymbol(err) && editor.FailOnMissing {
+		if editor.FailOnMissing && isUnreferencedSymbol(err) {
 			return err
 		}
 	}
