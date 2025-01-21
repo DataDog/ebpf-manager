@@ -48,9 +48,6 @@ type Map struct {
 	// Contents - The initial contents of the map. May be nil.
 	Contents []ebpf.MapKV
 
-	// Freeze - Whether to freeze a map after setting its initial contents.
-	Freeze bool
-
 	// Other options
 	MapOptions
 }
@@ -62,7 +59,6 @@ func loadNewMap(spec *ebpf.MapSpec, options MapOptions) (*Map, error) {
 		arraySpec:  spec,
 		Name:       spec.Name,
 		Contents:   spec.Contents,
-		Freeze:     spec.Freeze,
 		MapOptions: options,
 	}
 

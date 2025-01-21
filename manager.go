@@ -1310,7 +1310,6 @@ func (m *Manager) matchSpecs() error {
 			return fmt.Errorf("couldn't find map at maps/%s: %w", managerMap.Name, ErrUnknownSection)
 		}
 		spec.Contents = managerMap.Contents
-		spec.Freeze = managerMap.Freeze
 		managerMap.arraySpec = spec
 	}
 
