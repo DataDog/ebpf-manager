@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/btf"
@@ -963,16 +965,28 @@ func (m *Manager) stopReaders(cleanup MapCleanupType) error {
 	return errors.Join(errs...)
 }
 
+func (m *Manager) stopProbes() error {
+	// Calling close() on perf_kprobe PMUs takes 30-50ms, which adds up for large projects.
+	// Close them concurrently to speed things up
+	var eg errgroup.Group
+	eg.SetLimit(12)
+	for _, probe := range m.Probes {
+		eg.Go(func() error {
+			if stopErr := probe.Stop(); stopErr != nil {
+				return fmt.Errorf("program %s couldn't gracefully shut down: %w", probe.ProbeIdentificationPair, stopErr)
+			}
+			return nil
+		})
+	}
+	return eg.Wait()
+}
+
 func (m *Manager) stop(cleanup MapCleanupType) error {
 	var errs []error
 	errs = append(errs, m.stopReaders(cleanup))
 
 	// Detach eBPF programs
-	for _, probe := range m.Probes {
-		if stopErr := probe.Stop(); stopErr != nil {
-			errs = append(errs, fmt.Errorf("program %s couldn't gracefully shut down: %w", probe.ProbeIdentificationPair, stopErr))
-		}
-	}
+	errs = append(errs, m.stopProbes())
 
 	// Close maps
 	for _, managerMap := range m.Maps {
