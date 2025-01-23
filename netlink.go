@@ -14,7 +14,8 @@ import (
 // TC filter count
 type NetlinkSocket struct {
 	Sock          *netlink.Handle
-	TCFilterCount map[int]int
+	filterMutex sync.Mutex
+	tcFilterCount map[int]int
 }
 
 // NewNetlinkSocket - Returns a new NetlinkSocket instance
@@ -22,7 +23,7 @@ func NewNetlinkSocket(nsHandle uint64) (*NetlinkSocket, error) {
 	var err error
 	var netnsHandle netns.NsHandle
 	cacheEntry := NetlinkSocket{
-		TCFilterCount: make(map[int]int),
+		tcFilterCount: make(map[int]int),
 	}
 
 	if nsHandle == 0 {
@@ -37,6 +38,28 @@ func NewNetlinkSocket(nsHandle uint64) (*NetlinkSocket, error) {
 		return nil, fmt.Errorf("couldn't open a netlink socket: %w", err)
 	}
 	return &cacheEntry, nil
+}
+
+// IncreaseFilterCount increases the count for the given index in a thread-safe manner. The return value is the new count.
+func (ns *NetlinkSocket) IncreaseFilterCount(index int) {
+	ns.filterMutex.Lock()
+	defer ns.filterMutex.Unlock()
+	ns.tcFilterCount[index]++
+}
+
+// DecreaseFilterCount decreases the count for the given index in a thread-safe manner. It will delete the entry if the count reaches 0.
+// The return value is the count after the decrease. If the entry was deleted, the return value is 0.
+func (ns *NetlinkSocket) DecreaseFilterCount(index int) int {
+	ns.filterMutex.Lock()
+	defer ns.filterMutex.Unlock()
+	ns.tcFilterCount[index]--
+
+	if ns.tcFilterCount[index] <= 0 {
+		delete(ns.tcFilterCount, index)
+		return 0
+	}
+
+	return ns.tcFilterCount[index]
 }
 
 type netlinkSocketCache struct {
