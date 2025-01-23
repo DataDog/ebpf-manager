@@ -49,10 +49,14 @@ func (m *Manager) editConstants() error {
 			if !editor.BTFGlobalConstant {
 				continue
 			}
-			constant := map[string]interface{}{
-				editor.Name: editor.GetValue(nil), // in BTF mode, we don't have access to the hooked program
+			vs, ok := m.collectionSpec.Variables[editor.Name]
+			if !ok {
+				if editor.FailOnMissing {
+					return fmt.Errorf("variable %s not found", editor.Name)
+				}
+				continue
 			}
-			if err := m.collectionSpec.RewriteConstants(constant); err != nil && editor.FailOnMissing {
+			if err := vs.Set(editor.GetValue(nil)); err != nil {
 				return err
 			}
 		}
