@@ -168,7 +168,8 @@ func (p *Probe) attachTCCLS() error {
 	if !found {
 		return fmt.Errorf("couldn't create TC filter for %v: filter not found", p.ProbeIdentificationPair)
 	}
-	ntl.TCFilterCount[p.IfIndex]++
+
+	ntl.IncreaseFilterCount(p.IfIndex)
 
 	return nil
 }
@@ -236,17 +237,14 @@ func (p *Probe) detachTCCLS() error {
 			}
 		}
 	}
-	ntl.TCFilterCount[p.IfIndex]--
 
-	// check if the qdisc should be deleted
-	if ntl.TCFilterCount[p.IfIndex] >= 1 {
+	remainingFilterUsers := ntl.DecreaseFilterCount(p.IfIndex)
+	if remainingFilterUsers >= 1 {
 		// at list one of our classifiers is still using it
 		return nil
 	}
-	delete(ntl.TCFilterCount, p.IfIndex)
 
 	if p.TCCleanupQDisc {
-
 		// check if someone else is using the clsact qdisc on ingress
 		resp, err := ntl.Sock.FilterList(p.link, netlink.HANDLE_MIN_INGRESS)
 		if err != nil || err == nil && len(resp) > 0 {
