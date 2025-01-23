@@ -56,8 +56,12 @@ func (m *Manager) editConstants() error {
 				}
 				continue
 			}
+			if !vs.Constant() {
+				return fmt.Errorf("variable %s is not a constant", editor.Name)
+			}
+
 			if err := vs.Set(editor.GetValue(nil)); err != nil {
-				return err
+				return fmt.Errorf("edit constant %s: %s", editor.Name, err)
 			}
 		}
 	}
