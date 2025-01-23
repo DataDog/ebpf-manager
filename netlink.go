@@ -14,7 +14,7 @@ import (
 // TC filter count
 type NetlinkSocket struct {
 	Sock          *netlink.Handle
-	filterMutex sync.Mutex
+	filterMutex   sync.Mutex
 	tcFilterCount map[int]int
 }
 
