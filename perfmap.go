@@ -212,22 +212,22 @@ func (m *PerfMap) Flush() {
 func (m *PerfMap) Stop(cleanup MapCleanupType) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
-	if m.state <= stopped {
-		return nil
+
+	var err error
+	if m.state > stopped {
+		err = m.perfReader.Close()
+		m.wgReader.Wait()
+		m.state = stopped
 	}
-	m.state = stopped
-
-	// close perf reader
-	err := m.perfReader.Close()
-
-	m.wgReader.Wait()
 
 	// close underlying map
-	if errTmp := m.Map.close(cleanup); errTmp != nil {
-		if err == nil {
-			err = errTmp
-		} else {
-			err = fmt.Errorf("%s: %w", err.Error(), errTmp)
+	if m.state >= initialized {
+		if errTmp := m.Map.close(cleanup); errTmp != nil {
+			if err == nil {
+				err = errTmp
+			} else {
+				err = fmt.Errorf("%s: %w", err.Error(), errTmp)
+			}
 		}
 	}
 

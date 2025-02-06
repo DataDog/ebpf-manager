@@ -161,22 +161,22 @@ func (rb *RingBuffer) Flush() {
 func (rb *RingBuffer) Stop(cleanup MapCleanupType) error {
 	rb.stateLock.Lock()
 	defer rb.stateLock.Unlock()
-	if rb.state <= stopped {
-		return nil
+
+	var err error
+	if rb.state > stopped {
+		err = rb.ringReader.Close()
+		rb.wgReader.Wait()
+		rb.state = stopped
 	}
-	rb.state = stopped
-
-	// close ring reader
-	err := rb.ringReader.Close()
-
-	rb.wgReader.Wait()
 
 	// close underlying map
-	if errTmp := rb.Map.close(cleanup); errTmp != nil {
-		if err == nil {
-			err = errTmp
-		} else {
-			err = fmt.Errorf("%s: %w", err.Error(), errTmp)
+	if rb.state >= initialized {
+		if errTmp := rb.Map.close(cleanup); errTmp != nil {
+			if err == nil {
+				err = errTmp
+			} else {
+				err = fmt.Errorf("%s: %w", err.Error(), errTmp)
+			}
 		}
 	}
 

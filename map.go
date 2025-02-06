@@ -94,7 +94,7 @@ func (m *Map) Close(cleanup MapCleanupType) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
 	if m.state < initialized {
-		return ErrMapInitialized
+		return ErrMapNotInitialized
 	}
 	return m.close(cleanup)
 }

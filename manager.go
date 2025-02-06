@@ -938,6 +938,14 @@ func (m *Manager) Stop(cleanup MapCleanupType) error {
 	return m.stop(cleanup)
 }
 
+// ForceStop - Detach all eBPF programs and stop perf ring readers, ignore the previous state. The cleanup parameter defines which maps should be closed.
+// See MapCleanupType for mode.
+func (m *Manager) ForceStop(cleanup MapCleanupType) error {
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
+	return m.stop(cleanup)
+}
+
 // StopReaders stop the kernel events readers Perf or Ring buffer
 func (m *Manager) StopReaders(cleanup MapCleanupType) error {
 	m.stateLock.Lock()
