@@ -14,7 +14,6 @@ import (
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
-	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/ebpf/features"
 	"github.com/cilium/ebpf/rlimit"
 )
@@ -123,9 +122,6 @@ type Options struct {
 	// SkipRingbufferReaderStartup - Ringbuffer maps whose name is set to true with this option will not have their reader goroutine started when calling the manager.Start() function.
 	// RingBuffer.Start() can then be used to start reading events from the corresponding RingBuffer.
 	SkipRingbufferReaderStartup map[string]bool
-
-	// KernelModuleBTFLoadFunc is a function to provide custom loading of BTF for kernel modules on-demand as programs are loaded
-	KernelModuleBTFLoadFunc func(kmodName string) (*btf.Spec, error)
 
 	// BypassEnabled controls whether program bypass is enabled for this manager
 	BypassEnabled bool
@@ -632,35 +628,6 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 		if err := patcher(m); err != nil {
 			resetManager(m)
 			return err
-		}
-	}
-
-	if options.KernelModuleBTFLoadFunc != nil {
-		for _, p := range m.collectionSpec.Programs {
-			mod, err := p.KernelModule()
-			if err != nil {
-				resetManager(m)
-				return fmt.Errorf("kernel module search for %s: %w", p.AttachTo, err)
-			}
-			if mod == "" {
-				continue
-			}
-
-			if options.VerifierOptions.Programs.KernelModuleTypes == nil {
-				options.VerifierOptions.Programs.KernelModuleTypes = make(map[string]*btf.Spec)
-			}
-
-			// try default BTF first
-			modBTF, err := btf.LoadKernelModuleSpec(mod)
-			if err != nil {
-				// try callback function next
-				modBTF, err = options.KernelModuleBTFLoadFunc(mod)
-				if err != nil {
-					resetManager(m)
-					return fmt.Errorf("kernel module BTF load for %s: %w", mod, err)
-				}
-			}
-			options.VerifierOptions.Programs.KernelModuleTypes[mod] = modBTF
 		}
 	}
 
