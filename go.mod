@@ -6,6 +6,6 @@ require (
 	github.com/cilium/ebpf v0.17.2
 	github.com/vishvananda/netlink v1.3.0
 	github.com/vishvananda/netns v0.0.5
-	golang.org/x/sync v0.11.0
+	golang.org/x/sync v0.12.0
 	golang.org/x/sys v0.31.0
 )
