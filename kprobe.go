@@ -45,7 +45,9 @@ func (p *Probe) attachKprobe() error {
 	var startErr, fallbackErr error
 	var tl *tracefsLink
 	if tl, startErr = startFunc(); startErr != nil {
+		fmt.Printf("%v start attach function failed: %v\n", startFunc, startErr)
 		if tl, fallbackErr = fallbackFunc(); fallbackErr != nil {
+			fmt.Printf("%v fallback attach function failed: %v\n", startFunc, startErr)
 			return errors.Join(startErr, fallbackErr)
 		}
 	}
