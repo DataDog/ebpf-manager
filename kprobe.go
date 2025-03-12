@@ -41,6 +41,7 @@ func (p *Probe) attachKprobe() error {
 		startFunc, fallbackFunc = eventsFunc, pmuFunc
 	}
 
+	fmt.Printf("Attaching %v", p.ProbeIdentificationPair)
 	var startErr, fallbackErr error
 	var tl *tracefsLink
 	if tl, startErr = startFunc(); startErr != nil {
