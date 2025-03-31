@@ -14,7 +14,9 @@ const (
 	EditType       MapSpecEditorFlag = 1 << 1
 	EditMaxEntries MapSpecEditorFlag = 1 << 2
 	EditFlags      MapSpecEditorFlag = 1 << 3
-	EditKeyValue   MapSpecEditorFlag = 1 << 4
+	EditKey        MapSpecEditorFlag = 1 << 4
+	EditValue      MapSpecEditorFlag = 1 << 5
+	EditKeyValue   MapSpecEditorFlag = EditKey | EditValue
 )
 
 // MapSpecEditor - A MapSpec editor defines how specific parameters of specific maps should be updated at runtime
@@ -63,9 +65,11 @@ func (m *Manager) editMapSpecs() error {
 		if EditFlags&mapEditor.EditorFlag == EditFlags {
 			spec.Flags = mapEditor.Flags
 		}
-		if EditKeyValue&mapEditor.EditorFlag == EditKeyValue {
+		if EditKey&mapEditor.EditorFlag == EditKey {
 			spec.Key = mapEditor.Key
 			spec.KeySize = mapEditor.KeySize
+		}
+		if EditValue&mapEditor.EditorFlag == EditValue {
 			spec.Value = mapEditor.Value
 			spec.ValueSize = mapEditor.ValueSize
 		}
