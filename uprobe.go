@@ -138,15 +138,17 @@ func (p *Probe) attachUprobe() error {
 		return &tracefsLink{perfEventLink: newPerfEventLink(pfd), Type: uprobe}, nil
 	}
 
+	pmuFirst := true
 	startFunc, fallbackFunc := pmuFunc, eventsFunc
 	if p.UprobeAttachMethod == AttachWithProbeEvents {
+		pmuFirst = false
 		startFunc, fallbackFunc = eventsFunc, pmuFunc
 	}
 
 	var startErr, fallbackErr error
 	var tl *tracefsLink
 	if tl, startErr = startFunc(); startErr != nil {
-		if !errors.Is(startErr, ErrNotSupported) {
+		if pmuFirst && !errors.Is(startErr, ErrNotSupported) {
 			return startErr
 		}
 
