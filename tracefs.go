@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -220,6 +221,10 @@ func tracefsPrefix(ret bool) string {
 	return "p"
 }
 
+// TraceFSLock is used to synchronize access to the tracefs events files,
+// preventing some issues with concurrent access to it, that can cause some kernel crashes.
+var TraceFSLock sync.Mutex
+
 func registerTraceFSEvent(args traceFsEventArgs) (int, string, error) {
 	prefix := tracefsPrefix(args.ReturnProbe)
 	eventName, err := generateEventName(prefix, args.Symbol, args.UID, args.AttachingPID)
@@ -262,9 +267,17 @@ func registerTraceFSEvent(args traceFsEventArgs) (int, string, error) {
 	}
 	sb.WriteRune('\n')
 	cmd := sb.String()
+
+	// because of https://lore.kernel.org/all/20221121081103.3070449-1-zhengyejian1@huawei.com/T/
+	// we take a lock to prevent parallel writes to the trace events file
+	TraceFSLock.Lock()
+
 	if _, err = f.WriteString(cmd); err != nil && !os.IsExist(err) {
+		TraceFSLock.Unlock()
 		return -1, "", fmt.Errorf("cannot write %q to %s: %w", cmd, args.Type.eventsFilename(), err)
 	}
+
+	TraceFSLock.Unlock()
 
 	// Retrieve probe ID
 	probeIDFile := fmt.Sprintf("events/%ss/%s/id", args.Type.String(), eventName)
@@ -290,6 +303,11 @@ func unregisterTraceFSEvent(eventsFile string, name string) error {
 	}
 	defer f.Close()
 	cmd := fmt.Sprintf("-:%s\n", name)
+
+	// see registerTraceFSEvent for why we take this lock here
+	TraceFSLock.Lock()
+	defer TraceFSLock.Unlock()
+
 	if _, err = f.WriteString(cmd); err != nil {
 		var pe *os.PathError
 		if errors.As(err, &pe) && pe.Err == syscall.ENOENT {
