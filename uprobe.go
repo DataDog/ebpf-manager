@@ -146,6 +146,10 @@ func (p *Probe) attachUprobe() error {
 	var startErr, fallbackErr error
 	var tl *tracefsLink
 	if tl, startErr = startFunc(); startErr != nil {
+		if !errors.Is(startErr, ErrNotSupported) {
+			return startErr
+		}
+
 		if tl, fallbackErr = fallbackFunc(); fallbackErr != nil {
 			return errors.Join(startErr, fallbackErr)
 		}
