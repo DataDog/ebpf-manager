@@ -148,6 +148,8 @@ func (p *Probe) attachUprobe() error {
 	var startErr, fallbackErr error
 	var tl *tracefsLink
 	if tl, startErr = startFunc(); startErr != nil {
+		// do not fallback on tracefs events if PMU attach method is supported
+		// and we got an actual error from it
 		if pmuFirst && !errors.Is(startErr, ErrNotSupported) {
 			return startErr
 		}
