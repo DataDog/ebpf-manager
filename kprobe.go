@@ -35,15 +35,23 @@ func (p *Probe) attachKprobe() error {
 		return &tracefsLink{perfEventLink: newPerfEventLink(pfd), Type: kprobe}, nil
 	}
 
+	pmuFirst := true
 	startFunc, fallbackFunc := pmuFunc, eventsFunc
 	// currently the perf event open ABI doesn't allow to specify the max active parameter
 	if (p.KProbeMaxActive > 0 && p.isReturnProbe) || p.KprobeAttachMethod == AttachKprobeWithKprobeEvents {
+		pmuFirst = false
 		startFunc, fallbackFunc = eventsFunc, pmuFunc
 	}
 
 	var startErr, fallbackErr error
 	var tl *tracefsLink
 	if tl, startErr = startFunc(); startErr != nil {
+		// do not fallback on tracefs events if PMU attach method is supported
+		// and we got an actual error from it
+		if pmuFirst && !errors.Is(startErr, ErrNotSupported) {
+			return startErr
+		}
+
 		if tl, fallbackErr = fallbackFunc(); fallbackErr != nil {
 			return errors.Join(startErr, fallbackErr)
 		}
