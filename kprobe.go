@@ -65,6 +65,7 @@ func (p *Probe) attachKprobe() error {
 	return nil
 }
 
+// PerfEventFD returns the associated perf event's fd for this Probe
 func (p *Probe) PerfEventFD() (uint32, error) {
 	v, ok := p.progLink.(*tracefsLink)
 	if !ok {
