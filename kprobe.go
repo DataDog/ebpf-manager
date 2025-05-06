@@ -65,6 +65,16 @@ func (p *Probe) attachKprobe() error {
 	return nil
 }
 
+// PerfEventFD returns the associated perf event's fd for this Probe
+func (p *Probe) PerfEventFD() (uint32, error) {
+	v, ok := p.progLink.(*tracefsLink)
+	if !ok {
+		return 0, fmt.Errorf("Probe %q does not have a perf event link", p.programSpec.Name)
+	}
+
+	return v.perfEventLink.fd.Value()
+}
+
 // attachWithKprobeEvents attaches the kprobe using the kprobes_events ABI
 func (p *Probe) attachWithKprobeEvents() (*tracefsLink, error) {
 	if p.kprobeHookPointNotExist {
