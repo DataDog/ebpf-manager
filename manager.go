@@ -433,10 +433,7 @@ func (m *Manager) GetProbes() []*Probe {
 	m.stateLock.RLock()
 	defer m.stateLock.RUnlock()
 
-	probesCp := make([]*Probe, len(m.Probes))
-	copy(probesCp, m.Probes)
-
-	return probesCp
+	return slices.Clone(m.Probes)
 }
 
 // GetProbe - Select a probe by its section and UID
