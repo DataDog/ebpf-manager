@@ -434,7 +434,6 @@ func (m *Manager) GetProbes() []*Probe {
 	defer m.stateLock.RUnlock()
 
 	probesCp := make([]*Probe, len(m.Probes))
-
 	copy(probesCp, m.Probes)
 
 	return probesCp
