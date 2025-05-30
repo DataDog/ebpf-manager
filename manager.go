@@ -428,6 +428,14 @@ func (m *Manager) getProbe(id ProbeIdentificationPair) (*Probe, bool) {
 	return nil, false
 }
 
+// GetProbes returns a copy of the Probes list
+func (m *Manager) GetProbes() []*Probe {
+	m.stateLock.RLock()
+	defer m.stateLock.RUnlock()
+
+	return slices.Clone(m.Probes)
+}
+
 // GetProbe - Select a probe by its section and UID
 func (m *Manager) GetProbe(id ProbeIdentificationPair) (*Probe, bool) {
 	m.stateLock.RLock()
