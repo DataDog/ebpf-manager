@@ -9,3 +9,5 @@ require (
 	golang.org/x/sync v0.14.0
 	golang.org/x/sys v0.33.0
 )
+
+replace github.com/cilium/ebpf => github.com/lmb/ebpf v0.7.1-0.20250604084157-ff276d7a4af4
