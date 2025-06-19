@@ -466,9 +466,25 @@ func (m *Manager) Init(elf io.ReaderAt) error {
 // elf: reader containing the eBPF bytecode, must be nil if LoadELF already called
 // options: options provided to the manager to configure its initialization
 func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
-	m.stateLock.Lock()
-	if m.state > initialized {
+	if err := m.initState(elf, options); err != nil {
+		return err
+	}
+
+	if err := m.postInit(m.options); err != nil {
+		m.stateLock.Lock()
+		m.state = reset
 		m.stateLock.Unlock()
+		return err
+	}
+
+	return nil
+}
+
+func (m *Manager) initState(elf io.ReaderAt, options Options) error {
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
+
+	if m.state > initialized {
 		return ErrManagerRunning
 	}
 
@@ -480,7 +496,6 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 
 	// perform a quick sanity check on the provided probes and maps
 	if err := m.sanityCheck(); err != nil {
-		m.stateLock.Unlock()
 		return err
 	}
 
@@ -490,23 +505,19 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 		// is used for eBPF maps. Only in this case is the rlimit removed.
 		// If cgroup based accounting is in effect, then rlimit is not removed.
 		if err := rlimit.RemoveMemlock(); err != nil {
-			m.stateLock.Unlock()
 			return fmt.Errorf("couldn't adjust RLIMIT_MEMLOCK: %w", err)
 		}
 	}
 
 	if m.state < elfLoaded {
 		if elf == nil {
-			m.stateLock.Unlock()
 			return fmt.Errorf("nil ELF reader")
 		}
 
 		if err := m.loadELF(elf); err != nil {
-			m.stateLock.Unlock()
 			return err
 		}
 	} else if elf != nil {
-		m.stateLock.Unlock()
 		return ErrManagerELFLoaded
 	}
 
@@ -553,7 +564,6 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	// must run before map exclusion in case bypass is disabled
 	bypassMap, err := m.setupBypass()
 	if err != nil {
-		m.stateLock.Unlock()
 		return err
 	}
 
@@ -571,7 +581,6 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 
 	// Match Maps and program specs
 	if err = m.matchSpecs(); err != nil {
-		m.stateLock.Unlock()
 		return err
 	}
 
@@ -590,25 +599,20 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	}
 
 	m.state = initialized
-	m.stateLock.Unlock()
-	resetManager := func(m *Manager) {
-		m.stateLock.Lock()
-		m.state = reset
-		m.stateLock.Unlock()
-	}
+	return nil
+}
 
+func (m *Manager) postInit(options Options) error {
 	// newEditor program constants
 	if len(options.ConstantEditors) > 0 {
-		if err = m.editConstants(); err != nil {
-			resetManager(m)
+		if err := m.editConstants(); err != nil {
 			return err
 		}
 	}
 
 	// newEditor map spec
 	if len(options.MapSpecEditors) > 0 {
-		if err = m.editMapSpecs(); err != nil {
-			resetManager(m)
+		if err := m.editMapSpecs(); err != nil {
 			return err
 		}
 	}
@@ -616,8 +620,7 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	// Setup map routes
 	if len(options.InnerOuterMapSpecs) > 0 {
 		for _, ioMapSpec := range options.InnerOuterMapSpecs {
-			if err = m.editInnerOuterMapSpec(ioMapSpec); err != nil {
-				resetManager(m)
+			if err := m.editInnerOuterMapSpec(ioMapSpec); err != nil {
 				return err
 			}
 		}
@@ -626,25 +629,23 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 	// Patch instructions
 	for _, patcher := range m.InstructionPatchers {
 		if err := patcher(m); err != nil {
-			resetManager(m)
 			return err
 		}
 	}
 
 	// Load pinned maps and pinned programs to avoid loading them twice
-	if err = m.loadPinnedObjects(); err != nil {
-		resetManager(m)
+	if err := m.loadPinnedObjects(); err != nil {
 		return err
 	}
 
 	// Load eBPF program with the provided verifier options
-	if err = m.loadCollection(); err != nil {
+	if err := m.loadCollection(); err != nil {
 		if m.collection != nil {
 			m.collection.Close()
 		}
-		resetManager(m)
 		return err
 	}
+
 	return nil
 }
 
