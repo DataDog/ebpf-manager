@@ -109,7 +109,7 @@ type Options struct {
 	// `RLIMIT_MEMLOCK` If a limit is provided here it will be applied when the manager is initialized.
 	RemoveRlimit bool
 
-	// KeepKernelBTF - Defines if the kernel types defined in VerifierOptions.Programs.KernelTypes and KernelModuleTypes should be cleaned up
+	// KeepKernelBTF - Defines if the kernel types defined in VerifierOptions.Programs.KernelTypes should be cleaned up
 	// once the manager is done using them. By default, the manager will clean them up to save up space. DISCLAIMER: if
 	// your program uses "manager.CloneProgram", you might want to enable "KeepKernelBTF". As a workaround, you can also
 	// try to strip as much as possible the content of "KernelTypes" to reduce the memory overhead.
@@ -785,7 +785,6 @@ func (m *Manager) Start() error {
 	if !m.options.KeepKernelBTF {
 		// release kernel BTF. It should no longer be needed
 		m.options.VerifierOptions.Programs.KernelTypes = nil
-		m.options.VerifierOptions.Programs.KernelModuleTypes = nil
 	}
 
 	// clean up tracefs
