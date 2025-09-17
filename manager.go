@@ -823,7 +823,10 @@ func (m *Manager) Start() error {
 	for _, probe := range m.Probes {
 		// ignore the error, they are already collected per probes and will be surfaced by the
 		// activation validators if needed.
-		_ = probe.Attach()
+		err := probe.Attach()
+		if err != nil {
+			fmt.Printf("Failed to attach probe %s: %s\n", probe.EBPFFuncName, err)
+		}
 	}
 
 	m.state = running
