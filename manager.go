@@ -818,7 +818,7 @@ func (m *Manager) Start() error {
 			return err
 		}
 	}
-
+	fmt.Print("YAYAYA\n")
 	// Attach eBPF programs
 	for _, probe := range m.Probes {
 		fmt.Printf("Attaching probe %s\n", probe.EBPFFuncName)
