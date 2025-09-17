@@ -532,6 +532,7 @@ func (m *Manager) initState(elf io.ReaderAt, options Options) error {
 	if m.options.AdditionalExcludedFunctionCollector != nil {
 		for key, prog := range m.collectionSpec.Programs {
 			if m.options.AdditionalExcludedFunctionCollector.ShouldExcludeFunction(key, prog) {
+				fmt.Printf("We should exclude function: %s\n", key)
 				m.options.ExcludedFunctions = append(m.options.ExcludedFunctions, key)
 			}
 		}
