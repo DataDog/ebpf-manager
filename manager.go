@@ -540,10 +540,12 @@ func (m *Manager) initState(elf io.ReaderAt, options Options) error {
 
 	// Remove excluded programs
 	for _, excludedFuncName := range m.options.ExcludedFunctions {
+		fmt.Printf("Excluded function: %s\n", excludedFuncName)
 		delete(m.collectionSpec.Programs, excludedFuncName)
 	}
 	for i := 0; i < len(m.Probes); {
 		if slices.Contains(m.options.ExcludedFunctions, m.Probes[i].EBPFFuncName) {
+			fmt.Printf("Excluded function2: %s\n", m.Probes[i].EBPFFuncName)
 			m.Probes = slices.Delete(m.Probes, i, i+1)
 		} else {
 			i++
@@ -1405,7 +1407,7 @@ func (m *Manager) activateProbes() {
 	shouldPopulateActivatedProbes := len(m.options.ActivatedProbes) == 0
 	for _, mProbe := range m.Probes {
 		shouldActivate := shouldPopulateActivatedProbes
-		fmt.Printf("activateProbe | mProbe.ProbeIdentificationPair=%v\n", mProbe.ProbeIdentificationPair)
+		// fmt.Printf("activateProbe | mProbe.ProbeIdentificationPair=%v\n", mProbe.ProbeIdentificationPair)
 		for _, selector := range m.options.ActivatedProbes {
 			for _, p := range selector.GetProbesIdentificationPairList() {
 				if mProbe.ProbeIdentificationPair == p {
