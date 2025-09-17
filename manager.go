@@ -821,6 +821,7 @@ func (m *Manager) Start() error {
 
 	// Attach eBPF programs
 	for _, probe := range m.Probes {
+		fmt.Printf("Attaching probe %s\n", probe.EBPFFuncName)
 		// ignore the error, they are already collected per probes and will be surfaced by the
 		// activation validators if needed.
 		err := probe.Attach()
