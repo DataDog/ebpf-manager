@@ -818,10 +818,10 @@ func (m *Manager) Start() error {
 			return err
 		}
 	}
-	fmt.Print("YAYAYA\n")
+	// fmt.Print("YAYAYA\n")
 	// Attach eBPF programs
 	for _, probe := range m.Probes {
-		fmt.Printf("Attaching probe %s\n", probe.EBPFFuncName)
+		// fmt.Printf("Attaching probe %s\n", probe.EBPFFuncName)
 		// ignore the error, they are already collected per probes and will be surfaced by the
 		// activation validators if needed.
 		err := probe.Attach()
@@ -1405,6 +1405,7 @@ func (m *Manager) activateProbes() {
 	shouldPopulateActivatedProbes := len(m.options.ActivatedProbes) == 0
 	for _, mProbe := range m.Probes {
 		shouldActivate := shouldPopulateActivatedProbes
+		fmt.Printf("activateProbe | mProbe.ProbeIdentificationPair=%v\n", mProbe.ProbeIdentificationPair)
 		for _, selector := range m.options.ActivatedProbes {
 			for _, p := range selector.GetProbesIdentificationPairList() {
 				if mProbe.ProbeIdentificationPair == p {
