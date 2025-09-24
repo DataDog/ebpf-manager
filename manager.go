@@ -1421,11 +1421,19 @@ func (m *Manager) activateProbes() {
 
 // UpdateActivatedProbes - update the list of activated probes
 func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
+	_, err := m.UpdateActivatedProbes2(selectors)
+	return err
+}
+
+// UpdateActivatedProbes2 - update the list of activated probes, and return if any probe was changed
+func (m *Manager) UpdateActivatedProbes2(selectors []ProbesSelector) (bool, error) {
 	m.stateLock.Lock()
 	if m.state < initialized {
 		m.stateLock.Unlock()
-		return ErrManagerNotInitialized
+		return false, ErrManagerNotInitialized
 	}
+
+	changed := false
 
 	currentProbes := make(map[ProbeIdentificationPair]*Probe)
 	for _, p := range m.Probes {
@@ -1455,24 +1463,27 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 			probe, found = m.getProbe(id)
 			if !found {
 				m.stateLock.Unlock()
-				return fmt.Errorf("couldn't find program %s: %w", id, ErrUnknownSectionOrFuncName)
+				return changed, fmt.Errorf("couldn't find program %s: %w", id, ErrUnknownSectionOrFuncName)
 			}
 			probe.Enabled = true
+			changed = true
 		}
 		if !probe.IsRunning() {
 			// ignore all errors, they are already collected per probe and will be surfaced by the
 			// activation validators if needed.
 			_ = probe.init(m)
 			_ = probe.Attach()
+			changed = true
 		}
 	}
 
 	for _, probe := range currentProbes {
 		if err := probe.Detach(); err != nil {
 			m.stateLock.Unlock()
-			return err
+			return changed, err
 		}
 		probe.Enabled = false
+		changed = true
 	}
 
 	// update activated probes & check activation
@@ -1490,10 +1501,10 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 	if validationErrs != nil {
 		// Clean up
 		_ = m.stop(CleanInternal)
-		return fmt.Errorf("probes activation validation failed: %w", validationErrs)
+		return changed, fmt.Errorf("probes activation validation failed: %w", validationErrs)
 	}
 
-	return nil
+	return changed, nil
 }
 
 // rewriteMaps - Rewrite the provided program spec with the provided maps. failOnError controls if an error should be
