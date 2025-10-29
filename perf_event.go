@@ -42,7 +42,7 @@ func (p *Probe) attachPerfEvent() error {
 		perfEventCPUFDs: make([]*perfEventLink, 0, p.PerfEventCPUCount),
 	}
 	for cpu := 0; cpu < p.PerfEventCPUCount; cpu++ {
-		fd, err := perfEventOpenRaw(&attr, pid, cpu, -1, 0)
+		fd, err := perfEventOpenRaw(&attr, pid, cpu, -1, unix.PERF_FLAG_FD_CLOEXEC)
 		if err != nil {
 			return fmt.Errorf("couldn't attach perf_event program %s on pid %d and CPU %d: %v", p.ProbeIdentificationPair, pid, cpu, err)
 		}
