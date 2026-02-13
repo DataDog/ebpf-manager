@@ -1280,7 +1280,7 @@ func (m *Manager) getProbeProgram(funcName string) (*ebpf.Program, error) {
 func (m *Manager) matchSpecs() error {
 	// Match programs
 	for _, probe := range m.Probes {
-		programSpec, err := m.getProbeProgramSpec(probe.ProbeIdentificationPair.EBPFFuncName)
+		programSpec, err := m.getProbeProgramSpec(probe.EBPFFuncName)
 		if err != nil {
 			return err
 		}
@@ -1333,7 +1333,7 @@ func (m *Manager) matchBPFObjects() error {
 			return err
 		}
 		probe.program = program
-		mappedProgramSpecNames = append(mappedProgramSpecNames, probe.ProbeIdentificationPair.EBPFFuncName)
+		mappedProgramSpecNames = append(mappedProgramSpecNames, probe.EBPFFuncName)
 	}
 
 	// cleanup unmapped ProgramSpec now
@@ -1429,7 +1429,7 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 
 	currentProbes := make(map[ProbeIdentificationPair]*Probe)
 	for _, p := range m.Probes {
-		pip := ProbeIdentificationPair{UID: p.ProbeIdentificationPair.UID, EBPFFuncName: p.ProbeIdentificationPair.EBPFFuncName}
+		pip := ProbeIdentificationPair{UID: p.UID, EBPFFuncName: p.EBPFFuncName}
 		if p.Enabled {
 			currentProbes[pip] = p
 		}

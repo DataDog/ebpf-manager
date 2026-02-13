@@ -148,8 +148,8 @@ func (m *PerfMap) Start() error {
 		var err error
 
 		for {
-			if m.PerfMapOptions.RecordGetter != nil {
-				record = m.PerfMapOptions.RecordGetter()
+			if m.RecordGetter != nil {
+				record = m.RecordGetter()
 			} else if m.DataHandler != nil {
 				record = new(perf.Record)
 			}
@@ -223,7 +223,7 @@ func (m *PerfMap) Stop(cleanup MapCleanupType) error {
 	m.wgReader.Wait()
 
 	// close underlying map
-	if errTmp := m.Map.close(cleanup); errTmp != nil {
+	if errTmp := m.close(cleanup); errTmp != nil {
 		if err == nil {
 			err = errTmp
 		} else {

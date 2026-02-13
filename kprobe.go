@@ -72,7 +72,7 @@ func (p *Probe) PerfEventFD() (uint32, error) {
 		return 0, fmt.Errorf("Probe %q does not have a perf event link", p.programSpec.Name)
 	}
 
-	return v.perfEventLink.fd.Value()
+	return v.fd.Value()
 }
 
 // attachWithKprobeEvents attaches the kprobe using the kprobes_events ABI

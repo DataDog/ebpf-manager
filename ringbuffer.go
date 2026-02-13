@@ -110,8 +110,8 @@ func (rb *RingBuffer) Start() error {
 		var err error
 
 		for {
-			if rb.RingBufferOptions.RecordGetter != nil {
-				record = rb.RingBufferOptions.RecordGetter()
+			if rb.RecordGetter != nil {
+				record = rb.RecordGetter()
 			} else if rb.DataHandler != nil {
 				record = new(ringbuf.Record)
 			}
@@ -172,7 +172,7 @@ func (rb *RingBuffer) Stop(cleanup MapCleanupType) error {
 	rb.wgReader.Wait()
 
 	// close underlying map
-	if errTmp := rb.Map.close(cleanup); errTmp != nil {
+	if errTmp := rb.close(cleanup); errTmp != nil {
 		if err == nil {
 			err = errTmp
 		} else {
