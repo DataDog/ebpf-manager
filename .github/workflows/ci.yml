@@ -6,7 +6,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: [ "1.24", "1.25" ]
+        go: [ "1.25", "1.26" ]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -26,13 +26,11 @@ jobs:
           TARGET=bin/main make all
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
-        with:
-          skip-pkg-cache: true
+        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 #v9.2.0
       - name: staticcheck
         uses: dominikh/staticcheck-action@fe1dd0c3658873b46f8c9bb3291096a617310ca6 #v1.3.1
         with:
-          version: "5af2e5fc3b08ba46027eb48ebddeba34dc0bd02c" #2025.1
+          version: "ff63afafc529279f454e02f1d060210bd4263951" #2026.1
           install-go: false
           cache-key: ${{ matrix.go }}
 
