@@ -46,12 +46,12 @@ func (ps *ProbeSelector) RunValidator(manager *Manager) error {
 		return fmt.Errorf("probe not found: %s", ps.ProbeIdentificationPair)
 	}
 	if !p.IsRunning() && p.Enabled {
-		return fmt.Errorf("%s: %w", ps.ProbeIdentificationPair.String(), p.GetLastError())
+		return fmt.Errorf("%s: %w", ps.ProbeIdentificationPair.String(), p.GetLastError()) //nolint:staticcheck
 	}
 	if !p.Enabled {
 		return fmt.Errorf(
 			"%s: is disabled, add it to the activation list and check that it was not explicitly excluded by the manager options",
-			ps.ProbeIdentificationPair.String())
+			ps.ProbeIdentificationPair.String()) //nolint:staticcheck
 	}
 	return nil
 }
