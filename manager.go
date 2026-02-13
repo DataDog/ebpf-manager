@@ -1692,11 +1692,12 @@ func (m *Manager) sanityCheck() error {
 	// Check if probes identification pairs are unique, request the usage of CloneProbe otherwise
 	cache = map[string]bool{}
 	for _, managerProbe := range m.Probes {
-		_, ok := cache[managerProbe.ProbeIdentificationPair.String()]
+		key := managerProbe.ProbeIdentificationPair.String() //nolint:staticcheck
+		_, ok := cache[key]
 		if ok {
-			return fmt.Errorf("%v failed the sanity check: %w", managerProbe.ProbeIdentificationPair, ErrCloneProbeRequired)
+			return fmt.Errorf("%s failed the sanity check: %w", key, ErrCloneProbeRequired)
 		}
-		cache[managerProbe.ProbeIdentificationPair.String()] = true
+		cache[key] = true
 	}
 	return nil
 }
