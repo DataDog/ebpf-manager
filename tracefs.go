@@ -256,12 +256,13 @@ func registerTraceFSEvent(args traceFsEventArgs) (int, string, error) {
 	sb.WriteString(eventName)
 	sb.WriteRune(' ')
 	sb.WriteString(token)
-	if args.Type == kprobe {
+	switch args.Type {
+	case kprobe:
 		if args.Offset > 0 {
 			sb.WriteRune('+')
 			sb.WriteString(offsetStr)
 		}
-	} else if args.Type == uprobe {
+	case uprobe:
 		sb.WriteRune(':')
 		sb.WriteString(offsetStr)
 	}

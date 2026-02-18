@@ -81,7 +81,7 @@ func (p *Probe) getTCFilterParentHandle() uint32 {
 }
 
 func (p *Probe) buildTCFilter() (netlink.BpfFilter, error) {
-	if p.tcFilter.FilterAttrs.LinkIndex == 0 {
+	if p.tcFilter.LinkIndex == 0 {
 		var filterName string
 		filterName, err := generateTCFilterName(p.UID, p.programSpec.SectionName, p.attachPID)
 		if err != nil {

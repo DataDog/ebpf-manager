@@ -101,10 +101,7 @@ func (m *Map) Close(cleanup MapCleanupType) error {
 
 // close - (not thread safe) close
 func (m *Map) close(cleanup MapCleanupType) error {
-	shouldClose := false
-	if m.AlwaysCleanup {
-		shouldClose = true
-	}
+	shouldClose := m.AlwaysCleanup
 	if cleanup&CleanInternalPinned == CleanInternalPinned && m.array.IsPinned() {
 		shouldClose = true
 	}
