@@ -546,7 +546,7 @@ func (p *Probe) attach() error {
 		err = p.attachTracepoint()
 	case ebpf.RawTracepoint, ebpf.RawTracepointWritable:
 		err = p.attachRawTracepoint()
-	case ebpf.CGroupDevice, ebpf.CGroupSKB, ebpf.CGroupSock, ebpf.CGroupSockAddr, ebpf.CGroupSockopt, ebpf.CGroupSysctl:
+	case ebpf.CGroupDevice, ebpf.CGroupSKB, ebpf.CGroupSock, ebpf.CGroupSockAddr, ebpf.CGroupSockopt, ebpf.CGroupSysctl, ebpf.SockOps:
 		err = p.attachCGroup()
 	case ebpf.SocketFilter:
 		err = p.attachSocket()
