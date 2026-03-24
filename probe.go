@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/link"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
@@ -574,6 +575,22 @@ func (p *Probe) attach() error {
 	p.state = running
 	p.attachRetryAttempt = p.getRetryAttemptCount()
 	return nil
+}
+
+func (p *Probe) Iterator() (io.ReadCloser, error) {
+	p.stateLock.RLock()
+	defer p.stateLock.RUnlock()
+	if p.state <= paused || !p.Enabled {
+		return nil, ErrManagerNotStarted
+	}
+	if p.programSpec.AttachType != ebpf.AttachTraceIter {
+		return nil, fmt.Errorf("invalid program attach type %s", p.programSpec.AttachType)
+	}
+	it, ok := p.progLink.(*link.Iter)
+	if !ok {
+		return nil, fmt.Errorf("invalid program attach type %T", p.progLink)
+	}
+	return it.Open()
 }
 
 // cleanupProgramSpec - Cleans up the internal ProgramSpec attribute to free up some memory
