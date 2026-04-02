@@ -387,7 +387,7 @@ func (m *Manager) getProgramSpec(id ProbeIdentificationPair) ([]*ebpf.ProgramSpe
 	var programs []*ebpf.ProgramSpec
 	if id.UID == "" {
 		for _, probe := range m.Probes {
-			if probe.EBPFFuncName == id.EBPFFuncName {
+			if probe.EBPFFuncName == id.EBPFFuncName && probe.programSpec != nil {
 				programs = append(programs, probe.programSpec)
 			}
 		}
