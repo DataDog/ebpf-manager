@@ -12,6 +12,8 @@ func (p *Probe) attachTracing() error {
 		Program:    p.program,
 		AttachType: p.programSpec.AttachType,
 	})
+
+	fmt.Printf("attachTracing: progLink: %v\n", p.progLink)
 	if err != nil {
 		return fmt.Errorf("link tracing: %w", err)
 	}
