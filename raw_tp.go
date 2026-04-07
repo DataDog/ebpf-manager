@@ -22,6 +22,7 @@ func (p *Probe) attachRawTracepoint() error {
 		Name:    p.TracepointName,
 		Program: p.program,
 	})
+	fmt.Printf("p.progLink: %v\n", p.progLink)
 	if err != nil {
 		return fmt.Errorf("link raw tracepoint: %w", err)
 	}
