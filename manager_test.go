@@ -10,6 +10,7 @@ import (
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
+	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/ebpf/rlimit"
 )
 
@@ -272,5 +273,38 @@ func TestLoadELF(t *testing.T) {
 	}
 	if err = m.LoadELF(f); !errors.Is(err, ErrManagerELFLoaded) {
 		t.Errorf("LoadELF() error = %v, expected: %v", err, ErrManagerELFLoaded)
+	}
+}
+
+func TestReleaseKernelBTF(t *testing.T) {
+	// releaseKernelBTF (called by Start) must drop both the KernelTypes spec and the shared BTF
+	// cache once loading is done, unless the caller opted into keeping them via KeepKernelBTF.
+	// Otherwise a long-lived manager keeps the parsed kernel BTF (vmlinux) pinned for the whole
+	// process lifetime, which regressed idle memory for a downstream consumer.
+	tests := []struct {
+		name          string
+		keepKernelBTF bool
+		wantCleared   bool
+	}{
+		{name: "released by default", keepKernelBTF: false, wantCleared: true},
+		{name: "retained when KeepKernelBTF is set", keepKernelBTF: true, wantCleared: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Manager{}
+			m.options.KeepKernelBTF = tt.keepKernelBTF
+			m.options.VerifierOptions.Programs.KernelTypes = &btf.Spec{}
+			m.options.VerifierOptions.Cache = btf.NewCache()
+
+			m.releaseKernelBTF()
+
+			if cleared := m.options.VerifierOptions.Programs.KernelTypes == nil; cleared != tt.wantCleared {
+				t.Errorf("KernelTypes cleared = %v, want %v", cleared, tt.wantCleared)
+			}
+			if cleared := m.options.VerifierOptions.Cache == nil; cleared != tt.wantCleared {
+				t.Errorf("Cache cleared = %v, want %v", cleared, tt.wantCleared)
+			}
+		})
 	}
 }
