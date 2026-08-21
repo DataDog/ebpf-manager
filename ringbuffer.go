@@ -185,6 +185,8 @@ func (rb *RingBuffer) Stop(cleanup MapCleanupType) error {
 
 // BufferSize returns the size in bytes of the ring buffer
 func (rb *RingBuffer) BufferSize() int {
+	rb.stateLock.Lock()
+	defer rb.stateLock.Unlock()
 	return rb.bufferSize
 }
 

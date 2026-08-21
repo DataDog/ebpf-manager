@@ -264,6 +264,8 @@ func (m *PerfMap) Resume() error {
 
 // BufferSize is the size in bytes of each per-CPU buffer
 func (m *PerfMap) BufferSize() int {
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
 	return m.bufferSize
 }
 
