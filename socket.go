@@ -9,9 +9,13 @@ import (
 )
 
 // attachSocket - Attaches the probe to the provided socket
-func (p *Probe) attachSocket() (err error) {
-	p.progLink, err = newSocketLink(p.SocketFD, p.program.FD())
-	return
+func (p *Probe) attachSocket() error {
+	sl, err := newSocketLink(p.SocketFD, p.program.FD())
+	if err != nil {
+		return err
+	}
+	p.progLink = sl
+	return nil
 }
 
 func newSocketLink(sockFD int, progFD int) (*socketLink, error) {
