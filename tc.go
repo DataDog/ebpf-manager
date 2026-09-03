@@ -137,13 +137,13 @@ func (p *Probe) attachTCCLS() error {
 		return err
 	}
 	if err = ntl.Sock.FilterAdd(&p.tcFilter); err != nil {
-		return fmt.Errorf("couldn't add a %v filter to interface %s[%d]: %v", p.NetworkDirection, p.IfName, p.IfIndex, err)
+		return fmt.Errorf("couldn't add a %v filter to interface %s[%d]: %w", p.NetworkDirection, p.IfName, p.IfIndex, err)
 	}
 
 	// retrieve filter handle
 	resp, err := ntl.Sock.FilterList(p.link, p.tcFilter.Parent)
 	if err != nil {
-		return fmt.Errorf("couldn't list filters of interface %s[%d]: %v", p.IfName, p.IfIndex, err)
+		return fmt.Errorf("couldn't list filters of interface %s[%d]: %w", p.IfName, p.IfIndex, err)
 	}
 
 	var found bool
