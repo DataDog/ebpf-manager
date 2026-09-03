@@ -157,7 +157,10 @@ func (rb *RingBuffer) Flush() {
 	_ = rb.ringReader.Flush()
 }
 
-// Stop - Stops the perf ring buffer
+// Stop - Stops the ring buffer.
+// Warning: Stop waits for the reader goroutine while holding stateLock.
+// If the caller also holds manager.stateLock, and a handler callback needs
+// manager.stateLock.RLock(), this will deadlock.
 func (rb *RingBuffer) Stop(cleanup MapCleanupType) error {
 	rb.stateLock.Lock()
 	defer rb.stateLock.Unlock()
@@ -181,6 +184,24 @@ func (rb *RingBuffer) Stop(cleanup MapCleanupType) error {
 	}
 
 	return err
+}
+
+// closeReader closes the ring reader to signal the reader goroutine to stop.
+func (rb *RingBuffer) closeReader() error {
+	rb.stateLock.Lock()
+	defer rb.stateLock.Unlock()
+	if rb.state <= stopped {
+		return nil
+	}
+	rb.state = stopped
+	return rb.ringReader.Close()
+}
+
+// cleanupMap closes the underlying map with the given cleanup type.
+func (rb *RingBuffer) cleanupMap(cleanup MapCleanupType) error {
+	rb.stateLock.Lock()
+	defer rb.stateLock.Unlock()
+	return rb.close(cleanup)
 }
 
 // BufferSize returns the size in bytes of the ring buffer
