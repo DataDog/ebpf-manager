@@ -201,6 +201,10 @@ func (rb *RingBuffer) closeReader() error {
 func (rb *RingBuffer) cleanupMap(cleanup MapCleanupType) error {
 	rb.stateLock.Lock()
 	defer rb.stateLock.Unlock()
+	// check if map was already closed
+	if rb.state == reset {
+		return nil
+	}
 	return rb.close(cleanup)
 }
 
