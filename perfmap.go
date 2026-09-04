@@ -208,7 +208,10 @@ func (m *PerfMap) Flush() {
 	_ = m.perfReader.Flush()
 }
 
-// Stop - Stops the perf ring buffer
+// Stop - Stops the perf ring buffer.
+// Warning: Stop waits for the reader goroutine while holding stateLock.
+// If the caller also holds manager.stateLock, and a handler callback needs
+// manager.stateLock.RLock(), this will deadlock.
 func (m *PerfMap) Stop(cleanup MapCleanupType) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
@@ -232,6 +235,24 @@ func (m *PerfMap) Stop(cleanup MapCleanupType) error {
 	}
 
 	return err
+}
+
+// closeReader closes the perf reader to signal the reader goroutine to stop.
+func (m *PerfMap) closeReader() error {
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
+	if m.state <= stopped {
+		return nil
+	}
+	m.state = stopped
+	return m.perfReader.Close()
+}
+
+// cleanupMap closes the underlying map with the given cleanup type.
+func (m *PerfMap) cleanupMap(cleanup MapCleanupType) error {
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
+	return m.close(cleanup)
 }
 
 // Pause - Pauses a perf ring buffer reader

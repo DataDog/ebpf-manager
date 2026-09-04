@@ -926,7 +926,9 @@ func (m *Manager) Stop(cleanup MapCleanupType) error {
 	return m.stop(cleanup)
 }
 
-// StopReaders stop the kernel events readers Perf or Ring buffer
+// StopReaders stop the kernel events readers Perf or Ring buffer.
+// It is not safe to call NewPerfRing or NewRingBuffer concurrently
+// with StopReaders since we cannot put state to reset here.
 func (m *Manager) StopReaders(cleanup MapCleanupType) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
@@ -938,15 +940,44 @@ func (m *Manager) stopReaders(cleanup MapCleanupType) error {
 
 	// Stop perf ring readers
 	for _, perfRing := range m.PerfMaps {
-		if stopErr := perfRing.Stop(cleanup); stopErr != nil {
-			errs = append(errs, fmt.Errorf("perf ring reader %s couldn't gracefully shut down: %w", perfRing.Name, stopErr))
+		if closeErr := perfRing.closeReader(); closeErr != nil {
+			errs = append(errs, fmt.Errorf("perf ring reader %s couldn't gracefully shut down: %w", perfRing.Name, closeErr))
 		}
 	}
 
 	// Stop ring buffer readers
 	for _, ringBuffer := range m.RingBuffers {
-		if stopErr := ringBuffer.Stop(cleanup); stopErr != nil {
-			errs = append(errs, fmt.Errorf("ring buffer reader %s couldn't gracefully shut down: %w", ringBuffer.Name, stopErr))
+		if closeErr := ringBuffer.closeReader(); closeErr != nil {
+			errs = append(errs, fmt.Errorf("ring buffer reader %s couldn't gracefully shut down: %w", ringBuffer.Name, closeErr))
+		}
+	}
+
+	// Temporarily release manager.stateLock to avoid a deadlock:
+	// reader goroutine handlers may call Manager methods that need
+	// stateLock.RLock(). By releasing the write lock, handlers can
+	// complete, allowing goroutines to loop back to ReadInto which
+	// will return ErrClosed.
+	m.stateLock.Unlock()
+
+	for _, perfRing := range m.PerfMaps {
+		perfRing.wgReader.Wait()
+	}
+	for _, ringBuffer := range m.RingBuffers {
+		ringBuffer.wgReader.Wait()
+	}
+
+	// Now get the lock again
+	m.stateLock.Lock()
+
+	// Clean up underlying maps
+	for _, perfRing := range m.PerfMaps {
+		if closeErr := perfRing.cleanupMap(cleanup); closeErr != nil {
+			errs = append(errs, fmt.Errorf("perf ring reader %s couldn't close map: %w", perfRing.Name, closeErr))
+		}
+	}
+	for _, ringBuffer := range m.RingBuffers {
+		if closeErr := ringBuffer.cleanupMap(cleanup); closeErr != nil {
+			errs = append(errs, fmt.Errorf("ring buffer reader %s couldn't close map: %w", ringBuffer.Name, closeErr))
 		}
 	}
 
@@ -970,6 +1001,11 @@ func (m *Manager) stopProbes() error {
 }
 
 func (m *Manager) stop(cleanup MapCleanupType) error {
+	// Set state to reset early, to prevent concurrent operations (like
+	// NewPerfRing, NewRingBuffer) from adding new readers during the
+	// unlock window.
+	m.state = reset
+
 	var errs []error
 	errs = append(errs, m.stopReaders(cleanup))
 
@@ -992,7 +1028,6 @@ func (m *Manager) stop(cleanup MapCleanupType) error {
 	// removed from the collection.
 	m.collection.Close()
 
-	m.state = reset
 	return errors.Join(errs...)
 }
 
