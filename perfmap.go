@@ -252,6 +252,10 @@ func (m *PerfMap) closeReader() error {
 func (m *PerfMap) cleanupMap(cleanup MapCleanupType) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
+	// check if map was already closed
+	if m.state == reset {
+		return nil
+	}
 	return m.close(cleanup)
 }
 
