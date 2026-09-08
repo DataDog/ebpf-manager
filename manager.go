@@ -926,7 +926,7 @@ func (m *Manager) Stop(cleanup MapCleanupType) error {
 	return m.stop(cleanup)
 }
 
-// StopReaders stop the kernel events readers Perf or Ring buffer.
+// StopReaders - Stop the kernel events readers Perf or Ring buffer.
 // It is not safe to call NewPerfRing or NewRingBuffer concurrently
 // with StopReaders since we cannot put state to reset here.
 func (m *Manager) StopReaders(cleanup MapCleanupType) error {
@@ -935,6 +935,7 @@ func (m *Manager) StopReaders(cleanup MapCleanupType) error {
 	return m.stopReaders(cleanup)
 }
 
+// stopReaders - Thread unsafe version of Stop. If the lock is not held, it will panic
 func (m *Manager) stopReaders(cleanup MapCleanupType) error {
 	var errs []error
 
@@ -1000,6 +1001,7 @@ func (m *Manager) stopProbes() error {
 	return eg.Wait()
 }
 
+// stop - Thread unsafe version of Stop. Requires the manager lock to not panic
 func (m *Manager) stop(cleanup MapCleanupType) error {
 	// Set state to reset early, to prevent concurrent operations (like
 	// NewPerfRing, NewRingBuffer) from adding new readers during the
@@ -1537,7 +1539,7 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 
 	if validationErrs != nil {
 		// Clean up
-		_ = m.stop(CleanInternal)
+		_ = m.Stop(CleanInternal)
 		return fmt.Errorf("probes activation validation failed: %w", validationErrs)
 	}
 
