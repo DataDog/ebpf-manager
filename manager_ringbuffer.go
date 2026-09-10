@@ -8,9 +8,9 @@ func (m *Manager) NewRingBuffer(spec *ebpf.MapSpec, options MapOptions, ringBuff
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
 	switch m.state {
-	case reset, elfLoaded:
+	case reset, elfLoaded, stopping:
 		return nil, ErrManagerNotInitialized
-	case initialized, stopping, paused, running:
+	case initialized, paused, running:
 	}
 
 	// check if the name of the new map is available

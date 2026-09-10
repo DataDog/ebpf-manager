@@ -841,13 +841,13 @@ func (m *Manager) releaseKernelBTF() {
 func (m *Manager) Start() error {
 	m.stateLock.Lock()
 	switch m.state {
-	case reset, elfLoaded:
+	case reset, elfLoaded, stopping:
 		m.stateLock.Unlock()
 		return ErrManagerNotInitialized
 	case running:
 		m.stateLock.Unlock()
 		return nil
-	case initialized, stopping, paused:
+	case initialized, paused:
 	}
 
 	// release kernel BTF: it is only needed while loading programs and should no longer be needed now
@@ -930,9 +930,9 @@ func (m *Manager) Pause() error {
 	switch m.state {
 	case paused:
 		return nil
-	case reset, elfLoaded, initialized:
+	case reset, elfLoaded, initialized, stopping:
 		return ErrManagerNotStarted
-	case stopping, running:
+	case running:
 	}
 	if !m.options.BypassEnabled {
 		return nil
@@ -953,9 +953,9 @@ func (m *Manager) Resume() error {
 	switch m.state {
 	case running:
 		return nil
-	case reset, elfLoaded, initialized:
+	case reset, elfLoaded, initialized, stopping:
 		return ErrManagerNotStarted
-	case stopping, paused:
+	case paused:
 	}
 	if !m.options.BypassEnabled {
 		return nil
@@ -985,8 +985,6 @@ func (m *Manager) Stop(cleanup MapCleanupType) error {
 }
 
 // StopReaders - Stop the kernel events readers Perf or Ring buffer.
-// It is not safe to call NewPerfRing or NewRingBuffer concurrently
-// with StopReaders since we cannot put state to reset here.
 func (m *Manager) StopReaders(cleanup MapCleanupType) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
@@ -995,6 +993,8 @@ func (m *Manager) StopReaders(cleanup MapCleanupType) error {
 
 // stopReaders - Thread unsafe version of Stop. If the lock is not held, it will panic
 func (m *Manager) stopReaders(cleanup MapCleanupType) error {
+	// Signal to other goroutines that something is being stopped
+	m.state = stopping
 	var errs []error
 
 	// Stop perf ring readers
@@ -1061,11 +1061,6 @@ func (m *Manager) stopProbes() error {
 
 // stop - Thread unsafe version of Stop. Requires the manager lock to not panic
 func (m *Manager) stop(cleanup MapCleanupType) error {
-	// Set state to reset early, to prevent concurrent operations (like
-	// NewPerfRing, NewRingBuffer) from adding new readers during the
-	// unlock window.
-	m.state = reset
-
 	var errs []error
 	errs = append(errs, m.stopReaders(cleanup))
 
@@ -1087,7 +1082,7 @@ func (m *Manager) stop(cleanup MapCleanupType) error {
 	// situations. We can't rely only on the collection to close all maps and programs because some pinned objects were
 	// removed from the collection.
 	m.collection.Close()
-
+	m.state = reset
 	return errors.Join(errs...)
 }
 
