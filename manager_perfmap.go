@@ -11,8 +11,10 @@ import (
 func (m *Manager) NewPerfRing(spec *ebpf.MapSpec, options MapOptions, perfMapOptions PerfMapOptions) (*ebpf.Map, error) {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
-	if m.state < initialized {
+	switch m.state {
+	case reset, elfLoaded:
 		return nil, ErrManagerNotInitialized
+	case initialized, stopping, paused, running:
 	}
 
 	// check if the name of the new map is available
