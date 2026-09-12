@@ -215,10 +215,10 @@ func (m *PerfMap) Flush() {
 func (m *PerfMap) Stop(cleanup MapCleanupType) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
-	if m.state <= stopped {
+	if m.state <= stopping {
 		return nil
 	}
-	m.state = stopped
+	m.state = stopping
 
 	// close perf reader
 	err := m.perfReader.Close()
@@ -241,10 +241,10 @@ func (m *PerfMap) Stop(cleanup MapCleanupType) error {
 func (m *PerfMap) closeReader() error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
-	if m.state <= stopped {
+	if m.state <= stopping {
 		return nil
 	}
-	m.state = stopped
+	m.state = stopping
 	return m.perfReader.Close()
 }
 

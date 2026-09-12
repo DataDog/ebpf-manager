@@ -6,7 +6,7 @@ const (
 	reset state = iota
 	elfLoaded
 	initialized
-	stopped
+	stopping
 	paused
 	running
 )

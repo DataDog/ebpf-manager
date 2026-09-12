@@ -137,8 +137,10 @@ func (m *Manager) GetNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket
 func (m *Manager) CleanupNetworkNamespace(nsID uint32) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
-	if m.state < initialized {
+	switch m.state {
+	case reset, elfLoaded:
 		return ErrManagerNotInitialized
+	case initialized, stopping, paused, running:
 	}
 
 	var errs []error

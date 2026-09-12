@@ -171,7 +171,12 @@ type Manager struct {
 func (m *Manager) DumpMaps(w io.Writer, maps ...string) error {
 	m.stateLock.RLock()
 	defer m.stateLock.RUnlock()
-	if m.collection == nil || m.state < initialized {
+	switch m.state {
+	case reset, elfLoaded:
+		return ErrManagerNotInitialized
+	case initialized, stopping, paused, running:
+	}
+	if m.collection == nil {
 		return ErrManagerNotInitialized
 	}
 
@@ -230,7 +235,12 @@ func (m *Manager) getMap(name string) (*ebpf.Map, bool, error) {
 func (m *Manager) GetMap(name string) (*ebpf.Map, bool, error) {
 	m.stateLock.RLock()
 	defer m.stateLock.RUnlock()
-	if m.collection == nil || m.state < initialized {
+	switch m.state {
+	case reset, elfLoaded:
+		return nil, false, ErrManagerNotInitialized
+	case initialized, stopping, paused, running:
+	}
+	if m.collection == nil {
 		return nil, false, ErrManagerNotInitialized
 	}
 	return m.getMap(name)
@@ -240,7 +250,12 @@ func (m *Manager) GetMap(name string) (*ebpf.Map, bool, error) {
 func (m *Manager) GetMaps() (map[string]*ebpf.Map, error) {
 	m.stateLock.RLock()
 	defer m.stateLock.RUnlock()
-	if m.collection == nil || m.state < initialized {
+	switch m.state {
+	case reset, elfLoaded:
+		return nil, ErrManagerNotInitialized
+	case initialized, stopping, paused, running:
+	}
+	if m.collection == nil {
 		return nil, ErrManagerNotInitialized
 	}
 
@@ -276,7 +291,12 @@ func (m *Manager) getMapSpec(name string) (*ebpf.MapSpec, bool, error) {
 func (m *Manager) GetMapSpec(name string) (*ebpf.MapSpec, bool, error) {
 	m.stateLock.RLock()
 	defer m.stateLock.RUnlock()
-	if m.collectionSpec == nil || m.state < elfLoaded {
+	switch m.state {
+	case reset:
+		return nil, false, ErrManagerNotELFLoaded
+	case elfLoaded, initialized, stopping, paused, running:
+	}
+	if m.collectionSpec == nil {
 		return nil, false, ErrManagerNotELFLoaded
 	}
 	return m.getMapSpec(name)
@@ -346,7 +366,12 @@ func (m *Manager) getProgram(id ProbeIdentificationPair) ([]*ebpf.Program, bool,
 func (m *Manager) GetProgram(id ProbeIdentificationPair) ([]*ebpf.Program, bool, error) {
 	m.stateLock.RLock()
 	defer m.stateLock.RUnlock()
-	if m.collection == nil || m.state < initialized {
+	switch m.state {
+	case reset, elfLoaded:
+		return nil, false, ErrManagerNotInitialized
+	case initialized, stopping, paused, running:
+	}
+	if m.collection == nil {
 		return nil, false, ErrManagerNotInitialized
 	}
 	return m.getProgram(id)
@@ -356,7 +381,12 @@ func (m *Manager) GetProgram(id ProbeIdentificationPair) ([]*ebpf.Program, bool,
 func (m *Manager) GetPrograms() (map[string]*ebpf.Program, error) {
 	m.stateLock.RLock()
 	defer m.stateLock.RUnlock()
-	if m.collection == nil || m.state < initialized {
+	switch m.state {
+	case reset, elfLoaded:
+		return nil, ErrManagerNotInitialized
+	case initialized, stopping, paused, running:
+	}
+	if m.collection == nil {
 		return nil, ErrManagerNotInitialized
 	}
 
@@ -367,7 +397,12 @@ func (m *Manager) GetPrograms() (map[string]*ebpf.Program, error) {
 func (m *Manager) GetMapSpecs() (map[string]*ebpf.MapSpec, error) {
 	m.stateLock.RLock()
 	defer m.stateLock.RUnlock()
-	if m.collectionSpec == nil || m.state < elfLoaded {
+	switch m.state {
+	case reset:
+		return nil, ErrManagerNotELFLoaded
+	case elfLoaded, initialized, stopping, paused, running:
+	}
+	if m.collectionSpec == nil {
 		return nil, ErrManagerNotELFLoaded
 	}
 
@@ -378,7 +413,12 @@ func (m *Manager) GetMapSpecs() (map[string]*ebpf.MapSpec, error) {
 func (m *Manager) GetProgramSpecs() (map[string]*ebpf.ProgramSpec, error) {
 	m.stateLock.RLock()
 	defer m.stateLock.RUnlock()
-	if m.collectionSpec == nil || m.state < elfLoaded {
+	switch m.state {
+	case reset:
+		return nil, ErrManagerNotELFLoaded
+	case elfLoaded, initialized, stopping, paused, running:
+	}
+	if m.collectionSpec == nil {
 		return nil, ErrManagerNotELFLoaded
 	}
 
@@ -415,7 +455,12 @@ func (m *Manager) getProgramSpec(id ProbeIdentificationPair) ([]*ebpf.ProgramSpe
 func (m *Manager) GetProgramSpec(id ProbeIdentificationPair) ([]*ebpf.ProgramSpec, bool, error) {
 	m.stateLock.RLock()
 	defer m.stateLock.RUnlock()
-	if m.collectionSpec == nil || m.state < elfLoaded {
+	switch m.state {
+	case reset:
+		return nil, false, ErrManagerNotELFLoaded
+	case elfLoaded, initialized, stopping, paused, running:
+	}
+	if m.collectionSpec == nil {
 		return nil, false, ErrManagerNotELFLoaded
 	}
 	return m.getProgramSpec(id)
@@ -450,10 +495,13 @@ func (m *Manager) GetProbe(id ProbeIdentificationPair) (*Probe, bool) {
 func (m *Manager) LoadELF(elf io.ReaderAt) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
-	if m.state >= elfLoaded {
+	switch m.state {
+	case reset:
+		return m.loadELF(elf)
+	case elfLoaded, initialized, stopping, paused, running:
 		return ErrManagerELFLoaded
 	}
-	return m.loadELF(elf)
+	return nil
 }
 
 func (m *Manager) loadELF(elf io.ReaderAt) error {
@@ -495,8 +543,10 @@ func (m *Manager) initState(elf io.ReaderAt, options Options) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
 
-	if m.state > initialized {
+	switch m.state {
+	case stopping, paused, running:
 		return ErrManagerRunning
+	case reset, elfLoaded, initialized:
 	}
 
 	m.options = options
@@ -520,16 +570,18 @@ func (m *Manager) initState(elf io.ReaderAt, options Options) error {
 		}
 	}
 
-	if m.state < elfLoaded {
+	switch m.state {
+	case reset:
 		if elf == nil {
 			return fmt.Errorf("nil ELF reader")
 		}
-
 		if err := m.loadELF(elf); err != nil {
 			return err
 		}
-	} else if elf != nil {
-		return ErrManagerELFLoaded
+	case elfLoaded, initialized, stopping, paused, running:
+		if elf != nil {
+			return ErrManagerELFLoaded
+		}
 	}
 
 	if m.options.AdditionalExcludedFunctionCollector != nil {
@@ -788,13 +840,14 @@ func (m *Manager) releaseKernelBTF() {
 // Start - Attach eBPF programs, start perf ring readers and apply maps and tail calls routing.
 func (m *Manager) Start() error {
 	m.stateLock.Lock()
-	if m.state < initialized {
+	switch m.state {
+	case reset, elfLoaded, stopping:
 		m.stateLock.Unlock()
 		return ErrManagerNotInitialized
-	}
-	if m.state >= running {
+	case running:
 		m.stateLock.Unlock()
 		return nil
+	case initialized, paused:
 	}
 
 	// release kernel BTF: it is only needed while loading programs and should no longer be needed now
@@ -874,11 +927,12 @@ func (m *Manager) Start() error {
 func (m *Manager) Pause() error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
-	if m.state == paused {
+	switch m.state {
+	case paused:
 		return nil
-	}
-	if m.state <= initialized {
+	case reset, elfLoaded, initialized, stopping:
 		return ErrManagerNotStarted
+	case running:
 	}
 	if !m.options.BypassEnabled {
 		return nil
@@ -896,11 +950,12 @@ func (m *Manager) Pause() error {
 func (m *Manager) Resume() error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
-	if m.state == running {
+	switch m.state {
+	case running:
 		return nil
-	}
-	if m.state <= initialized {
+	case reset, elfLoaded, initialized, stopping:
 		return ErrManagerNotStarted
+	case paused:
 	}
 	if !m.options.BypassEnabled {
 		return nil
@@ -920,22 +975,26 @@ func (m *Manager) Resume() error {
 func (m *Manager) Stop(cleanup MapCleanupType) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
-	if m.state < initialized {
+	switch m.state {
+	case reset, elfLoaded:
 		return ErrManagerNotInitialized
+	case initialized, stopping, paused, running:
+		return m.stop(cleanup)
 	}
-	return m.stop(cleanup)
+	return nil
 }
 
-// StopReaders stop the kernel events readers Perf or Ring buffer.
-// It is not safe to call NewPerfRing or NewRingBuffer concurrently
-// with StopReaders since we cannot put state to reset here.
+// StopReaders - Stop the kernel events readers Perf or Ring buffer.
 func (m *Manager) StopReaders(cleanup MapCleanupType) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
 	return m.stopReaders(cleanup)
 }
 
+// stopReaders - Thread unsafe version of Stop. If the lock is not held, it will panic
 func (m *Manager) stopReaders(cleanup MapCleanupType) error {
+	// Signal to other goroutines that something is being stopped
+	m.state = stopping
 	var errs []error
 
 	// Stop perf ring readers
@@ -1000,12 +1059,8 @@ func (m *Manager) stopProbes() error {
 	return eg.Wait()
 }
 
+// stop - Thread unsafe version of Stop. Requires the manager lock to not panic
 func (m *Manager) stop(cleanup MapCleanupType) error {
-	// Set state to reset early, to prevent concurrent operations (like
-	// NewPerfRing, NewRingBuffer) from adding new readers during the
-	// unlock window.
-	m.state = reset
-
 	var errs []error
 	errs = append(errs, m.stopReaders(cleanup))
 
@@ -1027,7 +1082,7 @@ func (m *Manager) stop(cleanup MapCleanupType) error {
 	// situations. We can't rely only on the collection to close all maps and programs because some pinned objects were
 	// removed from the collection.
 	m.collection.Close()
-
+	m.state = reset
 	return errors.Join(errs...)
 }
 
@@ -1036,7 +1091,12 @@ func (m *Manager) stop(cleanup MapCleanupType) error {
 func (m *Manager) NewMap(spec *ebpf.MapSpec, options MapOptions) (*ebpf.Map, error) {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
-	if m.collection == nil || m.state < initialized {
+	switch m.state {
+	case reset, elfLoaded:
+		return nil, ErrManagerNotInitialized
+	case initialized, stopping, paused, running:
+	}
+	if m.collection == nil {
 		return nil, ErrManagerNotInitialized
 	}
 
@@ -1090,7 +1150,12 @@ func (m *Manager) CloneMap(name string, newName string, options MapOptions) (*eb
 func (m *Manager) AddHook(UID string, newProbe *Probe) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
-	if m.collection == nil || m.state < initialized {
+	switch m.state {
+	case reset, elfLoaded:
+		return ErrManagerNotInitialized
+	case initialized, stopping, paused, running:
+	}
+	if m.collection == nil {
 		return ErrManagerNotInitialized
 	}
 
@@ -1176,7 +1241,12 @@ func (m *Manager) AddHook(UID string, newProbe *Probe) error {
 func (m *Manager) DetachHook(id ProbeIdentificationPair) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
-	if m.collection == nil || m.state < initialized {
+	switch m.state {
+	case reset, elfLoaded:
+		return ErrManagerNotInitialized
+	case initialized, stopping, paused, running:
+	}
+	if m.collection == nil {
 		return ErrManagerNotInitialized
 	}
 
@@ -1225,7 +1295,12 @@ func (m *Manager) CloneProgram(UID string, newProbe *Probe, constantsEditors []C
 func (m *Manager) CloneProgramWithSpecEditor(UID string, newProbe *Probe, constantsEditors []ConstantEditor, mapEditors map[string]*ebpf.Map, specEditor func(spec *ebpf.ProgramSpec)) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
-	if m.collection == nil || m.state < initialized {
+	switch m.state {
+	case reset, elfLoaded:
+		return ErrManagerNotInitialized
+	case initialized, stopping, paused, running:
+	}
+	if m.collection == nil {
 		return ErrManagerNotInitialized
 	}
 
@@ -1470,9 +1545,11 @@ func (m *Manager) activateProbes() {
 // UpdateActivatedProbes - update the list of activated probes
 func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 	m.stateLock.Lock()
-	if m.state < initialized {
+	switch m.state {
+	case reset, elfLoaded:
 		m.stateLock.Unlock()
 		return ErrManagerNotInitialized
+	case initialized, stopping, paused, running:
 	}
 
 	currentProbes := make(map[ProbeIdentificationPair]*Probe)
@@ -1537,7 +1614,7 @@ func (m *Manager) UpdateActivatedProbes(selectors []ProbesSelector) error {
 
 	if validationErrs != nil {
 		// Clean up
-		_ = m.stop(CleanInternal)
+		_ = m.Stop(CleanInternal)
 		return fmt.Errorf("probes activation validation failed: %w", validationErrs)
 	}
 
