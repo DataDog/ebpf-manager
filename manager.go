@@ -979,6 +979,10 @@ func (m *Manager) Stop(cleanup MapCleanupType) error {
 	case reset, elfLoaded:
 		return ErrManagerNotInitialized
 	case initialized, stopping, paused, running:
+		// stopping is only visible while another stopReaders holds the unlock
+		// window. After StopReaders returns, previousState is restored, so a
+		// later Stop() sees initialized/paused/running. Accepting stopping here
+		// covers the concurrent Stop() that arrives during that window.
 		return m.stop(cleanup)
 	}
 	return nil
@@ -991,9 +995,12 @@ func (m *Manager) StopReaders(cleanup MapCleanupType) error {
 	return m.stopReaders(cleanup)
 }
 
-// stopReaders - Thread unsafe version of Stop. If the lock is not held, it will panic
+// stopReaders - Thread unsafe version of StopReaders. The caller must hold stateLock.
 func (m *Manager) stopReaders(cleanup MapCleanupType) error {
-	// Signal to other goroutines that something is being stopped
+	// Block Start/NewPerfRing/NewRingBuffer for the unlock window below, then
+	// restore so StopReaders is not a sticky state. Only restore if we are
+	// still stopping: a concurrent Stop() may already have gone to reset.
+	previousState := m.state
 	m.state = stopping
 	var errs []error
 
@@ -1040,6 +1047,9 @@ func (m *Manager) stopReaders(cleanup MapCleanupType) error {
 		}
 	}
 
+	if m.state == stopping {
+		m.state = previousState
+	}
 	return errors.Join(errs...)
 }
 
