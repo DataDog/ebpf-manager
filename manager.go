@@ -1074,6 +1074,13 @@ func (m *Manager) stop(cleanup MapCleanupType) error {
 	var errs []error
 	errs = append(errs, m.stopReaders(cleanup))
 
+	// check again state since stopReaders released the lock temporary
+	switch m.state {
+	case reset, elfLoaded:
+		return ErrManagerNotInitialized
+	case initialized, stopping, paused, running:
+	}
+
 	// Detach eBPF programs
 	errs = append(errs, m.stopProbes())
 
@@ -1094,6 +1101,7 @@ func (m *Manager) stop(cleanup MapCleanupType) error {
 	m.collection.Close()
 	m.state = reset
 	return errors.Join(errs...)
+
 }
 
 // NewMap - Create a new map using the provided parameters. The map is added to the list of maps managed by the manager.
