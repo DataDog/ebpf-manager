@@ -11,3 +11,7 @@ require (
 	golang.org/x/sync v0.22.0
 	golang.org/x/sys v0.47.0
 )
+
+retract (
+	[v0.8.5, v0.8.6] // these versions can panic
+)
