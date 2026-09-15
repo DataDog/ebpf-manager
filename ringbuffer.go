@@ -164,10 +164,10 @@ func (rb *RingBuffer) Flush() {
 func (rb *RingBuffer) Stop(cleanup MapCleanupType) error {
 	rb.stateLock.Lock()
 	defer rb.stateLock.Unlock()
-	if rb.state <= stopped {
+	if rb.state <= stopping {
 		return nil
 	}
-	rb.state = stopped
+	rb.state = stopping
 
 	// close ring reader
 	err := rb.ringReader.Close()
@@ -190,10 +190,10 @@ func (rb *RingBuffer) Stop(cleanup MapCleanupType) error {
 func (rb *RingBuffer) closeReader() error {
 	rb.stateLock.Lock()
 	defer rb.stateLock.Unlock()
-	if rb.state <= stopped {
+	if rb.state <= stopping {
 		return nil
 	}
-	rb.state = stopped
+	rb.state = stopping
 	return rb.ringReader.Close()
 }
 

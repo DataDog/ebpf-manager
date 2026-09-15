@@ -7,8 +7,10 @@ import "github.com/cilium/ebpf"
 func (m *Manager) NewRingBuffer(spec *ebpf.MapSpec, options MapOptions, ringBufferOptions RingBufferOptions) (*ebpf.Map, error) {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
-	if m.state < initialized {
+	switch m.state {
+	case reset, elfLoaded, stopping:
 		return nil, ErrManagerNotInitialized
+	case initialized, paused, running:
 	}
 
 	// check if the name of the new map is available

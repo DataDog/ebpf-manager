@@ -29,7 +29,12 @@ type MapRoute struct {
 func (m *Manager) UpdateMapRoutes(router ...MapRoute) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
-	if m.collection == nil || m.state < initialized {
+	switch m.state {
+	case reset, elfLoaded:
+		return ErrManagerNotInitialized
+	case initialized, stopping, paused, running:
+	}
+	if m.collection == nil {
 		return ErrManagerNotInitialized
 	}
 
