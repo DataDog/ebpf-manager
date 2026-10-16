@@ -9,9 +9,7 @@ require (
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
 	golang.org/x/sync v0.23.0
-	golang.org/x/sys v0.48.0
+	golang.org/x/sys v0.49.0
 )
 
-retract (
-	[v0.8.5, v0.8.6] // these versions can panic
-)
+retract [v0.8.5, v0.8.6] // these versions can panic
