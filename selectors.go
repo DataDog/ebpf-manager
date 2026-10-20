@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -82,16 +83,16 @@ func (oo *OneOf) GetProbesIdentificationPairList() []ProbeIdentificationPair {
 // RunValidator - Ensures that the probes that were successfully activated follow the selector goal.
 // For example, see OneOf.
 func (oo *OneOf) RunValidator(manager *Manager) error {
-	var errs []string
+	var errs []error
 	for _, selector := range oo.Selectors {
 		if err := selector.RunValidator(manager); err != nil {
-			errs = append(errs, err.Error())
+			errs = append(errs, err)
 		}
 	}
 	if len(errs) == len(oo.Selectors) {
 		return fmt.Errorf(
-			"OneOf requirement failed, none of the following probes are running [%s]",
-			strings.Join(errs, " | "))
+			"OneOf requirement failed, none of the following probes are running [%w]",
+			errors.Join(errs...))
 	}
 	// at least one selector was successful
 	return nil
@@ -131,16 +132,16 @@ func (ao *AllOf) GetProbesIdentificationPairList() []ProbeIdentificationPair {
 // RunValidator - Ensures that the probes that were successfully activated follow the selector goal.
 // For example, see OneOf.
 func (ao *AllOf) RunValidator(manager *Manager) error {
-	var errMsg []string
+	var errs []error
 	for _, selector := range ao.Selectors {
 		if err := selector.RunValidator(manager); err != nil {
-			errMsg = append(errMsg, err.Error())
+			errs = append(errs, err)
 		}
 	}
-	if len(errMsg) > 0 {
+	if len(errs) > 0 {
 		return fmt.Errorf(
-			"AllOf requirement failed, the following probes are not running [%s]",
-			strings.Join(errMsg, " | "))
+			"AllOf requirement failed, the following probes are not running [%w]",
+			errors.Join(errs...))
 	}
 	// no error means that all the selectors were successful
 	return nil
