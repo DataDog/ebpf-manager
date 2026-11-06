@@ -27,4 +27,7 @@ var (
 	ErrNotSupported             = errors.New("not supported")
 	ErrNoNetworkDirection       = errors.New("a valid network direction is required to attach a TC classifier")
 	ErrMissingEditorFlags       = errors.New("missing editor flags in map editor")
+	ErrNetnsSwitch              = errors.New("couldn't switch network namespace")
+	ErrTCXAttach                = errors.New("couldn't attach TCX link")
+	ErrNoTCXLink                = errors.New("the probe has no TCX link")
 )
