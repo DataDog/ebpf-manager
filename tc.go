@@ -183,6 +183,9 @@ func (p *Probe) IsTCFilterActive() bool {
 	if p.programSpec.Type != ebpf.SchedCLS {
 		return false
 	}
+	if p.TCAttachMode == TCAttachModeTCX {
+		return p.isTCXLinkActive()
+	}
 
 	// Recover the netlink socket of the interface from the manager
 	ntl, err := p.getNetlinkSocket()
