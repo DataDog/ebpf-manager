@@ -141,6 +141,8 @@ func (ns *testNetns) newProbe(uid string, ifindex int, dir TrafficType, mode TCA
 		NetworkDirection:        dir,
 		TCAttachMode:            mode,
 		TCXAnchor:               anchor,
+		// clones of the empty UID copy the spec of an existing clone of the same function
+		KeepProgramSpec: true,
 	}
 }
 
