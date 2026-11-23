@@ -77,11 +77,18 @@ func TestPrepareUprobeMulti(t *testing.T) {
 }
 
 func TestMultiUprobeOffsetsCopy(t *testing.T) {
-	p := &Probe{UprobeOffsets: []uint64{10, 20}, UprobeOffset: 42, UprobeAttachMethod: AttachWithProbeEvents}
+	p := &Probe{UprobeOffsets: []uint64{10, 20}, UprobeAttachMethod: AttachWithProbeEvents}
 	copy := p.Copy()
 	copy.UprobeOffsets[0] = 99
-	if p.UprobeOffsets[0] != 10 || copy.UprobeOffset != 42 || copy.UprobeAttachMethod != p.UprobeAttachMethod {
+	if p.UprobeOffsets[0] != 10 || copy.UprobeAttachMethod != p.UprobeAttachMethod {
 		t.Fatal("Copy must retain attachment options without sharing the offsets slice")
+	}
+}
+
+func TestLegacyUprobeRejectsMultipleOffsets(t *testing.T) {
+	p := &Probe{programSpec: &ebpf.ProgramSpec{}, UprobeOffsets: []uint64{10, 20}}
+	if err := p.attachUprobe(); err == nil || err.Error() != "legacy uprobes require exactly one offset" {
+		t.Fatalf("expected an error before attachment, got %v", err)
 	}
 }
 
@@ -108,12 +115,20 @@ func TestMultiUprobeIntegration(t *testing.T) {
 	if err != nil || len(symbols) != 2 {
 		t.Fatalf("find target: %v, %+v", err, symbols)
 	}
-	for _, multi := range []bool{false, true} {
-		t.Run(map[bool]string{false: "legacy", true: "multi"}[multi], func(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		multi   bool
+		grouped bool
+	}{
+		{name: "legacy"},
+		{name: "multi-single", multi: true},
+		{name: "multi-grouped", multi: true, grouped: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			spec, routes := multiTestSpec()
 			m := &Manager{collectionSpec: spec, state: elfLoaded}
 			opts := Options{TailCallRouter: routes, BypassEnabled: true}
-			if multi {
+			if tc.multi {
 				opts.UprobeMultiPrograms = []string{"tls"}
 			}
 			if err := m.InitWithOptions(nil, opts); err != nil {
@@ -121,7 +136,7 @@ func TestMultiUprobeIntegration(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = m.Stop(CleanAll) })
 			enabled, fallback := m.UprobeMultiStatus()
-			if enabled != multi || fallback != nil {
+			if enabled != tc.multi || fallback != nil {
 				t.Fatalf("wrong backend: enabled=%v fallback=%v", enabled, fallback)
 			}
 			if err := m.UpdateTailCallRoutes(routes...); err != nil {
@@ -133,14 +148,16 @@ func TestMultiUprobeIntegration(t *testing.T) {
 			var ids []ProbeIdentificationPair
 			for _, name := range []string{"tls", "legacy"} {
 				groups := [][]uint64{{symbols[0].Value}, {symbols[1].Value}}
-				if multi && name == "tls" {
+				if tc.grouped && name == "tls" {
 					groups = [][]uint64{{symbols[0].Value, symbols[1].Value}}
 				}
 				for i, offsets := range groups {
 					id := ProbeIdentificationPair{EBPFFuncName: name, UID: fmt.Sprint("target-", i)}
-					probe := &Probe{ProbeIdentificationPair: id, BinaryPath: executable, PerfEventPID: os.Getpid(), UprobeOffset: offsets[0]}
-					if multi && name == "tls" {
-						probe.UprobeOffsets = offsets
+					probe := &Probe{ProbeIdentificationPair: id, BinaryPath: executable, PerfEventPID: os.Getpid(), UprobeOffsets: offsets}
+					if name == "legacy" && i == 0 {
+						// An empty list retains symbol resolution for legacy callers.
+						probe.UprobeOffsets = nil
+						probe.HookFuncName = symbols[0].Name
 					}
 					if err := m.AddHook("", probe); err != nil {
 						t.Fatal(err)

@@ -87,7 +87,7 @@ func (p *Probe) attachWithUprobeEvents() (*tracefsLink, error) {
 		ReturnProbe:  p.isReturnProbe,
 		Symbol:       p.HookFuncName, // only used for event naming
 		Path:         p.BinaryPath,
-		Offset:       p.UprobeOffset,
+		Offset:       p.UprobeOffsets[0],
 		UID:          p.UID,
 		AttachingPID: p.attachPID,
 	}
@@ -111,11 +111,11 @@ func (p *Probe) attachUprobe() error {
 	if p.programSpec.AttachType == ebpf.AttachTraceUprobeMulti {
 		return p.attachUprobeMulti()
 	}
-	if len(p.UprobeOffsets) != 0 {
-		return errors.New("UprobeOffsets requires a multi-uprobe program")
+	if len(p.UprobeOffsets) > 1 {
+		return errors.New("legacy uprobes require exactly one offset")
 	}
 	// compute the offset if it was not provided
-	if p.UprobeOffset == 0 {
+	if len(p.UprobeOffsets) == 0 {
 		var funcPattern string
 
 		// find the offset of the first symbol matching the provided pattern
@@ -134,13 +134,13 @@ func (p *Probe) attachUprobe() error {
 		if err != nil {
 			return fmt.Errorf("couldn't find symbol matching %s in %s: %w", pattern.String(), p.BinaryPath, err)
 		}
-		p.UprobeOffset = offsets[0].Value
+		p.UprobeOffsets = []uint64{offsets[0].Value}
 		p.HookFuncName = offsets[0].Name
 	}
 
 	var eventsFunc attachFunc = p.attachWithUprobeEvents
 	var pmuFunc attachFunc = func() (*tracefsLink, error) {
-		pfd, err := perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffset), p.PerfEventPID, uprobe, p.isReturnProbe, 0)
+		pfd, err := perfEventOpenPMU(p.BinaryPath, int(p.UprobeOffsets[0]), p.PerfEventPID, uprobe, p.isReturnProbe, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -182,9 +182,6 @@ func (p *Probe) attachUprobeMulti() error {
 		return err
 	}
 	offsets := p.UprobeOffsets
-	if len(offsets) == 0 && p.UprobeOffset != 0 {
-		offsets = []uint64{p.UprobeOffset}
-	}
 	var symbols []string
 	if len(offsets) == 0 {
 		if p.HookFuncName == "" || p.MatchFuncName != "" {

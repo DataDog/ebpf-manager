@@ -120,14 +120,10 @@ type Probe struct {
 	// UprobeAttachMethod - Method to use for attaching the uprobe. Either use perfEventOpen ABI or uprobe events
 	UprobeAttachMethod AttachMethod
 
-	// UprobeOffset - If UprobeOffset is provided, the uprobe will be attached to it directly without looking for the
-	// symbol in the elf binary. If the file is a non-PIE executable, the provided address must be a virtual address,
-	// otherwise it must be an offset relative to the file load address.
-	UprobeOffset uint64
-
-	// UprobeOffsets attaches all of these file offsets as one multi-uprobe link.
-	// The program must be selected by Options.UprobeMultiPrograms. UprobeOffset
-	// and symbol lookup are ignored when this slice is non-empty.
+	// UprobeOffsets contains resolved file offsets, bypassing symbol lookup when
+	// non-empty. Legacy programs require exactly one offset; programs selected by
+	// Options.UprobeMultiPrograms attach one or more offsets as one link. An empty
+	// slice resolves the symbol specified by HookFuncName or MatchFuncName (legacy only).
 	UprobeOffsets []uint64
 
 	// ProbeRetry - Defines the number of times that the probe will retry to attach / detach on error.
@@ -232,7 +228,6 @@ func (p *Probe) Copy() *Probe {
 			UID:          p.UID,
 			EBPFFuncName: p.EBPFFuncName,
 		},
-		UprobeOffset:       p.UprobeOffset,
 		UprobeOffsets:      append([]uint64(nil), p.UprobeOffsets...),
 		UprobeAttachMethod: p.UprobeAttachMethod,
 		SyscallFuncName:    p.SyscallFuncName,
