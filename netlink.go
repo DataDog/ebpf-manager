@@ -159,16 +159,24 @@ func checkNetnsHandle(nsHandle uint64, nsID uint32) error {
 	return nil
 }
 
-// lookup - Returns the cached netlink socket of the requested network namespace, without opening a new one
-func (nsc *netlinkSocketCache) lookup(nsID uint32) (*NetlinkSocket, bool) {
-	if nsc == nil {
-		return nil, false
+// tcxNetnsHandle - Returns a new handle on the network namespace nsID, copied from the one of its first TCX attach, that
+// the caller must close (netns.None() for the current namespace, when nsID is 0)
+func (nsc *netlinkSocketCache) tcxNetnsHandle(nsID uint32) (netns.NsHandle, error) {
+	if nsID == 0 {
+		return netns.None(), nil
 	}
 	nsc.Lock()
 	defer nsc.Unlock()
 
 	sock, ok := nsc.cache[nsID]
-	return sock, ok
+	if !ok || sock.tcxNetns == nil {
+		return netns.None(), fmt.Errorf("%w: no copy of the handle of namespace %d", ErrNetnsSwitch, nsID)
+	}
+	fd, err := unix.FcntlInt(sock.tcxNetns.Fd(), unix.F_DUPFD_CLOEXEC, 0)
+	if err != nil {
+		return netns.None(), fmt.Errorf("%w: couldn't copy the handle of namespace %d: %w", ErrNetnsSwitch, nsID, err)
+	}
+	return netns.NsHandle(fd), nil
 }
 
 // cleanup - Cleans up all opened netlink sockets in cache. This function is expected to be called when a

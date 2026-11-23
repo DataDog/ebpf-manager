@@ -326,6 +326,9 @@ func TestTCXForeignProgram(t *testing.T) {
 
 	p := ns.cloneTCX(t, m, "probe", ifindex, Ingress, TCXAnchorHead)
 	ns.requirePrograms(t, ifindex, Ingress, probeID(p), foreignID)
+	if !p.IsTCFilterActive() {
+		t.Error("a probe should be active next to foreign programs")
+	}
 
 	if err := m.DetachHook(p.ProbeIdentificationPair); err != nil {
 		t.Fatal(err)
@@ -444,6 +447,29 @@ func TestTCXIsTCFilterActive(t *testing.T) {
 			t.Fatal("the moved interface should get a new ifindex")
 		}
 		// an unrelated interface takes the ifindex that the probe was attached to
+		ns.addLink(t, &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "reused", Index: dev.Attrs().Index}})
+		if p.IsTCFilterActive() {
+			t.Error("a probe whose interface left its namespace should be inactive")
+		}
+	})
+
+	t.Run("moved interface whose ifindex is reused", func(t *testing.T) {
+		m := newTCTestManager(t)
+		ns, other := newTestNetns(t), newTestNetns(t)
+		dev := ns.addLink(t, dummy("dummy0"))
+		p := ns.cloneTCX(t, m, "probe", dev.Attrs().Index, Ingress, TCXAnchorHead)
+
+		if err := ns.nl.LinkSetNsFd(dev, int(other.handle)); err != nil {
+			t.Fatal(err)
+		}
+		moved, err := other.nl.LinkByName("dummy0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if moved.Attrs().Index != dev.Attrs().Index {
+			t.Fatal("the moved interface should keep its ifindex")
+		}
+		// the link reports the ifindex of the probe, and an unrelated interface takes it in the namespace of the probe
 		ns.addLink(t, &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "reused", Index: dev.Attrs().Index}})
 		if p.IsTCFilterActive() {
 			t.Error("a probe whose interface left its namespace should be inactive")

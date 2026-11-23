@@ -176,48 +176,74 @@ func (p *Probe) TCXLinkIfIndex() (uint32, error) {
 	if p.TCAttachMode != TCAttachModeTCX {
 		return 0, fmt.Errorf("%s isn't attached with TCX: %w", p.ProbeIdentificationPair, ErrNotSupported)
 	}
-	ifindex, err := p.tcxLinkIfIndex()
+	info, err := p.tcxLinkInfo()
 	if err != nil {
 		return 0, fmt.Errorf("%s: %w", p.ProbeIdentificationPair, err)
-	}
-	return ifindex, nil
-}
-
-// tcxLinkIfIndex - Thread unsafe version of TCXLinkIfIndex
-func (p *Probe) tcxLinkIfIndex() (uint32, error) {
-	tcxLink, ok := p.progLink.(link.Link)
-	if !ok {
-		return 0, ErrNoTCXLink
-	}
-	info, err := tcxLink.Info()
-	if err != nil {
-		return 0, err
-	}
-	if info.TCX() == nil {
-		return 0, ErrNoTCXLink
 	}
 	return info.TCX().Ifindex, nil
 }
 
-// isTCXLinkActive - A TCX link reports ifindex 0 once its interface is unregistered, but it stays attached to an
-// interface that moves to another network namespace: the interface must also still be in the namespace of the probe.
-func (p *Probe) isTCXLinkActive() bool {
-	// an interface moving into a namespace where its ifindex is taken gets a new one
-	if ifindex, err := p.tcxLinkIfIndex(); err != nil || ifindex == 0 || int(ifindex) != p.IfIndex {
-		return false
+// tcxLinkInfo - Thread unsafe: returns the info of the TCX link of the probe
+func (p *Probe) tcxLinkInfo() (*link.Info, error) {
+	tcxLink, ok := p.progLink.(link.Link)
+	if !ok {
+		return nil, ErrNoTCXLink
 	}
-	return p.isInterfaceInNetns()
+	info, err := tcxLink.Info()
+	if err != nil {
+		return nil, err
+	}
+	if info.TCX() == nil {
+		return nil, ErrNoTCXLink
+	}
+	return info, nil
 }
 
-// isInterfaceInNetns - Looks the interface up with the cached netlink socket of the probe's network namespace, and
-// never opens a new one: the namespace handle of the probe may be closed already.
-func (p *Probe) isInterfaceInNetns() bool {
-	ntl, ok := p.netlinkSocketCache.lookup(p.IfIndexNetnsID)
-	if !ok {
+// isTCXLinkActive - A TCX link reports ifindex 0 once its interface is unregistered, and follows it into other network
+// namespaces, while another interface can take its ifindex in the namespace of the probe: the link must be on its hook.
+func (p *Probe) isTCXLinkActive() bool {
+	info, err := p.tcxLinkInfo()
+	// an interface moving into a namespace where its ifindex is taken gets a new one
+	if err != nil || info.TCX().Ifindex == 0 || int(info.TCX().Ifindex) != p.IfIndex {
 		return false
 	}
-	_, err := ntl.Sock.LinkByIndex(p.IfIndex)
-	return err == nil
+
+	nsHandle, err := p.netlinkSocketCache.tcxNetnsHandle(p.IfIndexNetnsID)
+	if err != nil {
+		return false
+	}
+	if nsHandle.IsOpen() {
+		defer nsHandle.Close()
+	}
+
+	var attached bool
+	err = runInNetns(nsHandle, func() error {
+		var queryErr error
+		attached, queryErr = tcxHookHasLink(p.IfIndex, p.tcxAttachType(), info.ID)
+		return queryErr
+	})
+	return err == nil && attached
+}
+
+// tcxHookHasLink - Returns true if the TCX hook of ifindex, in the current network namespace, holds the link id
+func tcxHookHasLink(ifindex int, attach ebpf.AttachType, id link.ID) (bool, error) {
+	var res *link.QueryResult
+	var err error
+	// the hook can grow between the two syscalls of a query
+	for range 3 {
+		if res, err = link.QueryPrograms(link.QueryOptions{Target: ifindex, Attach: attach}); !errors.Is(err, unix.ENOSPC) {
+			break
+		}
+	}
+	if err != nil {
+		return false, err
+	}
+	for _, prog := range res.Programs {
+		if linkID, ok := prog.LinkID(); ok && linkID == id {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // runInNetns - Runs fn in the provided network namespace, or in the current one if ns isn't open. fn runs on a new

@@ -75,6 +75,14 @@ func cacheCurrentNetns(t *testing.T, m *Manager, nsID uint32) *NetlinkSocket {
 	return sock
 }
 
+// lookup returns the cached netlink socket of nsID, without opening a new one
+func (nsc *netlinkSocketCache) lookup(nsID uint32) (*NetlinkSocket, bool) {
+	nsc.Lock()
+	defer nsc.Unlock()
+	sock, ok := nsc.cache[nsID]
+	return sock, ok
+}
+
 type closeCounter struct {
 	closed int
 }
@@ -290,30 +298,37 @@ func TestTCXLinkIfIndexWithoutTCXLink(t *testing.T) {
 	}
 }
 
-func TestTCXInterfaceInNetns(t *testing.T) {
-	const nsID, uncachedNsID = 42, 43
+func TestTCXNetnsHandleForActiveCheck(t *testing.T) {
+	nsFile, nsID := openCurrentNetns(t)
 	m := newUnloadedTCManager()
 	cacheCurrentNetns(t, m, nsID)
-	p := newFakeTCProbe(m, "test", TCAttachModeTCX, running)
-	p.IfIndexNetnsID = nsID
 
-	p.IfIndex = 1
-	if !p.isInterfaceInNetns() {
-		t.Error("the loopback interface should be found in its namespace")
+	if handle, err := m.netlinkSocketCache.tcxNetnsHandle(0); err != nil || handle.IsOpen() {
+		t.Errorf("a probe without namespace handle should be checked from the current namespace, got %v", err)
 	}
 
-	p.IfIndex = missingIfIndex
-	if p.isInterfaceInNetns() {
-		t.Error("a missing interface can't be found")
+	// no TCX attach copied the handle of nsID, and nsID+1 isn't cached
+	for _, id := range []uint32{nsID, nsID + 1} {
+		if _, err := m.netlinkSocketCache.tcxNetnsHandle(id); !errors.Is(err, ErrNetnsSwitch) {
+			t.Errorf("namespace %d: got %v, want %v", id, err, ErrNetnsSwitch)
+		}
+	}
+	if _, ok := m.netlinkSocketCache.lookup(nsID + 1); ok {
+		t.Error("checking a probe shouldn't open a netlink socket")
 	}
 
-	p.IfIndex = 1
-	p.IfIndexNetnsID = uncachedNsID
-	if p.isInterfaceInNetns() {
-		t.Error("an interface can't be found in a namespace without netlink socket")
+	_, attachHandle, err := m.netlinkSocketCache.getTCXNetlinkSocket(uint64(nsFile.Fd()), nsID)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := m.netlinkSocketCache.lookup(uncachedNsID); ok {
-		t.Error("looking an interface up shouldn't open a netlink socket")
+	_ = attachHandle.Close()
+	handle, err := m.netlinkSocketCache.tcxNetnsHandle(nsID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	if err = checkNetnsHandle(uint64(handle), nsID); err != nil {
+		t.Error(err)
 	}
 }
 
