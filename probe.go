@@ -377,8 +377,8 @@ func (p *Probe) internalInit(manager *Manager) error {
 		if p.NetworkDirection != Egress && p.NetworkDirection != Ingress {
 			return fmt.Errorf("%s has an invalid configuration: %w", p.ProbeIdentificationPair, ErrNoNetworkDirection)
 		}
-		if err := p.checkTCAttachMode(); err != nil {
-			return fmt.Errorf("%s has an invalid configuration: %w", p.ProbeIdentificationPair, err)
+		if p.TCAttachMode == TCAttachModeTCX && p.TCFilterProtocol != 0 && p.TCFilterProtocol != unix.ETH_P_ALL {
+			return fmt.Errorf("%s has an invalid configuration: TCX can't filter on protocol %#x", p.ProbeIdentificationPair, p.TCFilterProtocol)
 		}
 	}
 
@@ -631,11 +631,6 @@ func (p *Probe) pause() error {
 	defer p.stateLock.Unlock()
 	if p.state <= paused || !p.Enabled {
 		return nil
-	}
-
-	// a bypassed program returns 0, which is TCX_PASS: it would skip the programs that follow it on the hook
-	if p.usesTCX() {
-		return fmt.Errorf("couldn't pause TCX probe %s: %w", p.ProbeIdentificationPair, ErrNotSupported)
 	}
 
 	v, ok := p.progLink.(pauser)

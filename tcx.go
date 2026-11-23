@@ -6,7 +6,6 @@ import (
 	"runtime"
 
 	"github.com/cilium/ebpf"
-	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/link"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
@@ -18,9 +17,10 @@ type TCAttachMode uint32
 const (
 	// TCAttachModeLegacy - Attach the classifier as a filter of a clsact qdisc. This is the default.
 	TCAttachModeLegacy TCAttachMode = iota
-	// TCAttachModeTCX - Attach the classifier with a TCX link (see HaveTCX). TCX programs run before the filters of
-	// clsact qdiscs. TCFilterHandle, TCFilterPrio and TCCleanupQDisc are ignored, TCFilterProtocol must be ETH_P_ALL,
-	// and IfIndexNetnsID must be the inode number of the IfIndexNetns network namespace.
+	// TCAttachModeTCX - Attach the classifier with a TCX link (Linux 6.6+), which runs before the filters of clsact
+	// qdiscs. TCFilterHandle, TCFilterPrio and TCCleanupQDisc are ignored, TCFilterProtocol must be ETH_P_ALL, and
+	// IfIndexNetnsID must be the inode number of the IfIndexNetns network namespace. The filters that previous managers
+	// left on the interface aren't removed.
 	TCAttachModeTCX
 )
 
@@ -53,61 +53,6 @@ func (a TCXAnchor) anchor() link.Anchor {
 	return link.Tail()
 }
 
-// HaveTCX - Returns nil if the kernel can attach classifiers with TCX links, or the reason why it can't. It only needs
-// the bpf syscall: no network namespace or interface is involved. The result isn't cached.
-func HaveTCX() error {
-	prog, err := ebpf.NewProgram(&ebpf.ProgramSpec{
-		Type:    ebpf.SchedCLS,
-		License: "MIT",
-		Instructions: asm.Instructions{
-			asm.Mov.Imm(asm.R0, 0),
-			asm.Return(),
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("couldn't load a classifier to detect TCX support: %w", err)
-	}
-	defer prog.Close()
-
-	// the kernel only looks the interface up once it has accepted the TCX attach type
-	ifindex := ^uint32(0)
-	l, err := link.AttachTCX(link.TCXOptions{
-		Interface: int(ifindex),
-		Program:   prog,
-		Attach:    ebpf.AttachTCXIngress,
-	})
-	if err == nil {
-		_ = l.Close()
-		return errors.New("attaching a TCX link to a missing interface succeeded unexpectedly")
-	}
-	if errors.Is(err, unix.ENODEV) {
-		return nil
-	}
-	return fmt.Errorf("TCX isn't supported: %w", err)
-}
-
-func (p *Probe) usesTCX() bool {
-	return p.programSpec != nil && p.programSpec.Type == ebpf.SchedCLS && p.TCAttachMode == TCAttachModeTCX
-}
-
-// checkTCAttachMode - Validates the attach mode of a TC classifier
-func (p *Probe) checkTCAttachMode() error {
-	switch p.TCAttachMode {
-	case TCAttachModeLegacy:
-		return nil
-	case TCAttachModeTCX:
-	default:
-		return fmt.Errorf("unknown TC attach mode %d", p.TCAttachMode)
-	}
-	if p.TCXAnchor != TCXAnchorTail && p.TCXAnchor != TCXAnchorHead {
-		return fmt.Errorf("unknown TCX anchor %d", p.TCXAnchor)
-	}
-	if p.TCFilterProtocol != 0 && p.TCFilterProtocol != unix.ETH_P_ALL {
-		return fmt.Errorf("TCX links can't filter on protocol %#x", p.TCFilterProtocol)
-	}
-	return nil
-}
-
 func (p *Probe) tcxAttachType() ebpf.AttachType {
 	if p.NetworkDirection == Egress {
 		return ebpf.AttachTCXEgress
@@ -117,21 +62,15 @@ func (p *Probe) tcxAttachType() ebpf.AttachType {
 
 // attachTCX - Attaches the probe to its interface with a TCX link
 func (p *Probe) attachTCX() error {
-	ntl, nsHandle, err := p.netlinkSocketCache.getTCXNetlinkSocket(p.IfIndexNetns, p.IfIndexNetnsID)
+	nsHandle, err := p.netlinkSocketCache.tcxNetnsHandle(p.IfIndexNetns, p.IfIndexNetnsID)
 	if err != nil {
 		return err
 	}
 	if nsHandle.IsOpen() {
 		defer nsHandle.Close()
 	}
-
 	if _, err = p.resolveLink(); err != nil {
 		return err
-	}
-
-	// lists nothing without clsact qdisc. ENOENT means the filter is gone already, and Attach would take it for success.
-	if err = p.cleanupTCFilters(ntl); err != nil && !errors.Is(err, unix.ENOENT) {
-		return fmt.Errorf("couldn't clean up existing \"clsact\" qdisc filters for %s[%d]: %w", p.IfName, p.IfIndex, err)
 	}
 
 	var tcxLink link.Link
@@ -166,10 +105,9 @@ func (p *Probe) detachTCX() error {
 	return nil
 }
 
-// TCXLinkIfIndex - (TC classifier) Returns the ifindex reported by the TCX link of the probe. The link follows its
-// interface into other network namespaces, where the interface may get another ifindex than IfIndex, and reports 0
-// once the interface is unregistered. Returns ErrNotSupported if TCAttachMode isn't TCAttachModeTCX, and ErrNoTCXLink
-// if the probe has no TCX link, as when it isn't attached.
+// TCXLinkIfIndex - (TC classifier) Returns the ifindex reported by the TCX link of the probe: the link follows its
+// interface into other network namespaces, and reports 0 once the interface is unregistered. Returns ErrNotSupported
+// if TCAttachMode isn't TCAttachModeTCX, and ErrNoTCXLink if the probe isn't attached.
 func (p *Probe) TCXLinkIfIndex() (uint32, error) {
 	p.stateLock.RLock()
 	defer p.stateLock.RUnlock()
@@ -199,16 +137,14 @@ func (p *Probe) tcxLinkInfo() (*link.Info, error) {
 	return info, nil
 }
 
-// isTCXLinkActive - A TCX link reports ifindex 0 once its interface is unregistered, and follows it into other network
-// namespaces, while another interface can take its ifindex in the namespace of the probe: the link must be on its hook.
+// isTCXLinkActive - A TCX link follows its interface into other network namespaces, and another interface can then take
+// its ifindex in the namespace of the probe: the link must be on the hook of IfIndex in that namespace.
 func (p *Probe) isTCXLinkActive() bool {
 	info, err := p.tcxLinkInfo()
-	// an interface moving into a namespace where its ifindex is taken gets a new one
-	if err != nil || info.TCX().Ifindex == 0 || int(info.TCX().Ifindex) != p.IfIndex {
+	if err != nil || int(info.TCX().Ifindex) != p.IfIndex {
 		return false
 	}
-
-	nsHandle, err := p.netlinkSocketCache.tcxNetnsHandle(p.IfIndexNetnsID)
+	nsHandle, err := p.netlinkSocketCache.tcxNetnsHandle(p.IfIndexNetns, p.IfIndexNetnsID)
 	if err != nil {
 		return false
 	}
@@ -216,39 +152,29 @@ func (p *Probe) isTCXLinkActive() bool {
 		defer nsHandle.Close()
 	}
 
-	var attached bool
-	err = runInNetns(nsHandle, func() error {
-		var queryErr error
-		attached, queryErr = tcxHookHasLink(p.IfIndex, p.tcxAttachType(), info.ID)
-		return queryErr
-	})
-	return err == nil && attached
-}
-
-// tcxHookHasLink - Returns true if the TCX hook of ifindex, in the current network namespace, holds the link id
-func tcxHookHasLink(ifindex int, attach ebpf.AttachType, id link.ID) (bool, error) {
 	var res *link.QueryResult
-	var err error
-	// the hook can grow between the two syscalls of a query
-	for range 3 {
-		if res, err = link.QueryPrograms(link.QueryOptions{Target: ifindex, Attach: attach}); !errors.Is(err, unix.ENOSPC) {
-			break
+	err = runInNetns(nsHandle, func() (err error) {
+		// the hook can grow between the two syscalls of a query
+		for range 3 {
+			if res, err = link.QueryPrograms(link.QueryOptions{Target: p.IfIndex, Attach: p.tcxAttachType()}); !errors.Is(err, unix.ENOSPC) {
+				break
+			}
 		}
-	}
+		return err
+	})
 	if err != nil {
-		return false, err
+		return false
 	}
 	for _, prog := range res.Programs {
-		if linkID, ok := prog.LinkID(); ok && linkID == id {
-			return true, nil
+		if id, ok := prog.LinkID(); ok && id == info.ID {
+			return true
 		}
 	}
-	return false, nil
+	return false
 }
 
-// runInNetns - Runs fn in the provided network namespace, or in the current one if ns isn't open. fn runs on a new
-// goroutine locked to its thread, so that a thread that can't be moved back to its namespace is terminated when the
-// goroutine exits, instead of being reused.
+// runInNetns - Runs fn in the provided network namespace, or in the current one if ns isn't open, on a goroutine locked
+// to its thread: a thread that can't go back to its namespace is terminated with the goroutine instead of being reused.
 func runInNetns(ns netns.NsHandle, fn func() error) error {
 	if !ns.IsOpen() {
 		return fn()

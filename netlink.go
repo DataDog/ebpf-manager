@@ -108,10 +108,10 @@ func (nsc *netlinkSocketCache) getNetlinkSocket(nsHandle uint64, nsID uint32) (*
 	return cacheEntry, nil
 }
 
-// getTCXNetlinkSocket - Returns the netlink socket of the requested network namespace, and a new handle on that
-// namespace that the caller must close (netns.None() for the current namespace, when nsHandle is 0). The entry keeps a
-// copy of the first nsHandle it gets and ignores the next ones, since callers close their handle once attached.
-func (nsc *netlinkSocketCache) getTCXNetlinkSocket(nsHandle uint64, nsID uint32) (*NetlinkSocket, netns.NsHandle, error) {
+// tcxNetnsHandle - Returns a new handle on the network namespace nsID, that the caller must close (netns.None() for the
+// current namespace, when nsHandle is 0). The cache entry of nsID keeps a copy of the first nsHandle it gets and ignores
+// the next ones, since callers close their handle once attached.
+func (nsc *netlinkSocketCache) tcxNetnsHandle(nsHandle uint64, nsID uint32) (netns.NsHandle, error) {
 	nsc.Lock()
 	defer nsc.Unlock()
 
@@ -119,31 +119,31 @@ func (nsc *netlinkSocketCache) getTCXNetlinkSocket(nsHandle uint64, nsID uint32)
 	if !ok || sock.tcxNetns == nil {
 		if nsHandle != 0 {
 			if err := checkNetnsHandle(nsHandle, nsID); err != nil {
-				return nil, netns.None(), err
+				return netns.None(), err
 			}
 		}
 		if !ok {
 			var err error
 			if sock, err = NewNetlinkSocket(nsHandle); err != nil {
-				return nil, netns.None(), fmt.Errorf("namespace %v: %w", nsID, err)
+				return netns.None(), fmt.Errorf("namespace %v: %w", nsID, err)
 			}
 			nsc.cache[nsID] = sock
 		}
 		if nsHandle == 0 {
-			return sock, netns.None(), nil
+			return netns.None(), nil
 		}
 		fd, err := unix.FcntlInt(uintptr(nsHandle), unix.F_DUPFD_CLOEXEC, 0)
 		if err != nil {
-			return nil, netns.None(), fmt.Errorf("%w: couldn't copy the handle of namespace %d: %w", ErrNetnsSwitch, nsID, err)
+			return netns.None(), fmt.Errorf("%w: couldn't copy the handle of namespace %d: %w", ErrNetnsSwitch, nsID, err)
 		}
 		sock.tcxNetns = os.NewFile(uintptr(fd), fmt.Sprintf("net:[%d]", nsID))
 	}
 
 	fd, err := unix.FcntlInt(sock.tcxNetns.Fd(), unix.F_DUPFD_CLOEXEC, 0)
 	if err != nil {
-		return nil, netns.None(), fmt.Errorf("%w: couldn't copy the handle of namespace %d: %w", ErrNetnsSwitch, nsID, err)
+		return netns.None(), fmt.Errorf("%w: couldn't copy the handle of namespace %d: %w", ErrNetnsSwitch, nsID, err)
 	}
-	return sock, netns.NsHandle(fd), nil
+	return netns.NsHandle(fd), nil
 }
 
 // checkNetnsHandle - Makes sure that nsHandle refers to the network namespace nsID: a closed handle number can be
@@ -157,26 +157,6 @@ func checkNetnsHandle(nsHandle uint64, nsID uint32) error {
 		return fmt.Errorf("%w: handle %d refers to inode %d instead of namespace %d", ErrNetnsSwitch, nsHandle, stat.Ino, nsID)
 	}
 	return nil
-}
-
-// tcxNetnsHandle - Returns a new handle on the network namespace nsID, copied from the one of its first TCX attach, that
-// the caller must close (netns.None() for the current namespace, when nsID is 0)
-func (nsc *netlinkSocketCache) tcxNetnsHandle(nsID uint32) (netns.NsHandle, error) {
-	if nsID == 0 {
-		return netns.None(), nil
-	}
-	nsc.Lock()
-	defer nsc.Unlock()
-
-	sock, ok := nsc.cache[nsID]
-	if !ok || sock.tcxNetns == nil {
-		return netns.None(), fmt.Errorf("%w: no copy of the handle of namespace %d", ErrNetnsSwitch, nsID)
-	}
-	fd, err := unix.FcntlInt(sock.tcxNetns.Fd(), unix.F_DUPFD_CLOEXEC, 0)
-	if err != nil {
-		return netns.None(), fmt.Errorf("%w: couldn't copy the handle of namespace %d: %w", ErrNetnsSwitch, nsID, err)
-	}
-	return netns.NsHandle(fd), nil
 }
 
 // cleanup - Cleans up all opened netlink sockets in cache. This function is expected to be called when a

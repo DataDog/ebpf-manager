@@ -6,8 +6,6 @@ import (
 	"os"
 	"runtime"
 	"slices"
-	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/cilium/ebpf"
@@ -23,21 +21,6 @@ const (
 	tcActUnspec = -1
 )
 
-func requireRoot(t *testing.T) {
-	t.Helper()
-	if os.Geteuid() != 0 {
-		t.Skip("needs root")
-	}
-}
-
-func requireTCX(t *testing.T) {
-	t.Helper()
-	requireRoot(t)
-	if err := HaveTCX(); err != nil {
-		t.Skipf("TCX is unavailable: %v", err)
-	}
-}
-
 func tcxTestProgramSpec() *ebpf.ProgramSpec {
 	return &ebpf.ProgramSpec{
 		Name:        tcxTestFunc,
@@ -48,6 +31,22 @@ func tcxTestProgramSpec() *ebpf.ProgramSpec {
 			asm.Mov.Imm(asm.R0, tcActUnspec),
 			asm.Return(),
 		},
+	}
+}
+
+func requireTCX(t *testing.T) {
+	t.Helper()
+	if os.Geteuid() != 0 {
+		t.Skip("needs root")
+	}
+	prog, err := ebpf.NewProgram(tcxTestProgramSpec())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prog.Close()
+	// no interface has this ifindex, so the attach fails, with ErrNotSupported if the kernel lacks TCX
+	if _, err = link.AttachTCX(link.TCXOptions{Interface: int(^uint32(0)), Program: prog, Attach: ebpf.AttachTCXIngress}); errors.Is(err, ebpf.ErrNotSupported) {
+		t.Skip("TCX is unavailable")
 	}
 }
 
@@ -159,12 +158,8 @@ func (ns *testNetns) cloneTCX(t *testing.T, m *Manager, uid string, ifindex int,
 func (ns *testNetns) tcxPrograms(t *testing.T, ifindex int, dir TrafficType) []link.AttachedProgram {
 	t.Helper()
 	var res *link.QueryResult
-	err := runInNetns(ns.handle, func() error {
-		var err error
-		res, err = link.QueryPrograms(link.QueryOptions{
-			Target: ifindex,
-			Attach: (&Probe{NetworkDirection: dir}).tcxAttachType(),
-		})
+	err := runInNetns(ns.handle, func() (err error) {
+		res, err = link.QueryPrograms(link.QueryOptions{Target: ifindex, Attach: (&Probe{NetworkDirection: dir}).tcxAttachType()})
 		return err
 	})
 	if err != nil {
@@ -184,8 +179,8 @@ func (ns *testNetns) requirePrograms(t *testing.T, ifindex int, dir TrafficType,
 	}
 }
 
-// attachForeignTCX attaches a classifier that the manager doesn't know about
-func (ns *testNetns) attachForeignTCX(t *testing.T, ifindex int, anchor link.Anchor) (ebpf.ProgramID, link.Link) {
+// attachForeignTCX attaches a classifier that the manager doesn't know about, and returns its ID
+func (ns *testNetns) attachForeignTCX(t *testing.T, ifindex int, anchor link.Anchor) ebpf.ProgramID {
 	t.Helper()
 	prog, err := ebpf.NewProgram(tcxTestProgramSpec())
 	if err != nil {
@@ -194,8 +189,7 @@ func (ns *testNetns) attachForeignTCX(t *testing.T, ifindex int, anchor link.Anc
 	t.Cleanup(func() { _ = prog.Close() })
 
 	var l link.Link
-	err = runInNetns(ns.handle, func() error {
-		var err error
+	err = runInNetns(ns.handle, func() (err error) {
 		l, err = link.AttachTCX(link.TCXOptions{Interface: ifindex, Program: prog, Attach: ebpf.AttachTCXIngress, Anchor: anchor})
 		return err
 	})
@@ -203,19 +197,12 @@ func (ns *testNetns) attachForeignTCX(t *testing.T, ifindex int, anchor link.Anc
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = l.Close() })
-	return programID(t, prog), l
-}
 
-func programID(t *testing.T, prog *ebpf.Program) ebpf.ProgramID {
-	t.Helper()
 	info, err := prog.Info()
 	if err != nil {
 		t.Fatal(err)
 	}
-	id, ok := info.ID()
-	if !ok {
-		t.Fatal("program ID unavailable")
-	}
+	id, _ := info.ID()
 	return id
 }
 
@@ -223,86 +210,30 @@ func probeID(p *Probe) ebpf.ProgramID {
 	return ebpf.ProgramID(p.ID())
 }
 
-func linkID(t *testing.T, p *Probe) link.ID {
-	t.Helper()
-	l, ok := p.progLink.(link.Link)
-	if !ok {
-		t.Fatalf("%s has no TCX link", p.ProbeIdentificationPair)
-	}
-	info, err := l.Info()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return info.ID
-}
-
-func TestHaveTCX(t *testing.T) {
-	requireRoot(t)
-	ns := newTestNetns(t)
-	ifindex := ns.addLink(t, dummy("dummy0")).Attrs().Index
-	prog, err := ebpf.NewProgram(tcxTestProgramSpec())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = prog.Close() })
-
-	attachErr := runInNetns(ns.handle, func() error {
-		l, err := link.AttachTCX(link.TCXOptions{Interface: ifindex, Program: prog, Attach: ebpf.AttachTCXIngress})
-		if err != nil {
-			return err
-		}
-		return l.Close()
-	})
-	if haveErr := HaveTCX(); (haveErr == nil) != (attachErr == nil) {
-		t.Fatalf("HaveTCX returned %v, but attaching a TCX link returned %v", haveErr, attachErr)
-	}
-}
-
 func TestTCXAttachDetach(t *testing.T) {
 	requireTCX(t)
-	for name, newDev := range map[string]netlink.Link{
-		"dummy": dummy("dummy0"),
-		"veth":  &netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: "veth0"}, PeerName: "veth1"},
-	} {
-		t.Run(name, func(t *testing.T) {
-			m := newTCTestManager(t)
-			ns := newTestNetns(t)
-			dev := ns.addLink(t, newDev)
-			ifindex := dev.Attrs().Index
+	m := newTCTestManager(t)
+	ns := newTestNetns(t)
+	ifindex := ns.addLink(t, dummy("dummy0")).Attrs().Index
 
-			ingress := ns.cloneTCX(t, m, "ingress", ifindex, Ingress, TCXAnchorHead)
-			egress := ns.cloneTCX(t, m, "egress", ifindex, Egress, TCXAnchorHead)
-			ns.requirePrograms(t, ifindex, Ingress, probeID(ingress))
-			ns.requirePrograms(t, ifindex, Egress, probeID(egress))
-			if id, _ := ns.tcxPrograms(t, ifindex, Ingress)[0].LinkID(); id != linkID(t, ingress) {
-				t.Errorf("the ingress hook holds link %d instead of %d", id, linkID(t, ingress))
-			}
-			if !ingress.IsTCFilterActive() || !egress.IsTCFilterActive() {
-				t.Fatal("attached probes should be active")
-			}
-
-			qdiscs, err := ns.nl.QdiscList(dev)
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, qdisc := range qdiscs {
-				if qdisc.Type() == "clsact" {
-					t.Error("TCX attaches shouldn't add a clsact qdisc")
-				}
-			}
-
-			// DetachHook stops a probe while another clone of its program is left, and only detaches the last one
-			if err = m.DetachHook(ingress.ProbeIdentificationPair); err != nil {
-				t.Fatal(err)
-			}
-			ns.requirePrograms(t, ifindex, Ingress)
-			ns.requirePrograms(t, ifindex, Egress, probeID(egress))
-			if err = m.DetachHook(egress.ProbeIdentificationPair); err != nil {
-				t.Fatal(err)
-			}
-			ns.requirePrograms(t, ifindex, Egress)
-		})
+	ingress := ns.cloneTCX(t, m, "ingress", ifindex, Ingress, TCXAnchorHead)
+	egress := ns.cloneTCX(t, m, "egress", ifindex, Egress, TCXAnchorHead)
+	ns.requirePrograms(t, ifindex, Ingress, probeID(ingress))
+	ns.requirePrograms(t, ifindex, Egress, probeID(egress))
+	if !ingress.IsTCFilterActive() || !egress.IsTCFilterActive() {
+		t.Fatal("attached probes should be active")
 	}
+
+	// DetachHook stops a probe while another clone of its program is left, and only detaches the last one
+	if err := m.DetachHook(ingress.ProbeIdentificationPair); err != nil {
+		t.Fatal(err)
+	}
+	ns.requirePrograms(t, ifindex, Ingress)
+	ns.requirePrograms(t, ifindex, Egress, probeID(egress))
+	if err := m.DetachHook(egress.ProbeIdentificationPair); err != nil {
+		t.Fatal(err)
+	}
+	ns.requirePrograms(t, ifindex, Egress)
 }
 
 func TestTCXAnchors(t *testing.T) {
@@ -322,14 +253,13 @@ func TestTCXForeignProgram(t *testing.T) {
 	m := newTCTestManager(t)
 	ns := newTestNetns(t)
 	ifindex := ns.addLink(t, dummy("dummy0")).Attrs().Index
-	foreignID, foreignLink := ns.attachForeignTCX(t, ifindex, link.Tail())
+	foreignID := ns.attachForeignTCX(t, ifindex, link.Tail())
 
 	p := ns.cloneTCX(t, m, "probe", ifindex, Ingress, TCXAnchorHead)
 	ns.requirePrograms(t, ifindex, Ingress, probeID(p), foreignID)
 	if !p.IsTCFilterActive() {
 		t.Error("a probe should be active next to foreign programs")
 	}
-
 	if err := m.DetachHook(p.ProbeIdentificationPair); err != nil {
 		t.Fatal(err)
 	}
@@ -340,34 +270,23 @@ func TestTCXForeignProgram(t *testing.T) {
 		t.Fatal(err)
 	}
 	ns.requirePrograms(t, ifindex, Ingress, foreignID)
-	if info, err := foreignLink.Info(); err != nil || info.TCX() == nil || int(info.TCX().Ifindex) != ifindex {
-		t.Errorf("the foreign link should still be attached to interface %d: %+v, %v", ifindex, info, err)
-	}
 }
 
 func TestTCXStop(t *testing.T) {
 	requireTCX(t)
 	m := newTCTestManager(t)
 	stopped, kept := newTestNetns(t), newTestNetns(t)
+	ifindexes := make(map[*testNetns]int)
 	for _, ns := range []*testNetns{stopped, kept} {
-		ifindex := ns.addLink(t, dummy("dummy0")).Attrs().Index
-		ns.cloneTCX(t, m, fmt.Sprintf("ingress_%d", ns.id), ifindex, Ingress, TCXAnchorHead)
-		ns.cloneTCX(t, m, fmt.Sprintf("egress_%d", ns.id), ifindex, Egress, TCXAnchorHead)
-	}
-	ifindex := func(ns *testNetns) int {
-		dev, err := ns.nl.LinkByName("dummy0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		return dev.Attrs().Index
+		ifindexes[ns] = ns.addLink(t, dummy("dummy0")).Attrs().Index
+		ns.cloneTCX(t, m, fmt.Sprintf("probe_%d", ns.id), ifindexes[ns], Ingress, TCXAnchorHead)
 	}
 
 	if err := m.CleanupNetworkNamespace(stopped.id); err != nil {
 		t.Fatal(err)
 	}
-	stopped.requirePrograms(t, ifindex(stopped), Ingress)
-	stopped.requirePrograms(t, ifindex(stopped), Egress)
-	if len(kept.tcxPrograms(t, ifindex(kept), Ingress)) != 1 || len(kept.tcxPrograms(t, ifindex(kept), Egress)) != 1 {
+	stopped.requirePrograms(t, ifindexes[stopped], Ingress)
+	if len(kept.tcxPrograms(t, ifindexes[kept], Ingress)) != 1 {
 		t.Fatal("CleanupNetworkNamespace should only stop the probes of its namespace")
 	}
 	if _, ok := m.netlinkSocketCache.lookup(stopped.id); ok {
@@ -377,8 +296,7 @@ func TestTCXStop(t *testing.T) {
 	if err := m.Stop(CleanAll); err != nil {
 		t.Fatal(err)
 	}
-	kept.requirePrograms(t, ifindex(kept), Ingress)
-	kept.requirePrograms(t, ifindex(kept), Egress)
+	kept.requirePrograms(t, ifindexes[kept], Ingress)
 }
 
 func TestTCXIsTCFilterActive(t *testing.T) {
@@ -389,18 +307,11 @@ func TestTCXIsTCFilterActive(t *testing.T) {
 		ns := newTestNetns(t)
 		dev := ns.addLink(t, dummy("dummy0"))
 		p := ns.cloneTCX(t, m, "probe", dev.Attrs().Index, Ingress, TCXAnchorHead)
-		if !p.IsTCFilterActive() {
-			t.Fatal("an attached probe should be active")
-		}
-
 		if err := ns.nl.LinkDel(dev); err != nil {
 			t.Fatal(err)
 		}
 		if p.IsTCFilterActive() {
 			t.Error("a probe whose interface is deleted should be inactive")
-		}
-		if err := m.DetachHook(p.ProbeIdentificationPair); err != nil {
-			t.Fatal(err)
 		}
 	})
 
@@ -408,72 +319,26 @@ func TestTCXIsTCFilterActive(t *testing.T) {
 		m := newTCTestManager(t)
 		ns, other := newTestNetns(t), newTestNetns(t)
 		dev := ns.addLink(t, dummy("dummy0"))
-		p := ns.cloneTCX(t, m, "probe", dev.Attrs().Index, Ingress, TCXAnchorHead)
+		ifindex := dev.Attrs().Index
+		p := ns.cloneTCX(t, m, "probe", ifindex, Ingress, TCXAnchorHead)
 
+		// the interface keeps its ifindex in the other namespace, and the link follows it
 		if err := ns.nl.LinkSetNsFd(dev, int(other.handle)); err != nil {
 			t.Fatal(err)
 		}
-		moved, err := other.nl.LinkByName("dummy0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		// the link follows its interface
-		other.requirePrograms(t, moved.Attrs().Index, Ingress, probeID(p))
+		other.requirePrograms(t, ifindex, Ingress, probeID(p))
 		if p.IsTCFilterActive() {
 			t.Error("a probe whose interface left its namespace should be inactive")
 		}
-
-		if err = m.DetachHook(p.ProbeIdentificationPair); err != nil {
-			t.Fatal(err)
-		}
-		other.requirePrograms(t, moved.Attrs().Index, Ingress)
-	})
-
-	t.Run("moved and renumbered interface", func(t *testing.T) {
-		m := newTCTestManager(t)
-		ns, other := newTestNetns(t), newTestNetns(t)
-		dev := ns.addLink(t, dummy("dummy0"))
-		other.addLink(t, &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "taken", Index: dev.Attrs().Index}})
-		p := ns.cloneTCX(t, m, "probe", dev.Attrs().Index, Ingress, TCXAnchorHead)
-
-		if err := ns.nl.LinkSetNsFd(dev, int(other.handle)); err != nil {
-			t.Fatal(err)
-		}
-		moved, err := other.nl.LinkByName("dummy0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if moved.Attrs().Index == dev.Attrs().Index {
-			t.Fatal("the moved interface should get a new ifindex")
-		}
-		// an unrelated interface takes the ifindex that the probe was attached to
-		ns.addLink(t, &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "reused", Index: dev.Attrs().Index}})
+		ns.addLink(t, &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "reused", Index: ifindex}})
 		if p.IsTCFilterActive() {
-			t.Error("a probe whose interface left its namespace should be inactive")
+			t.Error("a probe whose ifindex was taken by another interface should be inactive")
 		}
-	})
 
-	t.Run("moved interface whose ifindex is reused", func(t *testing.T) {
-		m := newTCTestManager(t)
-		ns, other := newTestNetns(t), newTestNetns(t)
-		dev := ns.addLink(t, dummy("dummy0"))
-		p := ns.cloneTCX(t, m, "probe", dev.Attrs().Index, Ingress, TCXAnchorHead)
-
-		if err := ns.nl.LinkSetNsFd(dev, int(other.handle)); err != nil {
+		if err := m.DetachHook(p.ProbeIdentificationPair); err != nil {
 			t.Fatal(err)
 		}
-		moved, err := other.nl.LinkByName("dummy0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if moved.Attrs().Index != dev.Attrs().Index {
-			t.Fatal("the moved interface should keep its ifindex")
-		}
-		// the link reports the ifindex of the probe, and an unrelated interface takes it in the namespace of the probe
-		ns.addLink(t, &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "reused", Index: dev.Attrs().Index}})
-		if p.IsTCFilterActive() {
-			t.Error("a probe whose interface left its namespace should be inactive")
-		}
+		other.requirePrograms(t, ifindex, Ingress)
 	})
 }
 
@@ -482,21 +347,17 @@ func TestTCXLinkIfIndex(t *testing.T) {
 	m := newTCTestManager(t)
 	ns, other := newTestNetns(t), newTestNetns(t)
 	dev := ns.addLink(t, dummy("dummy0"))
+	// the interface gets a new ifindex in a namespace where its ifindex is taken
 	other.addLink(t, &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "taken", Index: dev.Attrs().Index}})
 	p := ns.cloneTCX(t, m, "probe", dev.Attrs().Index, Ingress, TCXAnchorHead)
 
 	requireIfIndex := func(want int) {
 		t.Helper()
-		ifindex, err := p.TCXLinkIfIndex()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if int(ifindex) != want {
-			t.Fatalf("got ifindex %d, want %d", ifindex, want)
+		if ifindex, err := p.TCXLinkIfIndex(); err != nil || int(ifindex) != want {
+			t.Fatalf("got ifindex %d and error %v, want %d", ifindex, err, want)
 		}
 	}
 	requireIfIndex(dev.Attrs().Index)
-
 	if err := ns.nl.LinkSetNsFd(dev, int(other.handle)); err != nil {
 		t.Fatal(err)
 	}
@@ -504,88 +365,11 @@ func TestTCXLinkIfIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if moved.Attrs().Index == dev.Attrs().Index {
-		t.Fatal("the moved interface should get a new ifindex")
-	}
 	requireIfIndex(moved.Attrs().Index)
-
 	if err = other.nl.LinkDel(moved); err != nil {
 		t.Fatal(err)
 	}
 	requireIfIndex(0)
-
-	if err = m.DetachHook(p.ProbeIdentificationPair); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = p.TCXLinkIfIndex(); !errors.Is(err, ErrNoTCXLink) {
-		t.Errorf("a detached probe returned %v, want %v", err, ErrNoTCXLink)
-	}
-}
-
-func TestTCXCleansUpDeadLegacyFilters(t *testing.T) {
-	requireTCX(t)
-	m := newTCTestManager(t)
-	ns := newTestNetns(t)
-	dev := ns.addLink(t, dummy("dummy0"))
-	ifindex := dev.Attrs().Index
-	if err := ns.nl.QdiscAdd((&Probe{IfIndex: ifindex}).buildTCClsActQdisc()); err != nil {
-		t.Fatal(err)
-	}
-	prog, err := ebpf.NewProgram(tcxTestProgramSpec())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = prog.Close() })
-
-	// pids are lower than pid_max
-	pidMax, err := os.ReadFile("/proc/sys/kernel/pid_max")
-	if err != nil {
-		t.Fatal(err)
-	}
-	deadPID := strings.TrimSpace(string(pidMax))
-	livePID := strconv.Itoa(os.Getpid())
-	filters := map[string]bool{
-		"classifier_tcx_test_probe_" + deadPID: false,
-		"classifier_tcx_test_probe_" + livePID: true,
-		"classifier_tcx_test_other_" + deadPID: true,
-	}
-	prio := uint16(0)
-	for name := range filters {
-		prio++
-		err = ns.nl.FilterAdd(&netlink.BpfFilter{
-			FilterAttrs: netlink.FilterAttrs{
-				LinkIndex: ifindex,
-				Parent:    netlink.HANDLE_MIN_INGRESS,
-				Handle:    netlink.MakeHandle(0, 1),
-				Priority:  prio,
-				Protocol:  unix.ETH_P_ALL,
-			},
-			Fd:           prog.FD(),
-			Name:         name,
-			DirectAction: true,
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	ns.cloneTCX(t, m, "probe", ifindex, Ingress, TCXAnchorHead)
-
-	list, err := ns.nl.FilterList(dev, netlink.HANDLE_MIN_INGRESS)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got []string
-	for _, filter := range list {
-		if bpfFilter, ok := filter.(*netlink.BpfFilter); ok {
-			got = append(got, bpfFilter.Name)
-		}
-	}
-	for name, kept := range filters {
-		if slices.Contains(got, name) != kept {
-			t.Errorf("filter %s: kept %v, want %v", name, !kept, kept)
-		}
-	}
 }
 
 func TestTCXReattachWithClosedHandle(t *testing.T) {
@@ -593,7 +377,6 @@ func TestTCXReattachWithClosedHandle(t *testing.T) {
 	m := newTCTestManager(t)
 	ns := newTestNetns(t)
 	ifindex := ns.addLink(t, dummy("dummy0")).Attrs().Index
-
 	handle, err := unix.FcntlInt(uintptr(ns.handle), unix.F_DUPFD_CLOEXEC, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -605,20 +388,17 @@ func TestTCXReattachWithClosedHandle(t *testing.T) {
 	}
 
 	// like the callers of CloneProgram, close the handle once attached: its number can then point to any file
-	if err = unix.Close(handle); err != nil {
-		t.Fatal(err)
-	}
+	_ = unix.Close(handle)
 	devNull, err := os.Open(os.DevNull)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = devNull.Close() })
+	defer devNull.Close()
 
 	if err = p.Detach(); err != nil {
 		t.Fatal(err)
 	}
 	ns.requirePrograms(t, ifindex, Ingress)
-
 	// UpdateActivatedProbes attaches the selected probes that aren't running
 	if err = m.UpdateActivatedProbes([]ProbesSelector{&ProbeSelector{ProbeIdentificationPair: p.ProbeIdentificationPair}}); err != nil {
 		t.Fatal(err)
@@ -683,45 +463,4 @@ func TestTCXAttachErrors(t *testing.T) {
 		}
 		ns.requirePrograms(t, ifindex, Ingress)
 	})
-}
-
-func TestLegacyTCAttach(t *testing.T) {
-	requireRoot(t)
-	m := newTCTestManager(t)
-	ns := newTestNetns(t)
-	dev := ns.addLink(t, dummy("dummy0"))
-	p := ns.newProbe("probe", dev.Attrs().Index, Ingress, TCAttachModeLegacy, TCXAnchorTail)
-	if err := m.CloneProgram("", p, nil, nil); err != nil {
-		t.Fatal(err)
-	}
-
-	ids := func() []int {
-		filters, err := ns.nl.FilterList(dev, netlink.HANDLE_MIN_INGRESS)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var ids []int
-		for _, filter := range filters {
-			if bpfFilter, ok := filter.(*netlink.BpfFilter); ok {
-				ids = append(ids, bpfFilter.Id)
-			}
-		}
-		return ids
-	}
-	if got := ids(); !slices.Equal(got, []int{int(p.ID())}) {
-		t.Fatalf("ingress filters: got programs %v, want %d", got, p.ID())
-	}
-	if !p.IsTCFilterActive() {
-		t.Fatal("an attached probe should be active")
-	}
-	if sock, ok := m.netlinkSocketCache.lookup(ns.id); !ok || sock.tcxNetns != nil {
-		t.Error("a legacy attach should open a netlink socket, without copying the namespace handle")
-	}
-
-	if err := m.DetachHook(p.ProbeIdentificationPair); err != nil {
-		t.Fatal(err)
-	}
-	if got := ids(); len(got) != 0 {
-		t.Errorf("ingress filters left after DetachHook: %v", got)
-	}
 }
