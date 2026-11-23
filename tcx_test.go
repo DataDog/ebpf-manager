@@ -2,6 +2,7 @@ package manager
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/vishvananda/netlink"
+	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
 )
 
@@ -329,6 +331,39 @@ func TestTCXNetnsHandleForActiveCheck(t *testing.T) {
 	defer handle.Close()
 	if err = checkNetnsHandle(uint64(handle), nsID); err != nil {
 		t.Error(err)
+	}
+}
+
+func TestTCXAttachErrorsAreReported(t *testing.T) {
+	devNull, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = devNull.Close() })
+	// setns rejects a handle that isn't a namespace with EINVAL
+	switchErr := runInNetns(netns.NsHandle(devNull.Fd()), func() error { return nil })
+	if !errors.Is(switchErr, ErrNetnsSwitch) || !errors.Is(switchErr, unix.EINVAL) {
+		t.Fatalf("got %v, want %v wrapping %v", switchErr, ErrNetnsSwitch, unix.EINVAL)
+	}
+
+	tests := []struct {
+		name        string
+		err         error
+		unavailable bool
+	}{
+		{name: "missing hook point", err: unix.ENOENT, unavailable: true},
+		{name: "unsupported hook point", err: unix.EINVAL, unavailable: true},
+		{name: "missing interface", err: unix.ENODEV},
+		{name: "namespace switch", err: switchErr},
+		{name: "tcx attach", err: fmt.Errorf("%w to %s[%d]: %w", ErrTCXAttach, "dummy0", 2, unix.EINVAL)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := fmt.Errorf("couldn't start probe: %w", tt.err)
+			if got := isHookUnavailable(err); got != tt.unavailable {
+				t.Errorf("isHookUnavailable(%v) returned %v, want %v", err, got, tt.unavailable)
+			}
+		})
 	}
 }
 

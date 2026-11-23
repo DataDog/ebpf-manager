@@ -662,6 +662,27 @@ func TestTCXAttachErrors(t *testing.T) {
 			t.Fatalf("got %v, want %v", err, unix.ENODEV)
 		}
 	})
+
+	t.Run("namespace switch failure", func(t *testing.T) {
+		m := newTCTestManager(t)
+		ns := newTestNetns(t)
+		ifindex := ns.addLink(t, dummy("dummy0")).Attrs().Index
+		sock, err := NewNetlinkSocket(uint64(ns.handle))
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.netlinkSocketCache.cache[ns.id] = sock
+		// setns rejects a handle copy that isn't a namespace with EINVAL
+		if sock.tcxNetns, err = os.Open(os.DevNull); err != nil {
+			t.Fatal(err)
+		}
+
+		err = m.CloneProgram("", ns.newProbe("probe", ifindex, Ingress, TCAttachModeTCX, TCXAnchorHead), nil, nil)
+		if !errors.Is(err, ErrNetnsSwitch) || !errors.Is(err, unix.EINVAL) {
+			t.Fatalf("got %v, want %v wrapping %v", err, ErrNetnsSwitch, unix.EINVAL)
+		}
+		ns.requirePrograms(t, ifindex, Ingress)
+	})
 }
 
 func TestLegacyTCAttach(t *testing.T) {

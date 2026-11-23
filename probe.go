@@ -512,12 +512,20 @@ func (p *Probe) Attach() error {
 		}
 
 		// not available, not a temporary error
-		if errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.EINVAL) {
+		if isHookUnavailable(err) {
 			return nil
 		}
 
 		return err
 	}, p.getRetryAttemptCount(), p.ProbeRetryDelay)
+}
+
+// isHookUnavailable - ENOENT and EINVAL mean that the hook point isn't available, unless a TCX attach returned them
+func isHookUnavailable(err error) bool {
+	if errors.Is(err, ErrNetnsSwitch) || errors.Is(err, ErrTCXAttach) {
+		return false
+	}
+	return errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.EINVAL)
 }
 
 func (p *Probe) Pause() error {
