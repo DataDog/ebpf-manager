@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+
+	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/link"
 )
 
 // SanitizeUprobeAddresses - sanitizes the addresses of the provided symbols
@@ -105,6 +108,12 @@ func (p *Probe) attachWithUprobeEvents() (*tracefsLink, error) {
 
 // attachUprobe - Attaches the probe to its Uprobe
 func (p *Probe) attachUprobe() error {
+	if p.programSpec.AttachType == ebpf.AttachTraceUprobeMulti {
+		return p.attachUprobeMulti()
+	}
+	if len(p.UprobeOffsets) != 0 {
+		return errors.New("UprobeOffsets requires a multi-uprobe program")
+	}
 	// compute the offset if it was not provided
 	if p.UprobeOffset == 0 {
 		var funcPattern string
@@ -165,4 +174,32 @@ func (p *Probe) attachUprobe() error {
 	}
 	p.progLink = tl
 	return nil
+}
+
+func (p *Probe) attachUprobeMulti() error {
+	executable, err := link.OpenExecutable(p.BinaryPath)
+	if err != nil {
+		return err
+	}
+	offsets := p.UprobeOffsets
+	if len(offsets) == 0 && p.UprobeOffset != 0 {
+		offsets = []uint64{p.UprobeOffset}
+	}
+	var symbols []string
+	if len(offsets) == 0 {
+		if p.HookFuncName == "" || p.MatchFuncName != "" {
+			return errors.New("multi-uprobes require offsets or an exact HookFuncName")
+		}
+		symbols = []string{p.HookFuncName}
+	}
+	opts := &link.UprobeMultiOptions{Addresses: offsets}
+	if p.PerfEventPID > 0 {
+		opts.PID = uint32(p.PerfEventPID)
+	}
+	if p.isReturnProbe {
+		p.progLink, err = executable.UretprobeMulti(symbols, p.program, opts)
+	} else {
+		p.progLink, err = executable.UprobeMulti(symbols, p.program, opts)
+	}
+	return err
 }

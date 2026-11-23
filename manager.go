@@ -99,6 +99,13 @@ type Options struct {
 	// DefaultUprobeAttachMethod - Manager-level default value for the Uprobe attach method. Defaults to AttachWithPerfEventOpen if unset.
 	DefaultUprobeAttachMethod AttachMethod
 
+	// UprobeMultiPrograms opts these eBPF function names into multi-uprobe
+	// loading. Select the backend before attaching: use Probe.UprobeOffsets
+	// only when UprobeMultiStatus reports enabled. Unsupported kernels or a
+	// failed multi-program load retain the legacy programs. Tail-call targets
+	// and program arrays are copied as needed, preserving legacy callers.
+	UprobeMultiPrograms []string
+
 	// ProbeRetry - Defines the number of times that a probe will retry to attach / detach on error.
 	DefaultProbeRetry uint
 
@@ -135,6 +142,8 @@ type InstructionPatcherFunc func(m *Manager) error
 
 // Manager - Helper structure that manages multiple eBPF programs and maps
 type Manager struct {
+	uprobeMultiEnabled bool
+	uprobeMultiError   error
 	collectionSpec     *ebpf.CollectionSpec
 	collection         *ebpf.Collection
 	options            Options
@@ -1665,7 +1674,7 @@ func (m *Manager) loadCollection() error {
 		}
 	}
 
-	m.collection, err = ebpf.NewCollectionWithOptions(m.collectionSpec, opts)
+	m.collection, err = m.loadUprobeMultiCollection(opts)
 	if err != nil {
 		var ve *ebpf.VerifierError
 		if errors.As(err, &ve) {

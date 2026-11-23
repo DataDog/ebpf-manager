@@ -125,6 +125,11 @@ type Probe struct {
 	// otherwise it must be an offset relative to the file load address.
 	UprobeOffset uint64
 
+	// UprobeOffsets attaches all of these file offsets as one multi-uprobe link.
+	// The program must be selected by Options.UprobeMultiPrograms. UprobeOffset
+	// and symbol lookup are ignored when this slice is non-empty.
+	UprobeOffsets []uint64
+
 	// ProbeRetry - Defines the number of times that the probe will retry to attach / detach on error.
 	ProbeRetry uint
 
@@ -227,6 +232,9 @@ func (p *Probe) Copy() *Probe {
 			UID:          p.UID,
 			EBPFFuncName: p.EBPFFuncName,
 		},
+		UprobeOffset:       p.UprobeOffset,
+		UprobeOffsets:      append([]uint64(nil), p.UprobeOffsets...),
+		UprobeAttachMethod: p.UprobeAttachMethod,
 		SyscallFuncName:    p.SyscallFuncName,
 		CopyProgram:        p.CopyProgram,
 		KeepProgramSpec:    p.KeepProgramSpec,
