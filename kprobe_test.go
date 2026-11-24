@@ -52,9 +52,6 @@ func TestAttachKprobeMulti(t *testing.T) {
 				}
 			})
 			p := &Probe{HookFuncName: symbol, program: prog, programSpec: spec, isReturnProbe: tc.ret, Enabled: true}
-			if !p.SupportsKprobeMulti() {
-				t.Fatal("missing capability marker")
-			}
 			if tc.unknown {
 				p.HookFuncName = "ebpf_manager_nonexistent_kprobe_multi_symbol"
 			}

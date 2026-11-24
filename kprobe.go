@@ -23,10 +23,6 @@ func (p *Probe) prefix() string {
 
 type attachFunc func() (*tracefsLink, error)
 
-// SupportsKprobeMulti reports whether this library supports attaching programs
-// loaded with AttachTraceKprobeMulti. Kernel support must be checked separately.
-func (*Probe) SupportsKprobeMulti() bool { return true }
-
 // attachKprobe - Attaches the probe to its kprobe
 func (p *Probe) attachKprobe() error {
 	if len(p.HookFuncName) == 0 {
