@@ -16,6 +16,7 @@ import (
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/features"
 	"github.com/cilium/ebpf/rlimit"
+	"github.com/vishvananda/netlink"
 )
 
 // FunctionExcluder - An interface for types that can be used for `AdditionalExcludedFunctionCollector`
@@ -756,13 +757,13 @@ func (m *Manager) setupBypass() (*Map, error) {
 				asm.LoadMapPtr(asm.R1, 0).WithReference(bypassMapName),
 				// bpf_map_lookup_elem
 				asm.FnMapLookupElem.Call(),
-				// if ret == 0, jump to `return 0`
+				// if ret == 0, jump to the bypass return
 				asm.JEq.Imm(asm.R0, 0, "bypass_return"),
 				// pointer indirection of result from map lookup
 				asm.LoadMem(asm.R1, asm.R0, 0, asm.Word),
 				// if bypass NOT enabled, jump over return
 				asm.JEq.Imm(asm.R1, 0, "bypass_continue"),
-				asm.Mov.Imm(asm.R0, 0).WithSymbol("bypass_return"),
+				asm.Mov.Imm(asm.R0, bypassReturnValue(p.Type)).WithSymbol("bypass_return"),
 				asm.Return(),
 				// zero out used stack slot
 				asm.StoreImm(asm.RFP, stackOffset, 0, asm.Word).WithSymbol("bypass_continue"),
@@ -823,6 +824,14 @@ func (m *Manager) setupBypass() (*Map, error) {
 	}
 
 	return bypassMap, nil
+}
+
+func bypassReturnValue(progType ebpf.ProgramType) int32 {
+	if progType == ebpf.SchedCLS {
+		// 0 is TC_ACT_OK (TCX_PASS) and ends the chain, TC_ACT_UNSPEC (TCX_NEXT) runs the next program
+		return int32(netlink.TC_ACT_UNSPEC)
+	}
+	return 0
 }
 
 // releaseKernelBTF drops the references to the kernel BTF that are only needed while loading programs, so a long-lived

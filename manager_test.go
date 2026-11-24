@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -307,4 +308,78 @@ func TestReleaseKernelBTF(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBypassReturnValue(t *testing.T) {
+	spec, err := ebpf.LoadCollectionSpec("testdata/bypass.elf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := &Manager{collectionSpec: spec, options: Options{BypassEnabled: true}}
+	if _, err = m.setupBypass(); err != nil {
+		t.Fatal(err)
+	}
+
+	for name, ret := range map[string]int32{"classifier_bypass": -1, "kprobe_bypass": 0} {
+		insns := spec.Programs[name].Instructions
+		i := slices.IndexFunc(insns, func(ins asm.Instruction) bool { return ins.Symbol() == "bypass_return" })
+		if i < 0 {
+			t.Fatalf("%s: bypass instructions not injected", name)
+		}
+		want := asm.Mov.Imm(asm.R0, ret)
+		if got := insns[i]; got.OpCode != want.OpCode || got.Dst != want.Dst || got.Constant != want.Constant {
+			t.Errorf("%s: bypass return is `%v`, want `%v`", name, got, want)
+		}
+	}
+}
+
+func TestBypassClassifierRun(t *testing.T) {
+	const (
+		tcActShot         = 2
+		tcActUnspecRetval = 0xffffffff
+	)
+
+	err := rlimit.RemoveMemlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := os.Open("testdata/bypass.elf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.Close() })
+
+	p := &Probe{
+		ProbeIdentificationPair: ProbeIdentificationPair{EBPFFuncName: "classifier_bypass"},
+		NetworkDirection:        Ingress,
+	}
+	m := &Manager{Probes: []*Probe{p}}
+	if err = m.InitWithOptions(f, Options{BypassEnabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = m.Stop(CleanAll) })
+	// pausing only flips the bypass slot of the classifier, so it doesn't need to be attached
+	m.state, p.state = running, running
+
+	run := func(want uint32) {
+		t.Helper()
+		got, err := p.Program().Run(&ebpf.RunOptions{Data: make([]byte, 14)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("classifier returned %#x, want %#x", got, want)
+		}
+	}
+
+	run(tcActShot)
+	if err = m.Pause(); err != nil {
+		t.Fatal(err)
+	}
+	run(tcActUnspecRetval)
+	if err = m.Resume(); err != nil {
+		t.Fatal(err)
+	}
+	run(tcActShot)
 }

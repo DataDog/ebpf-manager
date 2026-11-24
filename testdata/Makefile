@@ -1,7 +1,7 @@
 LLVM_PREFIX ?= /usr/bin
 CLANG ?= $(LLVM_PREFIX)/clang
 
-all: rewrite.elf exclude.elf patching.elf
+all: rewrite.elf exclude.elf patching.elf bypass.elf
 
 clean:
 	-$(RM) *.elf
