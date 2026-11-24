@@ -104,6 +104,7 @@ type Options struct {
 	// only when UprobeMultiStatus reports enabled. Unsupported kernels or a
 	// failed multi-program load retain the legacy programs. Tail-call targets
 	// and program arrays are copied as needed, preserving legacy callers.
+	// Excluded functions are ignored, including those excluded by the collector.
 	UprobeMultiPrograms []string
 
 	// ProbeRetry - Defines the number of times that a probe will retry to attach / detach on error.
@@ -606,6 +607,9 @@ func (m *Manager) initState(elf io.ReaderAt, options Options) error {
 	for _, excludedFuncName := range m.options.ExcludedFunctions {
 		delete(m.collectionSpec.Programs, excludedFuncName)
 	}
+	m.options.UprobeMultiPrograms = slices.DeleteFunc(m.options.UprobeMultiPrograms, func(name string) bool {
+		return slices.Contains(m.options.ExcludedFunctions, name)
+	})
 	for i := 0; i < len(m.Probes); {
 		if slices.Contains(m.options.ExcludedFunctions, m.Probes[i].EBPFFuncName) {
 			m.Probes = slices.Delete(m.Probes, i, i+1)

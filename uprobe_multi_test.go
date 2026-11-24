@@ -76,6 +76,54 @@ func TestPrepareUprobeMulti(t *testing.T) {
 	}
 }
 
+type multiTestFunctionExcluder string
+
+func (name multiTestFunctionExcluder) ShouldExcludeFunction(candidate string, _ *ebpf.ProgramSpec) bool {
+	return candidate == string(name)
+}
+
+func (multiTestFunctionExcluder) CleanCaches() {}
+
+func TestMultiUprobeExclusions(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		dynamic bool
+		all     bool
+	}{
+		{name: "explicit"},
+		{name: "explicit-all", all: true},
+		{name: "collector", dynamic: true},
+		{name: "collector-all", dynamic: true, all: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			spec, routes := multiTestSpec()
+			m := &Manager{collectionSpec: spec, state: elfLoaded}
+			opts := Options{KeepUnmappedProgramSpecs: true, UprobeMultiPrograms: []string{"legacy"}, TailCallRouter: routes}
+			if !tc.all {
+				opts.UprobeMultiPrograms = append(opts.UprobeMultiPrograms, "tls")
+			}
+			if tc.dynamic {
+				opts.AdditionalExcludedFunctionCollector = multiTestFunctionExcluder("legacy")
+			} else {
+				opts.ExcludedFunctions = []string{"legacy"}
+			}
+			if err := m.initState(nil, opts); err != nil {
+				t.Fatal(err)
+			}
+			if tc.all {
+				if len(m.options.UprobeMultiPrograms) != 0 {
+					t.Fatal("all multi-uprobe roots should be excluded")
+				}
+			} else if !reflect.DeepEqual(m.options.UprobeMultiPrograms, []string{"tls"}) {
+				t.Fatalf("unexpected multi-uprobe roots: %v", m.options.UprobeMultiPrograms)
+			}
+			if _, _, err := prepareUprobeMulti(m.collectionSpec, m.options.UprobeMultiPrograms, routes); err != nil {
+				t.Fatalf("excluded roots must not prevent multi-uprobe preparation: %v", err)
+			}
+		})
+	}
+}
+
 func TestMultiUprobeOffsetsCopy(t *testing.T) {
 	p := &Probe{UprobeOffsets: []uint64{10, 20}, UprobeAttachMethod: AttachWithProbeEvents}
 	copy := p.Copy()
@@ -116,13 +164,15 @@ func TestMultiUprobeIntegration(t *testing.T) {
 		t.Fatalf("find target: %v, %+v", err, symbols)
 	}
 	for _, tc := range []struct {
-		name    string
-		multi   bool
-		grouped bool
+		name     string
+		multi    bool
+		grouped  bool
+		excluded bool
 	}{
 		{name: "legacy"},
 		{name: "multi-single", multi: true},
 		{name: "multi-grouped", multi: true, grouped: true},
+		{name: "multi-excluded", multi: true, grouped: true, excluded: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			spec, routes := multiTestSpec()
@@ -130,6 +180,11 @@ func TestMultiUprobeIntegration(t *testing.T) {
 			opts := Options{TailCallRouter: routes, BypassEnabled: true}
 			if tc.multi {
 				opts.UprobeMultiPrograms = []string{"tls"}
+			}
+			if tc.excluded {
+				spec.Programs["excluded"] = spec.Programs["tls"].Copy()
+				opts.UprobeMultiPrograms = append(opts.UprobeMultiPrograms, "excluded")
+				opts.ExcludedFunctions = []string{"excluded"}
 			}
 			if err := m.InitWithOptions(nil, opts); err != nil {
 				t.Fatal(err)
