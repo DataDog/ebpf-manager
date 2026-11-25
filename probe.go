@@ -186,6 +186,14 @@ type Probe struct {
 	// ETH_P_ALL.
 	TCFilterProtocol uint16
 
+	// TCAttachMode - (TC classifier) defines how the classifier is attached to its interface. Defaults to
+	// TCAttachModeLegacy.
+	TCAttachMode TCAttachMode
+
+	// TCXAnchor - (TC classifier) defines where the TCX link of the classifier is inserted among the programs of its
+	// hook, when TCAttachMode is TCAttachModeTCX. Defaults to TCXAnchorTail.
+	TCXAnchor TCXAnchor
+
 	// SamplePeriod - (Perf event) This parameter defines when the perf_event eBPF program is triggered. When SamplePeriod > 0
 	// the program will be triggered every SamplePeriod events.
 	SamplePeriod int
@@ -254,6 +262,8 @@ func (p *Probe) Copy() *Probe {
 		ProbeRetryDelay:    p.ProbeRetryDelay,
 		TCFilterProtocol:   p.TCFilterProtocol,
 		TCFilterPrio:       p.TCFilterPrio,
+		TCAttachMode:       p.TCAttachMode,
+		TCXAnchor:          p.TCXAnchor,
 	}
 }
 
@@ -366,6 +376,9 @@ func (p *Probe) internalInit(manager *Manager) error {
 		// sanity check
 		if p.NetworkDirection != Egress && p.NetworkDirection != Ingress {
 			return fmt.Errorf("%s has an invalid configuration: %w", p.ProbeIdentificationPair, ErrNoNetworkDirection)
+		}
+		if p.TCAttachMode == TCAttachModeTCX && p.TCFilterProtocol != 0 && p.TCFilterProtocol != unix.ETH_P_ALL {
+			return fmt.Errorf("%s has an invalid configuration: TCX can't filter on protocol %#x", p.ProbeIdentificationPair, p.TCFilterProtocol)
 		}
 	}
 
@@ -499,12 +512,20 @@ func (p *Probe) Attach() error {
 		}
 
 		// not available, not a temporary error
-		if errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.EINVAL) {
+		if isHookUnavailable(err) {
 			return nil
 		}
 
 		return err
 	}, p.getRetryAttemptCount(), p.ProbeRetryDelay)
+}
+
+// isHookUnavailable - ENOENT and EINVAL mean that the hook point isn't available, unless a TCX attach returned them
+func isHookUnavailable(err error) bool {
+	if errors.Is(err, ErrNetnsSwitch) || errors.Is(err, ErrTCXAttach) {
+		return false
+	}
+	return errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.EINVAL)
 }
 
 func (p *Probe) Pause() error {
@@ -552,7 +573,11 @@ func (p *Probe) attach() error {
 	case ebpf.SocketFilter:
 		err = p.attachSocket()
 	case ebpf.SchedCLS:
-		err = p.attachTCCLS()
+		if p.TCAttachMode == TCAttachModeTCX {
+			err = p.attachTCX()
+		} else {
+			err = p.attachTCCLS()
+		}
 	case ebpf.XDP:
 		err = p.attachXDP()
 	case ebpf.LSM:
@@ -697,7 +722,11 @@ func (p *Probe) detach() error {
 		// nothing to do
 		break
 	case ebpf.SchedCLS:
-		err = errors.Join(err, p.detachTCCLS())
+		if p.TCAttachMode == TCAttachModeTCX {
+			err = errors.Join(err, p.detachTCX())
+		} else {
+			err = errors.Join(err, p.detachTCCLS())
+		}
 	default:
 		if p.progLink != nil {
 			err = errors.Join(err, p.progLink.Close())
