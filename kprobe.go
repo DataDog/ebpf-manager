@@ -4,6 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+
+	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/link"
 )
 
 type KprobeAttachMethod = AttachMethod
@@ -24,6 +27,21 @@ type attachFunc func() (*tracefsLink, error)
 func (p *Probe) attachKprobe() error {
 	if len(p.HookFuncName) == 0 {
 		return fmt.Errorf("HookFuncName, MatchFuncName or SyscallFuncName is required")
+	}
+
+	// Keep one link and one target per existing probe. The caller must select
+	// the expected attach type before loading programs and tail-call targets.
+	// This backend has no KProbeMaxActive option and cannot fall back to a
+	// perf-event attachment for a program loaded with this attach type.
+	if p.programSpec.AttachType == ebpf.AttachTraceKprobeMulti {
+		var err error
+		opts := link.KprobeMultiOptions{Symbols: []string{p.HookFuncName}}
+		if p.isReturnProbe {
+			p.progLink, err = link.KretprobeMulti(p.program, opts)
+		} else {
+			p.progLink, err = link.KprobeMulti(p.program, opts)
+		}
+		return err
 	}
 
 	var eventsFunc attachFunc = p.attachWithKprobeEvents
